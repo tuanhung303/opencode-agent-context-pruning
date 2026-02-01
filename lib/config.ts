@@ -14,7 +14,7 @@ export interface DiscardTool {
     enabled: boolean
 }
 
-export interface ExtractTool {
+export interface DistillTool {
     enabled: boolean
     showDistillation: boolean
 }
@@ -30,7 +30,7 @@ export interface ToolSettings {
 export interface Tools {
     settings: ToolSettings
     discard: DiscardTool
-    extract: ExtractTool
+    distill: DistillTool
 }
 
 export interface Commands {
@@ -113,7 +113,7 @@ const DEFAULT_PROTECTED_TOOLS = [
     "todowrite",
     "todoread",
     "discard",
-    "extract",
+    "distill",
     "batch",
     "write",
     "edit",
@@ -203,7 +203,7 @@ const defaultConfig: PluginConfig = {
         discard: {
             enabled: true,
         },
-        extract: {
+        distill: {
             enabled: true,
             showDistillation: false,
         },
@@ -406,9 +406,9 @@ function mergeTools(
         discard: {
             enabled: override.discard?.enabled ?? base.discard.enabled,
         },
-        extract: {
-            enabled: override.extract?.enabled ?? base.extract.enabled,
-            showDistillation: override.extract?.showDistillation ?? base.extract.showDistillation,
+        distill: {
+            enabled: override.distill?.enabled ?? base.distill.enabled,
+            showDistillation: override.distill?.showDistillation ?? base.distill.showDistillation,
         },
     }
 }
@@ -441,7 +441,7 @@ function deepCloneConfig(config: PluginConfig): PluginConfig {
                 minAssistantTextLength: config.tools.settings.minAssistantTextLength,
             },
             discard: { ...config.tools.discard },
-            extract: { ...config.tools.extract },
+            distill: { ...config.tools.distill },
         },
         strategies: {
             deduplication: {

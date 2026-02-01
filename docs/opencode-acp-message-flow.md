@@ -85,7 +85,7 @@ sequenceDiagram
     OpenCode->>LLM: Send to provider
     LLM-->>User: Response with tool calls
 
-    Note over ACP: Agent uses discard/extract/restore tool
+    Note over ACP: Agent uses discard/distill/restore tool
     User->>ACP: discard({hashes: ["#r_a1b2c#"], reason: "completion"})
     ACP->>ACP: Resolve hashes to callIDs
     ACP->>ACP: Add IDs to prune.toolIds
@@ -99,7 +99,7 @@ stateDiagram-v2
     [*] --> Active: Tool call completed
     Active --> Hashed: Hash injected into output
     Hashed --> Prunable: Appears in context with hash prefix
-    Prunable --> Pruned: Agent calls discard/extract tool
+    Prunable --> Pruned: Agent calls discard/distill tool
     Pruned --> [*]: Output replaced with breadcrumb
     Pruned --> Restored: Agent calls restore tool
     Restored --> Active: Original content restored
@@ -239,7 +239,7 @@ interface SessionState {
 
 ## Pruning Tools
 
-ACP provides three tools for managing context: `discard`, `extract`, and `restore`.
+ACP provides three tools for managing context: `discard`, `distill`, and `restore`.
 
 ### discard
 
@@ -266,7 +266,7 @@ When trying to discard protected content, you'll see helpful error messages:
 
 ```
 Cannot discard: 'task' is a protected tool.
-Protected tools: discard, extract, task, todowrite, todoread, batch, write, edit, plan_enter, plan_exit
+Protected tools: discard, distill, task, todowrite, todoread, batch, write, edit, plan_enter, plan_exit
 To modify protection, update 'tools.settings.protectedTools' in your ACP config.
 ```
 
@@ -276,26 +276,17 @@ Protected patterns: package.json, *.lock, .env*
 To modify protection, update 'protectedFilePatterns' in your ACP config.
 ```
 
-### extract
-
-Distills key findings into preserved knowledge before removing raw content.
+### distill
 
 ```typescript
-// Standard extraction (prunes after extracting)
-extract({
-    hashes: ["#r_a1b2c#", "#r_d4e5f#"],
-    distillation: [
-        "auth.ts: validateToken() checks cache first (5min TTL) then OIDC",
-        "user.ts: interface User { id, email, permissions[], status }",
-    ],
-})
+// Standard distillation (prunes after distilling)
+distill([
+    { hash: "#r_a1b2c#", replace_content: "Key findings..." },
+    { hash: "#r_d4e5f#", replace_content: "Summary..." },
+])
 
-// Preserve mode (extracts but keeps original)
-extract({
-    hashes: ["#r_a1b2c#"],
-    distillation: ["Key findings..."],
-    preserve: true, // Original output is kept
-})
+// Distill mode (distills and prunes)
+distill([{ hash: "#r_a1b2c#", replace_content: "Key findings..." }])
 ```
 
 ### restore
@@ -386,7 +377,7 @@ interface StrategyStats {
     supersedeWrites: { count: number; tokens: number }
     purgeErrors: { count: number; tokens: number }
     manualDiscard: { count: number; tokens: number }
-    extraction: { count: number; tokens: number }
+    distillation: { count: number; tokens: number }
 }
 ```
 
@@ -399,7 +390,7 @@ Supersede Writes     12 prunes, ~10.2k saved ⭐
 Deduplication        45 prunes, ~3.4k saved
 Manual Discard        8 prunes, ~2.1k saved
 Purge Errors          5 prunes, ~890 saved
-Extraction            3 prunes, ~450 saved
+Distillation          3 prunes, ~450 saved
 ```
 
 ---
@@ -471,7 +462,7 @@ Shows protected tools and file patterns.
 📋 Protected Tools:
    These tools cannot be discarded:
    • discard
-   • extract
+   • distill
    • task
    • todowrite
    • todoread
@@ -612,7 +603,7 @@ These tools are protected from pruning and do not receive hash prefixes:
 ```typescript
 const DEFAULT_PROTECTED_TOOLS = [
     "discard", // Context management tool
-    "extract", // Context management tool
+    "distill", // Context management tool
     "restore", // Context management tool
     "task", // Subagent tool
     "todowrite", // Todo management
@@ -676,9 +667,9 @@ flowchart TB
     end
 
     subgraph "Agent Actions"
-        G --> L{Use discard/extract/restore?}
+        G --> L{Use discard/distill/restore?}
         L -->|discard| M[Mark tools by hash]
-        L -->|extract| N[Distill & prune]
+        L -->|distill| N[Distill & prune]
         L -->|restore| O[Un-prune tools]
         M --> P[Next turn: tools pruned]
         N --> P
@@ -697,10 +688,10 @@ flowchart TB
 **Key Takeaways:**
 
 1. **Hash-based identification** - Each tool output has a unique hash prefix (`#r_a1b2c#`)
-2. **Three pruning tools** - `discard`, `extract`, and `restore` for full control
+2. **Three pruning tools** - `discard`, `distill`, and `restore` for full control
 3. **Messages ARE sent to LLM** - The transform hook modifies messages in-place before `toModelMessages()`
 4. **Breadcrumbs preserve context** - Pruned outputs show `tool({params}) → status`
-5. **Protected tools skip hashing** - Core tools like `discard`, `extract`, `task` are protected
+5. **Protected tools skip hashing** - Core tools like `discard`, `distill`, `task` are protected
 6. **Automatic strategies** - Deduplication, fuzzy deduplication, supersede writes, and purge errors run automatically
 7. **Strategy effectiveness tracking** - Monitor which strategies save the most tokens
 8. **~80-90% context overhead reduction** - No more `<prunable-tools>` list injection every turn
@@ -1017,15 +1008,15 @@ export const myNewStrategy = (
 
 ### New Features in v2.0.0
 
-| Feature                     | Description                               |
-| --------------------------- | ----------------------------------------- |
-| `extract({preserve: true})` | Extract knowledge without pruning         |
-| `restore({hashes: []})`     | Undo pruning and restore original content |
-| `/acp protected`            | View protected tools and patterns         |
-| `/acp budget`               | View context usage and recommendations    |
-| Fuzzy deduplication         | Auto-prune overlapping file reads         |
-| Strategy effectiveness      | Track token savings per strategy          |
-| Better error messages       | Clear explanations for protected content  |
+| Feature                              | Description                               |
+| ------------------------------------ | ----------------------------------------- |
+| `distill([{hash, replace_content}])` | Distill knowledge before pruning          |
+| `restore({hashes: []})`              | Undo pruning and restore original content |
+| `/acp protected`                     | View protected tools and patterns         |
+| `/acp budget`                        | View context usage and recommendations    |
+| Fuzzy deduplication                  | Auto-prune overlapping file reads         |
+| Strategy effectiveness               | Track token savings per strategy          |
+| Better error messages                | Clear explanations for protected content  |
 
 ### New Required Parameters
 

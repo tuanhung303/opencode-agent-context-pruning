@@ -1,20 +1,20 @@
 // Tool specs
 import { DISCARD_TOOL_SPEC } from "./discard-tool-spec"
-import { EXTRACT_TOOL_SPEC } from "./extract-tool-spec"
+import { DISTILL_TOOL_SPEC } from "./distill-tool-spec"
 import { RESTORE_TOOL_SPEC } from "./restore-tool-spec"
 
 // System prompts
 import { SYSTEM_PROMPT_BOTH } from "./system/both"
 import { SYSTEM_PROMPT_DISCARD } from "./system/discard"
-import { SYSTEM_PROMPT_EXTRACT } from "./system/extract"
+import { SYSTEM_PROMPT_DISTILL } from "./system/distill"
 
 const PROMPTS: Record<string, string> = {
     "discard-tool-spec": DISCARD_TOOL_SPEC,
-    "extract-tool-spec": EXTRACT_TOOL_SPEC,
+    "distill-tool-spec": DISTILL_TOOL_SPEC,
     "restore-tool-spec": RESTORE_TOOL_SPEC,
     "system/system-prompt-both": SYSTEM_PROMPT_BOTH,
     "system/system-prompt-discard": SYSTEM_PROMPT_DISCARD,
-    "system/system-prompt-extract": SYSTEM_PROMPT_EXTRACT,
+    "system/system-prompt-distill": SYSTEM_PROMPT_DISTILL,
 }
 
 export function loadPrompt(name: string, vars?: Record<string, string>): string {

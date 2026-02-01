@@ -103,6 +103,7 @@ export const supersedeWrites = (
     if (newPruneIds.length > 0) {
         const tokensSaved = calculateTokensSaved(state, messages, newPruneIds)
         state.stats.totalPruneTokens += tokensSaved
+        state.stats.totalPruneMessages += newPruneIds.length
         state.stats.strategyStats.supersedeWrites.count += newPruneIds.length
         state.stats.strategyStats.supersedeWrites.tokens += tokensSaved
         state.prune.toolIds.push(...newPruneIds)

@@ -85,7 +85,8 @@ export const deduplicate = (
         }
     }
 
-    state.stats.totalPruneTokens += calculateTokensSaved(state, messages, newPruneIds)
+    const tokensSaved = calculateTokensSaved(state, messages, newPruneIds)
+    state.stats.totalPruneTokens += tokensSaved
 
     const allDeduplicatedIds: string[] = [...newPruneIds]
 
@@ -98,6 +99,7 @@ export const deduplicate = (
 
     if (allDeduplicatedIds.length > 0) {
         state.prune.toolIds.push(...allDeduplicatedIds)
+        state.stats.totalPruneMessages += allDeduplicatedIds.length
         const tokensSaved = calculateTokensSaved(state, messages, allDeduplicatedIds)
         state.stats.totalPruneTokens += tokensSaved
         state.stats.strategyStats.deduplication.count += allDeduplicatedIds.length

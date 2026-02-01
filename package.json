@@ -1,7 +1,7 @@
 {
     "$schema": "https://json.schemastore.org/package.json",
     "name": "@tuanhung303/opencode-acp",
-    "version": "2.5.1",
+    "version": "2.7.2",
     "type": "module",
     "description": "OpenCode plugin that optimizes token usage by pruning obsolete tool outputs from conversation context",
     "main": "./dist/index.js",
@@ -35,7 +35,7 @@
         "url": "https://github.com/opencode-acp/opencode-acp/issues"
     },
     "homepage": "https://github.com/opencode-acp/opencode-acp#readme",
-    "author": "tarquinen",
+    "author": "opencode-acp",
     "license": "MIT",
     "peerDependencies": {
         "@opencode-ai/plugin": ">=0.13.7"

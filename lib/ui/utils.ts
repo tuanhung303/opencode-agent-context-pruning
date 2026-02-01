@@ -7,15 +7,11 @@ export function countDistillationTokens(distillation?: string[]): number {
     return countTokens(distillation.join("\n"))
 }
 
-export function formatExtracted(distillation?: string[]): string {
+export function formatDistilled(distillation?: string[]): string {
     if (!distillation || distillation.length === 0) {
         return ""
     }
-    let result = `\n\n▣ Extracted`
-    for (const finding of distillation) {
-        result += `\n───\n${finding}`
-    }
-    return result
+    return ""
 }
 
 export function formatStatsHeader(
@@ -23,22 +19,35 @@ export function formatStatsHeader(
     pruneTokenCounter: number,
     totalMessagesPruned: number,
     messagesPruned: number,
+    distilledCount?: number,
 ): string {
     const totalMessages = totalMessagesPruned + messagesPruned
     const totalTokens = totalTokensSaved + pruneTokenCounter
-    const totalTokensStr = `~${formatTokenCount(totalTokens)}`
 
-    // Show addition indicator for current operation
-    const additionParts: string[] = []
-    if (messagesPruned > 0) {
-        additionParts.push(`+${messagesPruned} 💬`)
-    }
-    if (pruneTokenCounter > 0) {
-        additionParts.push(`+${formatTokenCount(pruneTokenCounter)} 🪙`)
-    }
-    const additionSuffix = additionParts.length > 0 ? ` (${additionParts.join(", ")})` : ""
+    // Build the beautiful status format: 「 -29.8K 🌑 ₊ 🌊 3 ₊ ✨ 2 」
+    const parts: string[] = []
 
-    return `acp - ${totalMessages} 💬 · ${totalTokensStr} 🪙${additionSuffix}`
+    // Tokens saved (with minus sign to indicate savings)
+    if (totalTokens > 0) {
+        parts.push(`-${formatTokenCount(totalTokens)} 🌑`)
+    }
+
+    // Messages pruned (wave icon)
+    if (totalMessages > 0) {
+        parts.push(`🌊 ${totalMessages}`)
+    }
+
+    // Distilled count (sparkle icon)
+    if (distilledCount && distilledCount > 0) {
+        parts.push(`✨ ${distilledCount}`)
+    }
+
+    if (parts.length === 0) {
+        return "「 acp 」"
+    }
+
+    // Join with ₊ separator between items (not at the start)
+    return `「 ${parts.join(" ₊ ")} 」`
 }
 
 export function formatTokenCount(tokens: number): string {

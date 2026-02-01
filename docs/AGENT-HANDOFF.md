@@ -10,7 +10,7 @@ This document provides context for future agents working on the ACP (Agentic Con
 | --------------------------------------------------------------- | ------ | ---------------------------------------- |
 | Hash-based tool identification                                  | ✅     | `lib/messages/inject.ts`                 |
 | Discard tool                                                    | ✅     | `lib/strategies/tools.ts`                |
-| Extract tool (with preserve option)                             | ✅     | `lib/strategies/tools.ts`                |
+| Distill tool                                                    | ✅     | `lib/strategies/tools.ts`                |
 | Restore tool                                                    | ✅     | `lib/strategies/tools.ts`                |
 | Deduplication strategy                                          | ✅     | `lib/strategies/deduplication.ts`        |
 | Fuzzy deduplication (overlapping reads)                         | ✅     | `lib/strategies/deduplication.ts`        |
@@ -37,7 +37,7 @@ lib/
 │   ├── purge-errors.ts
 │   ├── truncation.ts      # NEW: Head-tail truncation for large outputs
 │   ├── thinking-compression.ts  # NEW: Compress old thinking blocks
-│   └── tools.ts           # discard/extract/restore tools
+│   └── tools.ts           # discard/distill/restore tools
 ├── ui/
 │   ├── notification.ts    # Unified notification system
 │   └── utils.ts           # Formatting utilities
@@ -276,7 +276,7 @@ User Message
     ├── purgeErrors()             # Remove old errors
     ├── truncateLargeOutputs()    # Head-tail truncation
     ├── compressThinkingBlocks()  # Compress old reasoning
-    └── prune()                   # Apply agent's discard/extract
+    └── prune()                   # Apply agent's discard/distill
     ↓
 LLM Response
     ↓
@@ -294,7 +294,7 @@ interface SessionState {
   currentTurn: number
   prune: {
     toolIds: string[]           # Tools to prune
-    extractions: Map<string, string>  # Extracted summaries
+    distillations: Map<string, string>  # Distilled summaries
     softPruneCache: Map<string, any>  # For restore
   }
   toolParameters: Map<string, ToolParameterEntry>  # Tool metadata

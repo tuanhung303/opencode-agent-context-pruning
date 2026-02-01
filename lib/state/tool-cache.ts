@@ -45,7 +45,7 @@ export async function syncToolCache(
                     state.currentTurn - turnCounter < turnProtectionTurns
 
                 state.lastToolPrune =
-                    (part.tool === "discard" || part.tool === "extract") &&
+                    (part.tool === "discard" || part.tool === "distill") &&
                     part.state.status === "completed"
 
                 if (state.toolParameters.has(part.callID)) {

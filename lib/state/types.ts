@@ -26,7 +26,7 @@ export interface SessionStats {
         supersedeWrites: { count: number; tokens: number }
         purgeErrors: { count: number; tokens: number }
         manualDiscard: { count: number; tokens: number }
-        extraction: { count: number; tokens: number }
+        distillation: { count: number; tokens: number }
         truncation: { count: number; tokens: number }
         thinkingCompression: { count: number; tokens: number }
     }

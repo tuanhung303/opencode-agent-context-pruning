@@ -2,7 +2,7 @@ export const RESTORE_TOOL_SPEC = `Restores previously pruned tool outputs to the
 
 ## How It Works
 
-When tools are discarded or extracted, their original outputs are stored in a soft-prune cache for a limited time. The restore tool allows you to bring back pruned content if you need it again.
+When tools are discarded or distilled, their original outputs are stored in a soft-prune cache for a limited time. The restore tool allows you to bring back pruned content if you need it again.
 
 ## When to Use This Tool
 

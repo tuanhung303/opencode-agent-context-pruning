@@ -46,15 +46,15 @@ export function createSystemPromptHandler(
         }
 
         const discardEnabled = config.tools.discard.enabled
-        const extractEnabled = config.tools.extract.enabled
+        const distillEnabled = config.tools.distill.enabled
 
         let promptName: string
-        if (discardEnabled && extractEnabled) {
+        if (discardEnabled && distillEnabled) {
             promptName = "system/system-prompt-both"
         } else if (discardEnabled) {
             promptName = "system/system-prompt-discard"
-        } else if (extractEnabled) {
-            promptName = "system/system-prompt-extract"
+        } else if (distillEnabled) {
+            promptName = "system/system-prompt-distill"
         } else {
             return
         }

@@ -1,6 +1,6 @@
 # Agentic Context Pruning (ACP)
 
-[![npm version](https://img.shields.io/npm/v/@tarquinen/opencode-acp.svg)](https://www.npmjs.com/package/@tarquinen/opencode-acp)
+[![npm version](https://img.shields.io/npm/v/@tuanhung303/opencode-acp.svg)](https://www.npmjs.com/package/@tuanhung303/opencode-acp)
 
 Automatically reduces token usage in OpenCode by intelligently managing conversation context.
 
@@ -11,7 +11,7 @@ Add to your OpenCode config:
 ```jsonc
 // opencode.jsonc
 {
-    "plugin": ["@tarquinen/opencode-acp@latest"],
+    "plugin": ["@tuanhung303/opencode-acp@latest"],
 }
 ```
 
@@ -27,7 +27,7 @@ ACP uses multiple tools and strategies to reduce context size:
 
 **Discard** — Exposes a `discard` tool that the AI can call to remove completed or noisy tool content from context.
 
-**Extract** — Exposes an `extract` tool that the AI can call to distill valuable context into concise summaries before removing the tool content.
+**Distill** — Exposes a `distill` tool that the AI can call to distill valuable context into concise summaries before removing the tool content.
 
 ### Strategies
 
@@ -95,7 +95,7 @@ ACP uses its own config file:
             "enabled": true,
         },
         // Distills key findings into preserved knowledge before removing raw content
-        "extract": {
+        "distill": {
             "enabled": true,
             // Show distillation content as an ignored message notification
             "showDistillation": false,
@@ -138,12 +138,12 @@ ACP provides a `/acp` slash command:
 
 ### Turn Protection
 
-When enabled, turn protection prevents tool outputs from being pruned for a configurable number of message turns. This gives the AI time to reference recent tool outputs before they become prunable. Applies to both `discard` and `extract` tools, as well as automatic strategies.
+When enabled, turn protection prevents tool outputs from being pruned for a configurable number of message turns. This gives the AI time to reference recent tool outputs before they become prunable. Applies to both `discard` and `distill` tools, as well as automatic strategies.
 
 ### Protected Tools
 
 By default, these tools are always protected from pruning across all strategies:
-`task`, `todowrite`, `todoread`, `discard`, `extract`, `batch`, `write`, `edit`, `plan_enter`, `plan_exit`
+`task`, `todowrite`, `todoread`, `discard`, `distill`, `batch`, `write`, `edit`, `plan_enter`, `plan_exit`
 
 The `protectedTools` arrays in each section add to this default list.
 

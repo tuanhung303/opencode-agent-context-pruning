@@ -14,7 +14,7 @@ export const DiscardToolSchema = z.object({
     enabled: z.boolean().optional(),
 })
 
-export const ExtractToolSchema = z.object({
+export const DistillToolSchema = z.object({
     enabled: z.boolean().optional(),
     showDistillation: z.boolean().optional(),
 })
@@ -26,7 +26,7 @@ export const ToolSettingsSchema = z.object({
 export const ToolsSchema = z.object({
     settings: ToolSettingsSchema.optional(),
     discard: DiscardToolSchema.optional(),
-    extract: ExtractToolSchema.optional(),
+    distill: DistillToolSchema.optional(),
 })
 
 export const CommandsSchema = z.object({

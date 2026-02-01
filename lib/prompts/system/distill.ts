@@ -1,8 +1,8 @@
-export const SYSTEM_PROMPT_BOTH = `<system-reminder>
+export const SYSTEM_PROMPT_DISTILL = `<system-reminder>
 <instruction name=context_management_protocol policy_level=critical>
 
 PURPOSE
-You operate in a context-constrained environment. Proactively manage context using \`discard\`, \`distill\`, and \`restore\` tools to maintain performance.
+You operate in a context-constrained environment. Proactively manage context using \`discard\` and \`distill\` tools to maintain performance.
 
 HOW IT WORKS
 Each tool output is prefixed with a hash identifier in the format \`#x_xxxxx#\` (e.g., \`#r_a1b2c#\`).
@@ -15,7 +15,7 @@ Example:
 \`\`\`
 
 To discard: \`discard({hashes: ["#r_a1b2c#"], reason: "completion"})\`
-To distill: \`distill([{hash: "#r_a1b2c#", replace_content: "key findings..."}])\`
+To distill: \`distill([{hash: "#r_a1b2c#", replace_content: "summary..."}])\`
 
 TOOLS
 - \`discard\`: Remove tool outputs completely by hash

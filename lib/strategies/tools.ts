@@ -2,6 +2,7 @@ import { tool } from "@opencode-ai/plugin"
 import type { SessionState, ToolParameterEntry, WithParts } from "../state"
 import type { PluginConfig } from "../config"
 import { PruneReason, sendUnifiedNotification } from "../ui/notification"
+import { formatDiscardNotification, formatRestoreNotification } from "../ui/minimal-notifications"
 import { formatPruningResultForTool } from "../ui/utils"
 import { ensureSessionInitialized } from "../state"
 import { saveSessionState } from "../state/persistence"
@@ -11,7 +12,7 @@ import { calculateTokensSaved, getCurrentParams } from "./utils"
 import { getFilePathFromParameters, isProtectedFilePath } from "../protected-file-patterns"
 
 const DISCARD_TOOL_DESCRIPTION = loadPrompt("discard-tool-spec")
-const EXTRACT_TOOL_DESCRIPTION = loadPrompt("extract-tool-spec")
+const DISTILL_TOOL_DESCRIPTION = loadPrompt("distill-tool-spec")
 const RESTORE_TOOL_DESCRIPTION = loadPrompt("restore-tool-spec")
 
 export interface PruneToolContext {
@@ -128,9 +129,9 @@ async function executePruneOperationByCallIds(
     if (toolName === "Discard") {
         state.stats.strategyStats.manualDiscard.count += totalItems
         state.stats.strategyStats.manualDiscard.tokens += tokensSaved
-    } else if (toolName === "Extract") {
-        state.stats.strategyStats.extraction.count += totalItems
-        state.stats.strategyStats.extraction.tokens += tokensSaved
+    } else if (toolName === "Distill") {
+        state.stats.strategyStats.distillation.count += totalItems
+        state.stats.strategyStats.distillation.tokens += tokensSaved
     }
 
     // Store stats for display
@@ -172,13 +173,9 @@ async function executePruneOperationByCallIds(
         logger.error("Failed to persist state", { error: err.message }),
     )
 
-    return formatPruningResultForTool(
-        callIds,
-        toolMetadata,
-        workingDirectory,
-        true,
-        messagePartIds.length,
-    )
+    // Return minimal single-line notification
+    const totalCount = callIds.length + messagePartIds.length
+    return formatDiscardNotification(totalCount, reason)
 }
 
 export function createDiscardTool(ctx: PruneToolContext): ReturnType<typeof tool> {
@@ -286,55 +283,61 @@ export function createDiscardTool(ctx: PruneToolContext): ReturnType<typeof tool
     })
 }
 
-export function createExtractTool(ctx: PruneToolContext): ReturnType<typeof tool> {
+export interface DistillEntry {
+    hash: string
+    replace_content: string
+}
+
+export function createDistillTool(ctx: PruneToolContext): ReturnType<typeof tool> {
     return tool({
-        description: EXTRACT_TOOL_DESCRIPTION,
+        description: DISTILL_TOOL_DESCRIPTION,
         args: {
-            hashes: tool.schema
-                .array(tool.schema.string())
+            entries: tool.schema
+                .array(
+                    tool.schema.object({
+                        hash: tool.schema
+                            .string()
+                            .describe(
+                                "Hash identifier from tool outputs (e.g., #r_a1b2c#) or assistant messages (e.g., #a_xxxxx#)",
+                            ),
+                        replace_content: tool.schema
+                            .string()
+                            .describe("The distilled content to replace the raw output with"),
+                    }),
+                )
                 .describe(
-                    "Hash identifiers from tool outputs (e.g., #r_a1b2c#) or assistant messages (e.g., #a_xxxxx#)",
-                ),
-            distillation: tool.schema
-                .array(tool.schema.string())
-                .describe(
-                    "REQUIRED. Array of strings, one per hash (positional: distillation[0] is for hashes[0], etc.)",
-                ),
-            preserve: tool.schema
-                .boolean()
-                .optional()
-                .describe(
-                    "Set to true to keep original tool output after extraction. Default: false",
+                    "Array of entries to distill, each with a hash and its replacement content",
                 ),
         },
         async execute(args, toolCtx) {
             const { state, logger } = ctx
 
-            if (!args.distillation || args.distillation.length === 0) {
-                logger.debug("Extract tool called without distillation: " + JSON.stringify(args))
+            if (!args.entries || args.entries.length === 0) {
                 throw new Error(
-                    "Missing distillation. You must provide a distillation string for each hash.",
+                    "No entries provided. Provide an array of {hash, replace_content} objects.",
                 )
             }
 
-            if (!args.hashes || args.hashes.length === 0) {
-                throw new Error(
-                    "No hashes provided. Use hash identifiers from tool outputs or assistant messages.",
-                )
-            }
+            // Extract hashes and distillation content from entries
+            const hashes: string[] = args.entries.map((e: DistillEntry) => e.hash)
+            const distillation: string[] = args.entries.map((e: DistillEntry) => e.replace_content)
 
             // Resolve hashes
             const callIds: string[] = []
             const messagePartIds: string[] = []
             const validHashes: string[] = []
+            const validDistillation: string[] = []
 
-            for (const hash of args.hashes) {
+            for (const entry of args.entries) {
+                const hash = entry.hash
+
                 // Tool hash
                 const callId = state.hashToCallId.get(hash)
                 if (callId) {
                     if (!state.prune.toolIds.includes(callId)) {
                         callIds.push(callId)
                         validHashes.push(hash)
+                        validDistillation.push(entry.replace_content)
                     }
                     continue
                 }
@@ -345,6 +348,7 @@ export function createExtractTool(ctx: PruneToolContext): ReturnType<typeof tool
                     if (!state.prune.messagePartIds.includes(messagePartId)) {
                         messagePartIds.push(messagePartId)
                         validHashes.push(hash)
+                        validDistillation.push(entry.replace_content)
                     }
                     continue
                 }
@@ -354,30 +358,22 @@ export function createExtractTool(ctx: PruneToolContext): ReturnType<typeof tool
 
             if (validHashes.length === 0) {
                 throw new Error(
-                    "No valid hashes to extract. Content may have already been discarded.",
+                    "No valid hashes to distill. Content may have already been discarded.",
                 )
             }
 
             // Log the distillation for debugging/analysis
             logger.info("Distillation data received:")
-            logger.info(JSON.stringify(args.distillation, null, 2))
-
-            const totalItems = callIds.length + messagePartIds.length
-
-            // If preserve is true, don't prune - just return success with distillation
-            if (args.preserve) {
-                logger.info(`Extract with preserve=true - not pruning ${totalItems} items`)
-                return `Extracted knowledge from ${totalItems} item(s). Original content preserved.\n\nDistilled knowledge:\n${args.distillation.map((d, i) => `${i + 1}. ${d}`).join("\n")}`
-            }
+            logger.info(JSON.stringify(validDistillation, null, 2))
 
             return executePruneOperationByCallIds(
                 ctx,
                 toolCtx,
                 callIds,
                 validHashes,
-                "extraction" as PruneReason,
-                "Extract",
-                args.distillation,
+                "distillation" as PruneReason,
+                "Distill",
+                validDistillation,
                 messagePartIds,
             )
         },
@@ -439,33 +435,14 @@ export function createRestoreTool(ctx: PruneToolContext): ReturnType<typeof tool
                 notFound.push(hash)
             }
 
-            // Build result message
-            const lines: string[] = []
-            if (restored.length > 0) {
-                lines.push(`Restored ${restored.length} item(s):`)
-                for (const hash of restored) {
-                    lines.push(`  ✓ ${hash}`)
-                }
-            }
-            if (notFound.length > 0) {
-                lines.push(`\nNot found (unknown hash):`)
-                for (const hash of notFound) {
-                    lines.push(`  ✗ ${hash}`)
-                }
-            }
-            if (notPruned.length > 0) {
-                lines.push(`\nNot pruned (already active):`)
-                for (const hash of notPruned) {
-                    lines.push(`  ○ ${hash}`)
-                }
-            }
-
             // Save state
             saveSessionState(state, logger).catch((err) =>
                 logger.error("Failed to persist state", { error: err.message }),
             )
 
-            return lines.join("\n")
+            // Return minimal notification
+            const totalRestored = restored.length
+            return formatRestoreNotification(totalRestored)
         },
     })
 }
