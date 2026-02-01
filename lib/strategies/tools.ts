@@ -9,7 +9,7 @@ import { saveSessionState } from "../state/persistence"
 import type { Logger } from "../logger"
 import { loadPrompt } from "../prompts"
 import { calculateTokensSaved, getCurrentParams } from "./utils"
-import { getFilePathFromParameters, isProtectedFilePath } from "../protected-file-patterns"
+import { getFilePathFromParameters } from "../protected-file-patterns"
 
 const DISCARD_TOOL_DESCRIPTION = loadPrompt("discard-tool-spec")
 const DISTILL_TOOL_DESCRIPTION = loadPrompt("distill-tool-spec")
@@ -81,25 +81,6 @@ async function executePruneOperationByCallIds(
                 `Cannot discard: '${metadata.tool}' is a protected tool.\n` +
                     `Protected tools: ${allProtectedTools.join(", ")}\n` +
                     `To modify protection, update 'tools.settings.protectedTools' in your ACP config.`,
-            )
-        }
-
-        const filePath = getFilePathFromParameters(metadata.parameters)
-        if (isProtectedFilePath(filePath, config.protectedFilePatterns)) {
-            const hash = state.callIdToHash.get(callId) || "unknown"
-            logger.debug("Rejecting prune request - protected file path", {
-                callId,
-                hash,
-                tool: metadata.tool,
-                filePath,
-            })
-            const protectedPatterns =
-                config.protectedFilePatterns.length > 0
-                    ? `\nProtected patterns: ${config.protectedFilePatterns.join(", ")}`
-                    : ""
-            throw new Error(
-                `Cannot discard: ${filePath} is a protected file path.${protectedPatterns}\n` +
-                    `To modify protection, update 'protectedFilePatterns' in your ACP config.`,
             )
         }
     }

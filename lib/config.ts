@@ -170,7 +170,7 @@ function showConfigValidationWarnings(
 const defaultConfig: PluginConfig = {
     enabled: true,
     debug: false,
-    pruneNotification: "detailed",
+    pruneNotification: "minimal",
     autoPruneAfterTool: true,
     commands: {
         enabled: true,

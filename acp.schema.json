@@ -23,7 +23,7 @@
         "pruneNotification": {
             "type": "string",
             "enum": ["off", "minimal", "detailed"],
-            "default": "detailed",
+            "default": "minimal",
             "description": "Level of notification shown when pruning occurs"
         },
         "commands": {
