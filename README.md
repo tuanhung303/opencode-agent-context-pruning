@@ -21,6 +21,41 @@ Restart OpenCode. The plugin will automatically start optimizing your sessions.
 
 ## How ACP Works
 
+ACP hooks into OpenCode's message flow to intelligently reduce context size before sending to the LLM:
+
+```mermaid
+flowchart LR
+    subgraph OpenCode["OpenCode Core"]
+        direction TB
+        A[User Message] --> B[Session]
+        B --> C[Transform Hook]
+        C --> D[toModelMessages]
+        D --> E[LLM Provider]
+    end
+
+    subgraph ACP["ACP Plugin"]
+        direction TB
+        C --> F[syncToolCache]
+        F --> G[injectHashes]
+        G --> H[Apply Strategies]
+        H --> I[prune]
+        I --> C
+    end
+
+    %% Arctic Clarity Color Palette (Lightened)
+    style OpenCode fill:#F4F7F9,stroke:#5A6B8A,stroke-width:1.5px,color:#1E2A36
+    style ACP fill:#E8F5F2,stroke:#9AC4C0,stroke-width:1.5px,color:#1E2A36
+    style A fill:#FAFCFD,stroke:#D0D8E0,stroke-width:1px,color:#2D3E50
+    style B fill:#FAFCFD,stroke:#D0D8E0,stroke-width:1px,color:#2D3E50
+    style C fill:#FAFCFD,stroke:#D0D8E0,stroke-width:1px,color:#2D3E50
+    style D fill:#FAFCFD,stroke:#D0D8E0,stroke-width:1px,color:#2D3E50
+    style E fill:#FAFCFD,stroke:#D0D8E0,stroke-width:1px,color:#2D3E50
+    style F fill:#F5FAF9,stroke:#A8C9C5,stroke-width:1px,color:#1E2A36
+    style G fill:#F5FAF9,stroke:#A8C9C5,stroke-width:1px,color:#1E2A36
+    style H fill:#F5FAF9,stroke:#A8C9C5,stroke-width:1px,color:#1E2A36
+    style I fill:#F5FAF9,stroke:#A8C9C5,stroke-width:1px,color:#1E2A36
+```
+
 ACP uses multiple tools and strategies to reduce context size:
 
 ### Tools

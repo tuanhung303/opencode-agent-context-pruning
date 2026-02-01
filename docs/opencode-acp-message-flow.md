@@ -29,14 +29,16 @@ The ACP plugin hooks into OpenCode's `experimental.chat.messages.transform` hook
 
 ```mermaid
 flowchart LR
-    subgraph OpenCode
+    subgraph OpenCode["OpenCode Core"]
+        direction TB
         A[User Message] --> B[Session]
         B --> C[Transform Hook]
         C --> D[toModelMessages]
         D --> E[LLM Provider]
     end
 
-    subgraph ACP Plugin
+    subgraph ACP["ACP Plugin"]
+        direction TB
         C --> F[syncToolCache]
         F --> G[injectHashes]
         G --> H[Apply Strategies]
@@ -44,8 +46,22 @@ flowchart LR
         I --> C
     end
 
-    style ACP Plugin fill:#e1f5fe,stroke:#01579b
-    style OpenCode fill:#fff3e0,stroke:#e65100
+    %% Arctic Clarity Color Palette (Lightened)
+    %% OpenCode: Ice Grey (#F4F7F9) with lighter borders
+    %% ACP: Pale Mint (#E8F5F2) with lighter borders
+    style OpenCode fill:#F4F7F9,stroke:#5A6B8A,stroke-width:1.5px,color:#1E2A36
+    style ACP fill:#E8F5F2,stroke:#9AC4C0,stroke-width:1.5px,color:#1E2A36
+    %% OpenCode nodes: Snow White with lighter borders
+    style A fill:#FAFCFD,stroke:#D0D8E0,stroke-width:1px,color:#2D3E50
+    style B fill:#FAFCFD,stroke:#D0D8E0,stroke-width:1px,color:#2D3E50
+    style C fill:#FAFCFD,stroke:#D0D8E0,stroke-width:1px,color:#2D3E50
+    style D fill:#FAFCFD,stroke:#D0D8E0,stroke-width:1px,color:#2D3E50
+    style E fill:#FAFCFD,stroke:#D0D8E0,stroke-width:1px,color:#2D3E50
+    %% ACP nodes: Light fill with lighter borders
+    style F fill:#F5FAF9,stroke:#A8C9C5,stroke-width:1px,color:#1E2A36
+    style G fill:#F5FAF9,stroke:#A8C9C5,stroke-width:1px,color:#1E2A36
+    style H fill:#F5FAF9,stroke:#A8C9C5,stroke-width:1px,color:#1E2A36
+    style I fill:#F5FAF9,stroke:#A8C9C5,stroke-width:1px,color:#1E2A36
 ```
 
 ---
