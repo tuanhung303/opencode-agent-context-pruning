@@ -29,14 +29,16 @@ The ACP plugin hooks into OpenCode's `experimental.chat.messages.transform` hook
 
 ```mermaid
 flowchart LR
-    subgraph OpenCode
+    subgraph OpenCode["OpenCode Core"]
+        direction TB
         A[User Message] --> B[Session]
         B --> C[Transform Hook]
         C --> D[toModelMessages]
         D --> E[LLM Provider]
     end
 
-    subgraph ACP Plugin
+    subgraph ACP["ACP Plugin"]
+        direction TB
         C --> F[syncToolCache]
         F --> G[injectHashes]
         G --> H[Apply Strategies]
@@ -44,8 +46,22 @@ flowchart LR
         I --> C
     end
 
-    style ACP Plugin fill:#e1f5fe,stroke:#01579b
-    style OpenCode fill:#fff3e0,stroke:#e65100
+    %% Arctic Clarity Color Palette (Lightened)
+    %% OpenCode: Ice Grey (#F4F7F9) with lighter borders
+    %% ACP: Pale Mint (#E8F5F2) with lighter borders
+    style OpenCode fill:#F4F7F9,stroke:#5A6B8A,stroke-width:1.5px,color:#1E2A36
+    style ACP fill:#E8F5F2,stroke:#9AC4C0,stroke-width:1.5px,color:#1E2A36
+    %% OpenCode nodes: Snow White with lighter borders
+    style A fill:#FAFCFD,stroke:#D0D8E0,stroke-width:1px,color:#2D3E50
+    style B fill:#FAFCFD,stroke:#D0D8E0,stroke-width:1px,color:#2D3E50
+    style C fill:#FAFCFD,stroke:#D0D8E0,stroke-width:1px,color:#2D3E50
+    style D fill:#FAFCFD,stroke:#D0D8E0,stroke-width:1px,color:#2D3E50
+    style E fill:#FAFCFD,stroke:#D0D8E0,stroke-width:1px,color:#2D3E50
+    %% ACP nodes: Light fill with lighter borders
+    style F fill:#F5FAF9,stroke:#A8C9C5,stroke-width:1px,color:#1E2A36
+    style G fill:#F5FAF9,stroke:#A8C9C5,stroke-width:1px,color:#1E2A36
+    style H fill:#F5FAF9,stroke:#A8C9C5,stroke-width:1px,color:#1E2A36
+    style I fill:#F5FAF9,stroke:#A8C9C5,stroke-width:1px,color:#1E2A36
 ```
 
 ---
@@ -85,7 +101,7 @@ sequenceDiagram
     OpenCode->>LLM: Send to provider
     LLM-->>User: Response with tool calls
 
-    Note over ACP: Agent uses discard/extract/restore tool
+    Note over ACP: Agent uses discard/distill/restore tool
     User->>ACP: discard({hashes: ["#r_a1b2c#"], reason: "completion"})
     ACP->>ACP: Resolve hashes to callIDs
     ACP->>ACP: Add IDs to prune.toolIds
@@ -99,7 +115,7 @@ stateDiagram-v2
     [*] --> Active: Tool call completed
     Active --> Hashed: Hash injected into output
     Hashed --> Prunable: Appears in context with hash prefix
-    Prunable --> Pruned: Agent calls discard/extract tool
+    Prunable --> Pruned: Agent calls discard/distill tool
     Pruned --> [*]: Output replaced with breadcrumb
     Pruned --> Restored: Agent calls restore tool
     Restored --> Active: Original content restored
@@ -239,7 +255,7 @@ interface SessionState {
 
 ## Pruning Tools
 
-ACP provides three tools for managing context: `discard`, `extract`, and `restore`.
+ACP provides three tools for managing context: `discard`, `distill`, and `restore`.
 
 ### discard
 
@@ -266,7 +282,7 @@ When trying to discard protected content, you'll see helpful error messages:
 
 ```
 Cannot discard: 'task' is a protected tool.
-Protected tools: discard, extract, task, todowrite, todoread, batch, write, edit, plan_enter, plan_exit
+Protected tools: discard, distill, task, todowrite, todoread, batch, write, edit, plan_enter, plan_exit
 To modify protection, update 'tools.settings.protectedTools' in your ACP config.
 ```
 
@@ -276,26 +292,17 @@ Protected patterns: package.json, *.lock, .env*
 To modify protection, update 'protectedFilePatterns' in your ACP config.
 ```
 
-### extract
-
-Distills key findings into preserved knowledge before removing raw content.
+### distill
 
 ```typescript
-// Standard extraction (prunes after extracting)
-extract({
-    hashes: ["#r_a1b2c#", "#r_d4e5f#"],
-    distillation: [
-        "auth.ts: validateToken() checks cache first (5min TTL) then OIDC",
-        "user.ts: interface User { id, email, permissions[], status }",
-    ],
-})
+// Standard distillation (prunes after distilling)
+distill([
+    { hash: "#r_a1b2c#", replace_content: "Key findings..." },
+    { hash: "#r_d4e5f#", replace_content: "Summary..." },
+])
 
-// Preserve mode (extracts but keeps original)
-extract({
-    hashes: ["#r_a1b2c#"],
-    distillation: ["Key findings..."],
-    preserve: true, // Original output is kept
-})
+// Distill mode (distills and prunes)
+distill([{ hash: "#r_a1b2c#", replace_content: "Key findings..." }])
 ```
 
 ### restore
@@ -386,7 +393,7 @@ interface StrategyStats {
     supersedeWrites: { count: number; tokens: number }
     purgeErrors: { count: number; tokens: number }
     manualDiscard: { count: number; tokens: number }
-    extraction: { count: number; tokens: number }
+    distillation: { count: number; tokens: number }
 }
 ```
 
@@ -399,7 +406,7 @@ Supersede Writes     12 prunes, ~10.2k saved ⭐
 Deduplication        45 prunes, ~3.4k saved
 Manual Discard        8 prunes, ~2.1k saved
 Purge Errors          5 prunes, ~890 saved
-Extraction            3 prunes, ~450 saved
+Distillation          3 prunes, ~450 saved
 ```
 
 ---
@@ -471,7 +478,7 @@ Shows protected tools and file patterns.
 📋 Protected Tools:
    These tools cannot be discarded:
    • discard
-   • extract
+   • distill
    • task
    • todowrite
    • todoread
@@ -612,7 +619,7 @@ These tools are protected from pruning and do not receive hash prefixes:
 ```typescript
 const DEFAULT_PROTECTED_TOOLS = [
     "discard", // Context management tool
-    "extract", // Context management tool
+    "distill", // Context management tool
     "restore", // Context management tool
     "task", // Subagent tool
     "todowrite", // Todo management
@@ -676,9 +683,9 @@ flowchart TB
     end
 
     subgraph "Agent Actions"
-        G --> L{Use discard/extract/restore?}
+        G --> L{Use discard/distill/restore?}
         L -->|discard| M[Mark tools by hash]
-        L -->|extract| N[Distill & prune]
+        L -->|distill| N[Distill & prune]
         L -->|restore| O[Un-prune tools]
         M --> P[Next turn: tools pruned]
         N --> P
@@ -697,10 +704,10 @@ flowchart TB
 **Key Takeaways:**
 
 1. **Hash-based identification** - Each tool output has a unique hash prefix (`#r_a1b2c#`)
-2. **Three pruning tools** - `discard`, `extract`, and `restore` for full control
+2. **Three pruning tools** - `discard`, `distill`, and `restore` for full control
 3. **Messages ARE sent to LLM** - The transform hook modifies messages in-place before `toModelMessages()`
 4. **Breadcrumbs preserve context** - Pruned outputs show `tool({params}) → status`
-5. **Protected tools skip hashing** - Core tools like `discard`, `extract`, `task` are protected
+5. **Protected tools skip hashing** - Core tools like `discard`, `distill`, `task` are protected
 6. **Automatic strategies** - Deduplication, fuzzy deduplication, supersede writes, and purge errors run automatically
 7. **Strategy effectiveness tracking** - Monitor which strategies save the most tokens
 8. **~80-90% context overhead reduction** - No more `<prunable-tools>` list injection every turn
@@ -1017,15 +1024,15 @@ export const myNewStrategy = (
 
 ### New Features in v2.0.0
 
-| Feature                     | Description                               |
-| --------------------------- | ----------------------------------------- |
-| `extract({preserve: true})` | Extract knowledge without pruning         |
-| `restore({hashes: []})`     | Undo pruning and restore original content |
-| `/acp protected`            | View protected tools and patterns         |
-| `/acp budget`               | View context usage and recommendations    |
-| Fuzzy deduplication         | Auto-prune overlapping file reads         |
-| Strategy effectiveness      | Track token savings per strategy          |
-| Better error messages       | Clear explanations for protected content  |
+| Feature                              | Description                               |
+| ------------------------------------ | ----------------------------------------- |
+| `distill([{hash, replace_content}])` | Distill knowledge before pruning          |
+| `restore({hashes: []})`              | Undo pruning and restore original content |
+| `/acp protected`                     | View protected tools and patterns         |
+| `/acp budget`                        | View context usage and recommendations    |
+| Fuzzy deduplication                  | Auto-prune overlapping file reads         |
+| Strategy effectiveness               | Track token savings per strategy          |
+| Better error messages                | Clear explanations for protected content  |
 
 ### New Required Parameters
 

@@ -1,53 +1,43 @@
-export const DISCARD_TOOL_SPEC = `Discards tool outputs from context to manage conversation size and reduce noise.
+export const DISCARD_TOOL_SPEC = `Removes tool outputs from context to manage conversation size.
 
 ## How It Works
 
-Each tool output is prefixed with a hash identifier in the format \`#x_xxxxx#\` (e.g., \`#r_a1b2c#\`).
-Use these hashes to discard specific tool outputs when they are no longer needed.
+Tool outputs are prefixed with hash identifiers like \`#r_a1b2c#\`. Use these to discard specific outputs.
 
-## When to Use This Tool
+**Example:**
+\`\`\`
+#r_a1b2c#
+<file content here...>
+\`\`\`
 
-Use \`discard\` for removing tool content that is no longer needed:
+**Syntax:** \`discard({hashes: ["#r_a1b2c#"], reason: "completion"})\`
 
-- **Noise:** Irrelevant, unhelpful, or superseded outputs that provide no value.
-- **Task Completion:** Work is complete and there's no valuable information worth preserving.
+## When to Discard
 
-## When NOT to Use This Tool
-
-- **If the output contains useful information:** Keep it in context rather than discarding.
-- **If you'll need the output later:** Don't discard files you plan to edit or context you'll need for implementation.
+| Use | Don't Use |
+|-----|-----------|
+| Output is noise or irrelevant | You need the output for upcoming edits |
+| Task complete, no knowledge to preserve | You'll likely re-fetch the same content |
+| Content superseded by newer info | Only 1-2 small outputs (batch instead) |
 
 ## Best Practices
-- **Strategic Batching:** Don't discard single small tool outputs (like short bash commands) unless they are pure noise. Wait until you have several items to perform high-impact discards.
-- **Think ahead:** Before discarding, ask: "Will I need this output for an upcoming task?" If yes, keep it.
+
+- **Batch:** Wait for 3+ outputs or 1 large output before discarding
+- **Think ahead:** Ask "Will I need this for upcoming tasks?" before discarding
 
 ## Parameters
 
-- \`reason\` (required): Why you're discarding. One of:
-  - \`noise\` - Irrelevant or unhelpful output
-  - \`completion\` - Task done, no longer needed
-  - \`superseded\` - Newer output replaces this
-  - \`exploration\` - Dead-end investigation
-  - \`duplicate\` - Same content read multiple times
+- \`hashes\`: Array of hash strings (e.g., ["#r_a1b2c#", "#g_d4e5f#"])
+- \`reason\` (required): One of:
+  - \`noise\` — irrelevant or unhelpful output
+  - \`completion\` — task done, no longer needed
+  - \`superseded\` — newer output replaces this
+  - \`exploration\` — dead-end investigation
+  - \`duplicate\` — same content read multiple times
 
-- \`hashes\` (required): Array of hash strings from tool outputs (e.g., ["#r_a1b2c#", "#g_d4e5f#"])
+## Example
 
-## Examples
-
-<example_single>
-Tool output shows:
-#r_a1b2c#
-<file content...>
-
-To discard: discard({hashes: ["#r_a1b2c#"], reason: "noise"})
-</example_single>
-
-<example_multiple>
+<example_discard>
 Multiple tools to discard after task completion:
 discard({hashes: ["#r_a1b2c#", "#g_d4e5f#", "#b_12345#"], reason: "completion"})
-</example_multiple>
-
-<example_exploration>
-After exploring files that weren't useful:
-discard({hashes: ["#r_abc12#", "#r_def34#"], reason: "exploration"})
-</example_exploration>`
+</example_discard>`

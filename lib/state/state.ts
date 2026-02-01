@@ -63,28 +63,29 @@ export function createSessionState(): SessionState {
                 supersedeWrites: { count: 0, tokens: 0 },
                 purgeErrors: { count: 0, tokens: 0 },
                 manualDiscard: { count: 0, tokens: 0 },
-                extraction: { count: 0, tokens: 0 },
+                distillation: { count: 0, tokens: 0 },
                 truncation: { count: 0, tokens: 0 },
                 thinkingCompression: { count: 0, tokens: 0 },
             },
         },
-        toolParameters: new Map<string, ToolParameterEntry>(),
+        toolParameters: new Map(),
         lastToolPrune: false,
         lastCompaction: 0,
         currentTurn: 0,
-        variant: undefined,
         lastDiscardStats: null,
         lastUserMessageId: null,
-        // Hash-based discard system
-        hashToCallId: new Map<string, string>(),
-        callIdToHash: new Map<string, string>(),
+        hashToCallId: new Map(),
+        callIdToHash: new Map(),
         discardHistory: [],
-        // Message part hash system
-        hashToMessagePart: new Map<string, string>(),
-        messagePartToHash: new Map<string, string>(),
-        // Soft prune cache for restore capability
-        softPrunedTools: new Map<string, SoftPrunedEntry>(),
-        softPrunedMessageParts: new Map<string, SoftPrunedMessagePart>(),
+        hashToMessagePart: new Map(),
+        messagePartToHash: new Map(),
+        softPrunedTools: new Map(),
+        softPrunedMessageParts: new Map(),
+        // Todo reminder tracking
+        lastTodoTurn: 0,
+        lastReminderTurn: 0,
+        lastTodowriteCallId: null,
+        todos: [],
     }
 }
 
@@ -105,7 +106,7 @@ export function resetSessionState(state: SessionState): void {
             supersedeWrites: { count: 0, tokens: 0 },
             purgeErrors: { count: 0, tokens: 0 },
             manualDiscard: { count: 0, tokens: 0 },
-            extraction: { count: 0, tokens: 0 },
+            distillation: { count: 0, tokens: 0 },
             truncation: { count: 0, tokens: 0 },
             thinkingCompression: { count: 0, tokens: 0 },
         },
@@ -123,6 +124,12 @@ export function resetSessionState(state: SessionState): void {
     state.discardHistory = []
     // Soft prune cache for restore capability
     state.softPrunedTools.clear()
+    state.softPrunedMessageParts.clear()
+    // Todo reminder tracking
+    state.lastTodoTurn = 0
+    state.lastReminderTurn = 0
+    state.lastTodowriteCallId = null
+    state.todos = []
 }
 
 export async function ensureSessionInitialized(
@@ -168,7 +175,7 @@ export async function ensureSessionInitialized(
             supersedeWrites: { count: 0, tokens: 0 },
             purgeErrors: { count: 0, tokens: 0 },
             manualDiscard: { count: 0, tokens: 0 },
-            extraction: { count: 0, tokens: 0 },
+            distillation: { count: 0, tokens: 0 },
             truncation: { count: 0, tokens: 0 },
             thinkingCompression: { count: 0, tokens: 0 },
         },
@@ -189,6 +196,75 @@ export async function ensureSessionInitialized(
     }
     if (persisted.messagePartToHash) {
         state.messagePartToHash = new Map(Object.entries(persisted.messagePartToHash))
+    }
+    // Restore todo reminder state
+    state.lastTodoTurn = persisted.lastTodoTurn ?? 0
+    state.lastReminderTurn = persisted.lastReminderTurn ?? 0
+    state.lastTodowriteCallId = persisted.lastTodowriteCallId ?? null
+    state.todos = persisted.todos ?? []
+
+    // Scan message history to sync todo state if needed
+    restoreTodoStateFromHistory(state, messages, logger)
+}
+
+/**
+ * Scan message history for the most recent todowrite to restore todo state.
+ * This prevents false reminders on session restore when todowrite was recent.
+ */
+function restoreTodoStateFromHistory(
+    state: SessionState,
+    messages: WithParts[],
+    logger: Logger,
+): void {
+    // Only restore if we don't have persisted todo state
+    if (state.todos.length > 0 && state.lastTodoTurn > 0) {
+        logger.debug("Using persisted todo state, skipping history scan")
+        return
+    }
+
+    let lastTodowriteTurn = 0
+    let currentTurn = 0
+    let lastTodos: any[] = []
+
+    for (const msg of messages) {
+        if (isMessageCompacted(state, msg)) {
+            continue
+        }
+
+        const parts = Array.isArray(msg.parts) ? msg.parts : []
+        for (const part of parts) {
+            if (part.type === "step-start") {
+                currentTurn++
+                continue
+            }
+
+            if (
+                part.type === "tool" &&
+                part.tool === "todowrite" &&
+                part.state?.status === "completed"
+            ) {
+                try {
+                    const content = part.state.output
+                    const todos = JSON.parse(content)
+                    if (Array.isArray(todos)) {
+                        lastTodowriteTurn = currentTurn
+                        lastTodos = todos
+                    }
+                } catch (e) {
+                    // Ignore parse errors
+                }
+            }
+        }
+    }
+
+    if (lastTodowriteTurn > 0) {
+        state.lastTodoTurn = lastTodowriteTurn
+        state.todos = lastTodos
+        // Reset reminder cycle since we found a recent todowrite
+        state.lastReminderTurn = 0
+        logger.info(
+            `Restored todo state from history - last todowrite at turn ${lastTodowriteTurn} with ${lastTodos.length} todos`,
+        )
     }
 }
 
