@@ -2,35 +2,23 @@ export const RESTORE_TOOL_SPEC = `Restores previously pruned tool outputs to the
 
 ## How It Works
 
-When tools are discarded or distilled, their original outputs are stored in a soft-prune cache for a limited time. The restore tool allows you to bring back pruned content if you need it again.
+Discarded/distilled outputs are stored in a soft-prune cache (typically 20 turns). Use \`restore\` to bring back pruned content.
 
-## When to Use This Tool
+## When to Restore
 
-Use \`restore\` when:
-- You accidentally discarded content you still need
-- You need to reference the full output of a previously pruned tool
-- You want to undo a recent discard operation
+- Accidentally discarded content you still need
+- Need to reference full output of previously pruned tool
+- Want to undo a recent discard operation
 
-## When NOT to Use This Tool
-
-- Content older than the cache window (typically 20 turns) cannot be restored
-- Content that was pruned before the current session started cannot be restored
+**Limitations:** Cannot restore content older than cache window or pruned before session started.
 
 ## Parameters
 
-- \`hashes\` (required): Array of hash strings from tool outputs (e.g., ["#r_a1b2c#", "#g_d4e5f#"])
+- \`hashes\` (required): Array of hash strings (e.g., ["#r_a1b2c#", "#g_d4e5f#"])
 
 ## Example
 
 <example_restore>
-You previously discarded:
-discard({hashes: ["#r_a1b2c#"], reason: "completion"})
-
-Now you need that content back:
-restore({hashes: ["#r_a1b2c#"]})
-</example_restore>
-
-<example_batch_restore>
 Restore multiple tools at once:
 restore({hashes: ["#r_a1b2c#", "#g_d4e5f#", "#b_12345#"]})
-</example_batch_restore>`
+</example_restore>`
