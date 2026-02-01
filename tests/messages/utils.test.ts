@@ -1,0 +1,327 @@
+import { describe, it, expect } from "vitest"
+import {
+    createSyntheticUserMessage,
+    createSyntheticAssistantMessage,
+    createSyntheticToolPart,
+    isDeepSeekOrKimi,
+    extractParameterKey,
+    isIgnoredUserMessage,
+    stableStringify,
+    generateToolHash,
+} from "../../lib/messages/utils"
+import type { WithParts } from "../../lib/state"
+
+const createBaseMessage = (): WithParts => ({
+    info: {
+        id: "msg_test123",
+        sessionID: "ses_test123",
+        role: "user" as const,
+        agent: "code",
+        model: { providerID: "anthropic", modelID: "claude-3" },
+        time: { created: Date.now() },
+    },
+    parts: [],
+})
+
+describe("createSyntheticUserMessage", () => {
+    it("should create message without ignored flag", () => {
+        const baseMessage = createBaseMessage()
+        const result = createSyntheticUserMessage(baseMessage, "test content")
+
+        expect(result.parts[0]).not.toHaveProperty("ignored")
+    })
+
+    it("should have valid message structure for OpenCode", () => {
+        const baseMessage = createBaseMessage()
+        const result = createSyntheticUserMessage(baseMessage, "test content")
+
+        expect(result.info.role).toBe("user")
+        expect(result.parts[0].type).toBe("text")
+        expect((result.parts[0] as any).text).toBe("test content")
+    })
+
+    it("should preserve sessionID from base message", () => {
+        const baseMessage = createBaseMessage()
+        const result = createSyntheticUserMessage(baseMessage, "test content")
+
+        expect(result.info.sessionID).toBe("ses_test123")
+        expect(result.parts[0].sessionID).toBe("ses_test123")
+    })
+
+    it("should include variant when provided", () => {
+        const baseMessage = createBaseMessage()
+        const result = createSyntheticUserMessage(baseMessage, "test content", "test-variant")
+
+        expect((result.info as any).variant).toBe("test-variant")
+    })
+
+    it("should not include variant when not provided", () => {
+        const baseMessage = createBaseMessage()
+        const result = createSyntheticUserMessage(baseMessage, "test content")
+
+        expect((result.info as any).variant).toBeUndefined()
+    })
+})
+
+describe("createSyntheticAssistantMessage", () => {
+    it("should create message without ignored flag", () => {
+        const baseMessage = createBaseMessage()
+        const result = createSyntheticAssistantMessage(baseMessage, "test content")
+
+        expect(result.parts[0]).not.toHaveProperty("ignored")
+    })
+
+    it("should have valid assistant message structure", () => {
+        const baseMessage = createBaseMessage()
+        const result = createSyntheticAssistantMessage(baseMessage, "test content")
+
+        expect(result.info.role).toBe("assistant")
+        expect(result.parts[0].type).toBe("text")
+        expect((result.parts[0] as any).text).toBe("test content")
+    })
+
+    it("should include model information", () => {
+        const baseMessage = createBaseMessage()
+        const result = createSyntheticAssistantMessage(baseMessage, "test content")
+
+        expect((result.info as any).modelID).toBe("claude-3")
+        expect((result.info as any).providerID).toBe("anthropic")
+    })
+})
+
+describe("createSyntheticToolPart", () => {
+    it("should create tool part with context_info tool name", () => {
+        const baseMessage = createBaseMessage()
+        const result = createSyntheticToolPart(baseMessage, "test content")
+
+        expect(result.tool).toBe("context_info")
+    })
+
+    it("should have completed status", () => {
+        const baseMessage = createBaseMessage()
+        const result = createSyntheticToolPart(baseMessage, "test content")
+
+        expect(result.state.status).toBe("completed")
+    })
+
+    it("should have type tool", () => {
+        const baseMessage = createBaseMessage()
+        const result = createSyntheticToolPart(baseMessage, "test content")
+
+        expect(result.type).toBe("tool")
+    })
+
+    it("should include content in output", () => {
+        const baseMessage = createBaseMessage()
+        const result = createSyntheticToolPart(baseMessage, "test content")
+
+        expect(result.state.output).toBe("test content")
+    })
+})
+
+describe("isDeepSeekOrKimi", () => {
+    it("should return true for deepseek provider", () => {
+        expect(isDeepSeekOrKimi("deepseek", "some-model")).toBe(true)
+    })
+
+    it("should return true for kimi provider", () => {
+        expect(isDeepSeekOrKimi("kimi", "some-model")).toBe(true)
+    })
+
+    it("should return true for deepseek model", () => {
+        expect(isDeepSeekOrKimi("openrouter", "deepseek-chat")).toBe(true)
+    })
+
+    it("should return true for kimi model", () => {
+        expect(isDeepSeekOrKimi("openrouter", "kimi-k1")).toBe(true)
+    })
+
+    it("should return false for other providers/models", () => {
+        expect(isDeepSeekOrKimi("anthropic", "claude-3")).toBe(false)
+        expect(isDeepSeekOrKimi("openai", "gpt-4")).toBe(false)
+    })
+
+    it("should be case insensitive", () => {
+        expect(isDeepSeekOrKimi("DeepSeek", "model")).toBe(true)
+        expect(isDeepSeekOrKimi("KIMI", "model")).toBe(true)
+    })
+})
+
+describe("extractParameterKey", () => {
+    it("should extract filePath for read tool", () => {
+        expect(extractParameterKey("read", { filePath: "/path/to/file.ts" })).toBe(
+            "/path/to/file.ts",
+        )
+    })
+
+    it("should include offset/limit info for read tool", () => {
+        expect(extractParameterKey("read", { filePath: "/file.ts", offset: 10, limit: 20 })).toBe(
+            "/file.ts (lines 10-30)",
+        )
+    })
+
+    it("should extract pattern for glob tool", () => {
+        expect(extractParameterKey("glob", { pattern: "**/*.ts" })).toBe('"**/*.ts"')
+    })
+
+    it("should extract pattern with path for grep tool", () => {
+        expect(extractParameterKey("grep", { pattern: "TODO", path: "/src" })).toBe(
+            '"TODO" in /src',
+        )
+    })
+
+    it("should extract description for bash tool", () => {
+        expect(extractParameterKey("bash", { description: "Run tests", command: "npm test" })).toBe(
+            "Run tests",
+        )
+    })
+
+    it("should truncate long bash commands", () => {
+        const longCommand = "a".repeat(100)
+        expect(extractParameterKey("bash", { command: longCommand })).toBe("a".repeat(50) + "...")
+    })
+
+    it("should extract url for webfetch tool", () => {
+        expect(extractParameterKey("webfetch", { url: "https://example.com" })).toBe(
+            "https://example.com",
+        )
+    })
+
+    it("should return empty string for null parameters", () => {
+        expect(extractParameterKey("read", null)).toBe("")
+    })
+})
+
+describe("isIgnoredUserMessage", () => {
+    it("should return true for message with all ignored parts", () => {
+        const message: WithParts = {
+            info: { id: "msg_1", sessionID: "ses_1", role: "user" as const },
+            parts: [{ type: "text", text: "test", ignored: true }],
+        } as any
+
+        expect(isIgnoredUserMessage(message)).toBe(true)
+    })
+
+    it("should return false for message with non-ignored parts", () => {
+        const message: WithParts = {
+            info: { id: "msg_1", sessionID: "ses_1", role: "user" as const },
+            parts: [{ type: "text", text: "test" }],
+        } as any
+
+        expect(isIgnoredUserMessage(message)).toBe(false)
+    })
+
+    it("should return true for message with empty parts", () => {
+        const message: WithParts = {
+            info: { id: "msg_1", sessionID: "ses_1", role: "user" as const },
+            parts: [],
+        } as any
+
+        expect(isIgnoredUserMessage(message)).toBe(true)
+    })
+
+    it("should return false if any part is not ignored", () => {
+        const message: WithParts = {
+            info: { id: "msg_1", sessionID: "ses_1", role: "user" as const },
+            parts: [
+                { type: "text", text: "test1", ignored: true },
+                { type: "text", text: "test2" },
+            ],
+        } as any
+
+        expect(isIgnoredUserMessage(message)).toBe(false)
+    })
+})
+
+describe("stableStringify", () => {
+    it("should produce deterministic output regardless of key order", () => {
+        const obj1 = { b: 2, a: 1, c: 3 }
+        const obj2 = { a: 1, c: 3, b: 2 }
+        const obj3 = { c: 3, b: 2, a: 1 }
+
+        expect(stableStringify(obj1)).toBe(stableStringify(obj2))
+        expect(stableStringify(obj2)).toBe(stableStringify(obj3))
+    })
+
+    it("should handle nested objects with consistent key ordering", () => {
+        const obj1 = { outer: { b: 2, a: 1 }, z: 1 }
+        const obj2 = { z: 1, outer: { a: 1, b: 2 } }
+
+        expect(stableStringify(obj1)).toBe(stableStringify(obj2))
+    })
+
+    it("should handle arrays", () => {
+        const obj = { arr: [1, 2, 3] }
+        expect(stableStringify(obj)).toBe('{"arr":[1,2,3]}')
+    })
+
+    it("should handle null and undefined", () => {
+        expect(stableStringify(null)).toBe("null")
+        expect(stableStringify(undefined)).toBe(undefined)
+    })
+
+    it("should handle primitive values", () => {
+        expect(stableStringify("hello")).toBe('"hello"')
+        expect(stableStringify(42)).toBe("42")
+        expect(stableStringify(true)).toBe("true")
+    })
+
+    it("should handle empty objects and arrays", () => {
+        expect(stableStringify({})).toBe("{}")
+        expect(stableStringify([])).toBe("[]")
+    })
+})
+
+describe("generateToolHash", () => {
+    it("should generate deterministic hashes for same inputs", () => {
+        const hash1 = generateToolHash("read", { filePath: "/src/index.ts" })
+        const hash2 = generateToolHash("read", { filePath: "/src/index.ts" })
+
+        expect(hash1).toBe(hash2)
+    })
+
+    it("should generate different hashes for different params", () => {
+        const hash1 = generateToolHash("read", { filePath: "/src/a.ts" })
+        const hash2 = generateToolHash("read", { filePath: "/src/b.ts" })
+
+        expect(hash1).not.toBe(hash2)
+    })
+
+    it("should generate same hash regardless of key order", () => {
+        const hash1 = generateToolHash("read", { filePath: "/a.ts", offset: 0 })
+        const hash2 = generateToolHash("read", { offset: 0, filePath: "/a.ts" })
+
+        expect(hash1).toBe(hash2)
+    })
+
+    it("should use tool prefix in hash format", () => {
+        const readHash = generateToolHash("read", { filePath: "/a.ts" })
+        const globHash = generateToolHash("glob", { pattern: "**/*.ts" })
+        const bashHash = generateToolHash("bash", { command: "npm test" })
+
+        expect(readHash).toMatch(/^#r_[a-f0-9]{5}#$/)
+        expect(globHash).toMatch(/^#g_[a-f0-9]{5}#$/)
+        expect(bashHash).toMatch(/^#b_[a-f0-9]{5}#$/)
+    })
+
+    it("should handle empty params", () => {
+        const hash = generateToolHash("read", {})
+        expect(hash).toMatch(/^#r_[a-f0-9]{5}#$/)
+    })
+
+    it("should handle complex nested params", () => {
+        const hash1 = generateToolHash("task", {
+            description: "test",
+            prompt: "do something",
+            subagent_type: "general",
+        })
+        const hash2 = generateToolHash("task", {
+            subagent_type: "general",
+            description: "test",
+            prompt: "do something",
+        })
+
+        expect(hash1).toBe(hash2)
+        expect(hash1).toMatch(/^#t_[a-f0-9]{5}#$/)
+    })
+})

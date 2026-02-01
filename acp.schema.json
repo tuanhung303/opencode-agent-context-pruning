@@ -1,0 +1,227 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "$id": "https://raw.githubusercontent.com/opencode-acp/opencode-acp/master/acp.schema.json",
+    "title": "ACP Plugin Configuration",
+    "description": "Configuration schema for the OpenCode Agentic Context Pruning plugin",
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+        "$schema": {
+            "type": "string",
+            "description": "JSON Schema reference for IDE autocomplete"
+        },
+        "enabled": {
+            "type": "boolean",
+            "default": true,
+            "description": "Enable or disable the ACP plugin"
+        },
+        "debug": {
+            "type": "boolean",
+            "default": false,
+            "description": "Enable debug logging"
+        },
+        "pruneNotification": {
+            "type": "string",
+            "enum": ["off", "minimal", "detailed"],
+            "default": "detailed",
+            "description": "Level of notification shown when pruning occurs"
+        },
+        "commands": {
+            "type": "object",
+            "description": "Configuration for ACP slash commands (/acp)",
+            "additionalProperties": false,
+            "properties": {
+                "enabled": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Enable ACP slash commands (/acp)"
+                },
+                "protectedTools": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "default": [],
+                    "description": "Additional tool names to protect from pruning via commands (e.g., /acp sweep)"
+                }
+            },
+            "default": {
+                "enabled": true,
+                "protectedTools": []
+            }
+        },
+        "turnProtection": {
+            "type": "object",
+            "description": "Protect recent tool outputs from being pruned",
+            "additionalProperties": false,
+            "properties": {
+                "enabled": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Enable turn-based protection"
+                },
+                "turns": {
+                    "type": "number",
+                    "default": 4,
+                    "description": "Number of recent turns to protect from pruning"
+                }
+            }
+        },
+        "protectedFilePatterns": {
+            "type": "array",
+            "items": {
+                "type": "string"
+            },
+            "default": [],
+            "description": "Glob patterns for files that should be protected from pruning (e.g., '**/*.config.ts')"
+        },
+        "tools": {
+            "type": "object",
+            "description": "Configuration for pruning tools",
+            "additionalProperties": false,
+            "properties": {
+                "settings": {
+                    "type": "object",
+                    "description": "General tool settings",
+                    "additionalProperties": false,
+                    "properties": {
+                        "protectedTools": {
+                            "type": "array",
+                            "items": {
+                                "type": "string"
+                            },
+                            "default": [
+                                "task",
+                                "todowrite",
+                                "todoread",
+                                "discard",
+                                "extract",
+                                "batch",
+                                "write",
+                                "edit",
+                                "plan_enter",
+                                "plan_exit"
+                            ],
+                            "description": "Tool names that should be protected from automatic pruning"
+                        }
+                    }
+                },
+                "discard": {
+                    "type": "object",
+                    "description": "Configuration for the discard tool",
+                    "additionalProperties": false,
+                    "properties": {
+                        "enabled": {
+                            "type": "boolean",
+                            "default": true,
+                            "description": "Enable the discard tool"
+                        }
+                    }
+                },
+                "extract": {
+                    "type": "object",
+                    "description": "Configuration for the extract tool",
+                    "additionalProperties": false,
+                    "properties": {
+                        "enabled": {
+                            "type": "boolean",
+                            "default": true,
+                            "description": "Enable the extract tool"
+                        },
+                        "showDistillation": {
+                            "type": "boolean",
+                            "default": false,
+                            "description": "Show distillation output in the UI"
+                        }
+                    }
+                }
+            }
+        },
+        "strategies": {
+            "type": "object",
+            "description": "Automatic pruning strategies",
+            "additionalProperties": false,
+            "properties": {
+                "deduplication": {
+                    "type": "object",
+                    "description": "Remove duplicate tool outputs",
+                    "additionalProperties": false,
+                    "properties": {
+                        "enabled": {
+                            "type": "boolean",
+                            "default": true,
+                            "description": "Enable deduplication strategy"
+                        },
+                        "protectedTools": {
+                            "type": "array",
+                            "items": {
+                                "type": "string"
+                            },
+                            "default": [
+                                "task",
+                                "todowrite",
+                                "todoread",
+                                "discard",
+                                "extract",
+                                "batch",
+                                "write",
+                                "edit",
+                                "plan_enter",
+                                "plan_exit"
+                            ],
+                            "description": "Tool names excluded from deduplication"
+                        }
+                    }
+                },
+                "supersedeWrites": {
+                    "type": "object",
+                    "description": "Replace older write/edit outputs when new ones target the same file",
+                    "additionalProperties": false,
+                    "properties": {
+                        "enabled": {
+                            "type": "boolean",
+                            "default": false,
+                            "description": "Enable supersede writes strategy"
+                        }
+                    }
+                },
+                "purgeErrors": {
+                    "type": "object",
+                    "description": "Remove tool outputs that resulted in errors",
+                    "additionalProperties": false,
+                    "properties": {
+                        "enabled": {
+                            "type": "boolean",
+                            "default": true,
+                            "description": "Enable purge errors strategy"
+                        },
+                        "turns": {
+                            "type": "number",
+                            "default": 4,
+                            "description": "Number of turns after which errors are purged"
+                        },
+                        "protectedTools": {
+                            "type": "array",
+                            "items": {
+                                "type": "string"
+                            },
+                            "default": [
+                                "task",
+                                "todowrite",
+                                "todoread",
+                                "discard",
+                                "extract",
+                                "batch",
+                                "write",
+                                "edit",
+                                "plan_enter",
+                                "plan_exit"
+                            ],
+                            "description": "Tool names excluded from error purging"
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

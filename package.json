@@ -1,0 +1,62 @@
+{
+    "$schema": "https://json.schemastore.org/package.json",
+    "name": "@tuanhung303/opencode-acp",
+    "version": "2.4.2",
+    "type": "module",
+    "description": "OpenCode plugin that optimizes token usage by pruning obsolete tool outputs from conversation context",
+    "main": "./dist/index.js",
+    "types": "./dist/index.d.ts",
+    "scripts": {
+        "clean": "rm -rf dist",
+        "build": "npm run clean && tsc",
+        "postbuild": "rm -rf dist/logs",
+        "prepublishOnly": "npm run build",
+        "dev": "opencode plugin dev",
+        "typecheck": "tsc --noEmit",
+        "test": "vitest run",
+        "test:watch": "vitest",
+        "format": "prettier --write .",
+        "format:check": "prettier --check ."
+    },
+    "keywords": [
+        "opencode",
+        "opencode-plugin",
+        "plugin",
+        "context",
+        "pruning",
+        "optimization",
+        "tokens"
+    ],
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/opencode-acp/opencode-acp.git"
+    },
+    "bugs": {
+        "url": "https://github.com/opencode-acp/opencode-acp/issues"
+    },
+    "homepage": "https://github.com/opencode-acp/opencode-acp#readme",
+    "author": "tarquinen",
+    "license": "MIT",
+    "peerDependencies": {
+        "@opencode-ai/plugin": ">=0.13.7"
+    },
+    "dependencies": {
+        "@anthropic-ai/tokenizer": "^0.0.4",
+        "@opencode-ai/sdk": "^1.1.3",
+        "jsonc-parser": "^3.3.1",
+        "zod": "^4.1.13"
+    },
+    "devDependencies": {
+        "@opencode-ai/plugin": "^1.0.143",
+        "@types/node": "^24.10.1",
+        "prettier": "^3.4.2",
+        "tsx": "^4.21.0",
+        "typescript": "^5.9.3",
+        "vitest": "^4.0.18"
+    },
+    "files": [
+        "dist/",
+        "README.md",
+        "LICENSE"
+    ]
+}
