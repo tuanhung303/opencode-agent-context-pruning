@@ -216,7 +216,7 @@ const defaultConfig: PluginConfig = {
         },
         todoReminder: {
             enabled: true,
-            initialTurns: 3,
+            initialTurns: 8,
             repeatTurns: 4,
         },
     },
