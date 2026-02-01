@@ -72,6 +72,8 @@ ACP uses multiple tools and strategies to reduce context size:
 
 **Purge Errors** — Prunes tool inputs for tools that returned errors after a configurable number of turns (default: 4). Error messages are preserved for context, but the potentially large input content is removed. Runs automatically on every request with zero LLM cost.
 
+**Todo Reminder** — Monitors the agent's todo list activity. If the agent hasn't updated their todos for a configurable number of turns, a reminder is injected into the conversation prompting them to review and update their task list. This helps keep the agent focused and organized during long sessions.
+
 Your session history is never modified—ACP replaces pruned content with placeholders before sending requests to your LLM.
 
 ## Impact on Prompt Caching
@@ -135,6 +137,14 @@ ACP uses its own config file:
             // Show distillation content as an ignored message notification
             "showDistillation": false,
         },
+        // Reminds agent to review/update todo list when stale
+        "todoReminder": {
+            "enabled": true,
+            // Turns before first reminder (default: 12)
+            "initialTurns": 12,
+            // Turns between subsequent reminders (default: 6)
+            "repeatTurns": 6,
+        },
     },
     // Automatic pruning strategies
     "strategies": {
@@ -174,6 +184,17 @@ ACP provides a `/acp` slash command:
 ### Turn Protection
 
 When enabled, turn protection prevents tool outputs from being pruned for a configurable number of message turns. This gives the AI time to reference recent tool outputs before they become prunable. Applies to both `discard` and `distill` tools, as well as automatic strategies.
+
+### Todo Reminder
+
+When enabled, ACP monitors the agent's todo list activity. If the agent hasn't updated their todos for a configurable number of turns, a reminder is injected into the conversation prompting them to review and update their task list.
+
+- **First reminder:** After 12 turns of inactivity (configurable via `initialTurns`)
+- **Subsequent reminders:** Every 6 turns until agent updates (configurable via `repeatTurns`)
+- **Prunable:** The reminder is appended to assistant messages and can be discarded like any other content
+- **Only with pending todos:** Reminders only appear when there are `pending` or `in_progress` todos
+
+The reminder resets when `todowrite` is called—`todoread` alone does not reset the counter.
 
 ### Protected Tools
 

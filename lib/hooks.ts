@@ -9,7 +9,12 @@ import {
     truncateLargeOutputs,
     compressThinkingBlocks,
 } from "./strategies"
-import { prune, injectHashesIntoToolOutputs, injectHashesIntoAssistantMessages } from "./messages"
+import {
+    prune,
+    injectHashesIntoToolOutputs,
+    injectHashesIntoAssistantMessages,
+    injectTodoReminder,
+} from "./messages"
 import { checkSession, ensureSessionInitialized } from "./state"
 import { loadPrompt } from "./prompts"
 import { handleStatsCommand } from "./commands/stats"
@@ -134,6 +139,13 @@ export function createChatMessageTransformHandler(
         )
 
         safeExecute(() => prune(state, logger, config, output.messages), logger, "prune")
+
+        // Inject todo reminder if needed (after all other strategies)
+        safeExecute(
+            () => injectTodoReminder(state, config, output.messages, logger),
+            logger,
+            "injectTodoReminder",
+        )
 
         // NOTE: insertPruneToolContext removed - hashes are now embedded in tool outputs
 

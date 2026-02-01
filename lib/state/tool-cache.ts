@@ -1,8 +1,9 @@
-import type { SessionState, ToolStatus, WithParts } from "./index"
+import type { SessionState, ToolStatus, WithParts, TodoItem } from "./index"
 import type { Logger } from "../logger"
 import { PluginConfig } from "../config"
 import { isMessageCompacted } from "../shared-utils"
 import { generateToolHash } from "../messages/utils"
+import { removeTodoReminder } from "../messages/todo-reminder"
 
 const MAX_TOOL_CACHE_SIZE = 1000
 
@@ -99,10 +100,82 @@ export async function syncToolCache(
             `Synced cache - size: ${state.toolParameters.size}, hashes: ${state.hashToCallId.size}, currentTurn: ${state.currentTurn}`,
         )
         trimToolParametersCache(state)
+
+        // Track todowrite interactions after tool cache sync
+        trackTodoInteractions(state, messages, logger)
     } catch (error) {
         logger.warn("Failed to sync tool parameters from OpenCode", {
             error: error instanceof Error ? error.message : String(error),
         })
+    }
+}
+
+/**
+ * Track todowrite tool interactions to update todo reminder state.
+ * Called after tool cache sync to detect todo list updates.
+ * Only processes NEW todowrite calls (not already seen).
+ */
+function trackTodoInteractions(state: SessionState, messages: WithParts[], logger: Logger): void {
+    // Find the most recent todowrite call that we haven't processed yet
+    let latestTodowriteCallId: string | null = null
+    let latestTodowriteTurn = 0
+    let latestTodos: TodoItem[] | null = null
+    let turnCounter = 0
+
+    for (const msg of messages) {
+        if (isMessageCompacted(state, msg)) {
+            continue
+        }
+
+        const parts = Array.isArray(msg.parts) ? msg.parts : []
+        for (const part of parts) {
+            if (part.type === "step-start") {
+                turnCounter++
+                continue
+            }
+
+            // Check for tool parts from todowrite that are completed
+            if (
+                part.type === "tool" &&
+                part.tool === "todowrite" &&
+                part.state?.status === "completed" &&
+                part.callID
+            ) {
+                // Track this as the latest todowrite
+                latestTodowriteCallId = part.callID
+                latestTodowriteTurn = turnCounter
+
+                // Parse todo state from result output
+                try {
+                    const content = part.state.output
+                    const todos = JSON.parse(content) as TodoItem[]
+                    if (Array.isArray(todos)) {
+                        latestTodos = todos
+                    }
+                } catch (e) {
+                    // Ignore parse errors
+                }
+            }
+        }
+    }
+
+    // Only update state if we found a todowrite AND it's different from what we've seen
+    if (latestTodowriteCallId && latestTodowriteCallId !== state.lastTodowriteCallId) {
+        logger.info(
+            `Detected NEW todowrite (callId: ${latestTodowriteCallId}) at turn ${latestTodowriteTurn}`,
+        )
+
+        state.lastTodowriteCallId = latestTodowriteCallId
+        state.lastTodoTurn = latestTodowriteTurn
+        state.lastReminderTurn = 0 // Reset reminder cycle
+
+        if (latestTodos) {
+            state.todos = latestTodos
+            logger.info(`Updated todo list with ${latestTodos.length} items`)
+        }
+
+        // Remove any existing reminder from context since todo was updated
+        removeTodoReminder(state, messages, logger)
     }
 }
 

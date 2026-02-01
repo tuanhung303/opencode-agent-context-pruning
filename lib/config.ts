@@ -27,10 +27,17 @@ export interface ToolSettings {
     minAssistantTextLength: number
 }
 
+export interface TodoReminder {
+    enabled: boolean
+    initialTurns: number
+    repeatTurns: number
+}
+
 export interface Tools {
     settings: ToolSettings
     discard: DiscardTool
     distill: DistillTool
+    todoReminder: TodoReminder
 }
 
 export interface Commands {
@@ -206,6 +213,11 @@ const defaultConfig: PluginConfig = {
         distill: {
             enabled: true,
             showDistillation: false,
+        },
+        todoReminder: {
+            enabled: true,
+            initialTurns: 3,
+            repeatTurns: 4,
         },
     },
     strategies: {
@@ -410,6 +422,11 @@ function mergeTools(
             enabled: override.distill?.enabled ?? base.distill.enabled,
             showDistillation: override.distill?.showDistillation ?? base.distill.showDistillation,
         },
+        todoReminder: {
+            enabled: override.todoReminder?.enabled ?? base.todoReminder.enabled,
+            initialTurns: override.todoReminder?.initialTurns ?? base.todoReminder.initialTurns,
+            repeatTurns: override.todoReminder?.repeatTurns ?? base.todoReminder.repeatTurns,
+        },
     }
 }
 
@@ -442,6 +459,7 @@ function deepCloneConfig(config: PluginConfig): PluginConfig {
             },
             discard: { ...config.tools.discard },
             distill: { ...config.tools.distill },
+            todoReminder: { ...config.tools.todoReminder },
         },
         strategies: {
             deduplication: {

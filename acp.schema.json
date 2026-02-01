@@ -134,6 +134,28 @@
                             "description": "Show distillation output in the UI"
                         }
                     }
+                },
+                "todoReminder": {
+                    "type": "object",
+                    "description": "Remind agent to review/update todo list when stale",
+                    "additionalProperties": false,
+                    "properties": {
+                        "enabled": {
+                            "type": "boolean",
+                            "default": true,
+                            "description": "Enable todo reminder injection"
+                        },
+                        "initialTurns": {
+                            "type": "number",
+                            "default": 12,
+                            "description": "Turns before first reminder"
+                        },
+                        "repeatTurns": {
+                            "type": "number",
+                            "default": 6,
+                            "description": "Turns between subsequent reminders"
+                        }
+                    }
                 }
             }
         },

@@ -10,7 +10,7 @@ import * as fs from "fs/promises"
 import { existsSync } from "fs"
 import { homedir } from "os"
 import { join } from "path"
-import type { SessionState, SessionStats, Prune, DiscardStats } from "./types"
+import type { SessionState, SessionStats, Prune, DiscardStats, TodoItem } from "./types"
 import type { Logger } from "../logger"
 
 export interface PersistedSessionState {
@@ -25,6 +25,11 @@ export interface PersistedSessionState {
     // Hash-based discard system (assistant messages)
     hashToMessagePart?: Record<string, string>
     messagePartToHash?: Record<string, string>
+    // Todo reminder tracking
+    lastTodoTurn?: number
+    lastReminderTurn?: number
+    lastTodowriteCallId?: string | null
+    todos?: TodoItem[]
 }
 
 const STORAGE_DIR = join(homedir(), ".local", "share", "opencode", "storage", "plugin", "acp")
@@ -116,6 +121,11 @@ export async function saveSessionState(
             // Hash-based discard system (assistant messages)
             hashToMessagePart: Object.fromEntries(sessionState.hashToMessagePart),
             messagePartToHash: Object.fromEntries(sessionState.messagePartToHash),
+            // Todo reminder tracking
+            lastTodoTurn: sessionState.lastTodoTurn,
+            lastReminderTurn: sessionState.lastReminderTurn,
+            lastTodowriteCallId: sessionState.lastTodowriteCallId,
+            todos: sessionState.todos,
         }
 
         const filePath = getSessionFilePath(sessionState.sessionId)
