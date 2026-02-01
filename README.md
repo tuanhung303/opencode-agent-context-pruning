@@ -1,10 +1,8 @@
-# Agentic Context Pruning Plugin
+# Agentic Context Pruning (ACP)
 
 [![npm version](https://img.shields.io/npm/v/@tarquinen/opencode-acp.svg)](https://www.npmjs.com/package/@tarquinen/opencode-acp)
 
-Automatically reduces token usage in OpenCode by removing obsolete tools from conversation history.
-
-![ACP in action](acp-demo5.png)
+Automatically reduces token usage in OpenCode by intelligently managing conversation context.
 
 ## Installation
 
@@ -21,7 +19,7 @@ Using `@latest` ensures you always get the newest version automatically when Ope
 
 Restart OpenCode. The plugin will automatically start optimizing your sessions.
 
-## How Pruning Works
+## How ACP Works
 
 ACP uses multiple tools and strategies to reduce context size:
 
