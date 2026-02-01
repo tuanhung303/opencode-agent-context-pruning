@@ -237,7 +237,7 @@ export function formatRestoreNotification(count: number): string {
 
 /**
  * Unified stats header format
- * 「 -7.8K 🌑 + 🌊 9 + ✨ 7 」
+ * 「 ▼ 7.8K 🌑 ₊ ▼ 9 🌊 ₊ ✨ 7 」
  */
 export function formatUnifiedStats(params: {
     tokensRemoved: number
@@ -245,5 +245,5 @@ export function formatUnifiedStats(params: {
     distillCount: number
 }): string {
     const tokensK = (params.tokensRemoved / 1000).toFixed(1)
-    return `「 -${tokensK}K 🌑 + 🌊 ${params.messagesRemoved} + ✨ ${params.distillCount} 」`
+    return `「 ▼ ${tokensK}K 🌑 ₊ ▼ ${params.messagesRemoved} 🌊 ₊ ✨ ${params.distillCount} 」`
 }

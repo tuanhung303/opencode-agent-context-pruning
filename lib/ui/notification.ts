@@ -73,7 +73,7 @@ function buildDetailedMessage(
         state.stats.pruneTokenCounter > 0 || (distillation && distillation.length > 0)
 
     if (hasPruningActivity && (pruneToolIds.length > 0 || pruneMessagePartIds.length > 0)) {
-        const pruneTokenCounterStr = `~${formatTokenCount(state.stats.pruneTokenCounter)}`
+        const pruneTokenCounterStr = `▼ ${formatTokenCount(state.stats.pruneTokenCounter)}`
         const reasonLabel = reason ? ` — ${PRUNE_REASON_LABELS[reason]}` : ""
         message += `\n\n▣ Pruning (${pruneTokenCounterStr})${reasonLabel}`
 

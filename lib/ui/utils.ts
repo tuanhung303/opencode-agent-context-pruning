@@ -24,20 +24,20 @@ export function formatStatsHeader(
     const totalMessages = totalMessagesPruned + messagesPruned
     const totalTokens = totalTokensSaved + pruneTokenCounter
 
-    // Build the beautiful status format: 「 -29.8K 🌑 ₊ 🌊 3 ₊ ✨ 2 」
+    // Build the beautiful status format: 「 ▼ 7.8K 🌑 ₊ ▼ 3 🌊 ₊ 2 ✨ 」
     const parts: string[] = []
 
-    // Tokens saved (with minus sign to indicate savings)
+    // Tokens saved (▼ indicates reduction)
     if (totalTokens > 0) {
-        parts.push(`-${formatTokenCount(totalTokens)} 🌑`)
+        parts.push(`▼ ${formatTokenCount(totalTokens)} 🌑`)
     }
 
-    // Messages pruned (wave icon)
+    // Messages pruned (▼ indicates reduction)
     if (totalMessages > 0) {
-        parts.push(`🌊 ${totalMessages}`)
+        parts.push(`▼ ${totalMessages} 🌊`)
     }
 
-    // Distilled count (sparkle icon)
+    // Distilled count (✨ no ▼ since it's transformation, not pure removal)
     if (distilledCount && distilledCount > 0) {
         parts.push(`✨ ${distilledCount}`)
     }
