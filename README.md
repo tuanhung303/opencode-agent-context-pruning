@@ -24,6 +24,15 @@ ACP exposes pruning tools to manage context efficiently. Use these when context 
 - `distill` — Valuable context you want to preserve in summary form
 - `restore` — Bring back previously pruned content if needed
 
+## 🏗️ CI/CD Pipeline
+
+ACP is maintained with a robust CI/CD pipeline:
+
+- **CI**: Every Pull Request to `main` triggers automated linting, formatting checks, type checking, and unit tests to ensure code quality.
+- **CD**: Successful merges to `main` automatically trigger version bumping, git tagging, and publishing to npm.
+
+---
+
 ## ⏩ Just Skip Reading This Readme
 
 ### It's the Age of Agents
