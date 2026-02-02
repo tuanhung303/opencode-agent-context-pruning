@@ -1,6 +1,7 @@
 import type { SessionState, WithParts, ToolParameterEntry } from "./state"
 import type { Logger } from "./logger"
 import type { PluginConfig } from "./config"
+import type { OpenCodeClient } from "./client"
 import { syncToolCache } from "./state/tool-cache"
 import {
     deduplicate,
@@ -9,7 +10,13 @@ import {
     truncateLargeOutputs,
     compressThinkingBlocks,
 } from "./strategies"
-import { prune, injectHashesIntoToolOutputs, injectHashesIntoAssistantMessages } from "./messages"
+import {
+    prune,
+    injectHashesIntoToolOutputs,
+    injectTodoReminder,
+    detectAutomataActivation,
+    injectAutomataReflection,
+} from "./messages"
 import { checkSession, ensureSessionInitialized } from "./state"
 import { loadPrompt } from "./prompts"
 import { handleStatsCommand } from "./commands/stats"
@@ -33,8 +40,8 @@ export function createSystemPromptHandler(
     state: SessionState,
     logger: Logger,
     config: PluginConfig,
-) {
-    return async (_input: unknown, output: { system: string[] }) => {
+): (_input: unknown, output: { system: string[] }) => Promise<void> {
+    return async (_input: unknown, output: { system: string[] }): Promise<void> => {
         if (state.isSubAgent) {
             return
         }
@@ -46,15 +53,15 @@ export function createSystemPromptHandler(
         }
 
         const discardEnabled = config.tools.discard.enabled
-        const extractEnabled = config.tools.extract.enabled
+        const distillEnabled = config.tools.distill.enabled
 
         let promptName: string
-        if (discardEnabled && extractEnabled) {
+        if (discardEnabled && distillEnabled) {
             promptName = "system/system-prompt-both"
         } else if (discardEnabled) {
             promptName = "system/system-prompt-discard"
-        } else if (extractEnabled) {
-            promptName = "system/system-prompt-extract"
+        } else if (distillEnabled) {
+            promptName = "system/system-prompt-distill"
         } else {
             return
         }
@@ -65,12 +72,15 @@ export function createSystemPromptHandler(
 }
 
 export function createChatMessageTransformHandler(
-    client: any,
+    client: OpenCodeClient,
     state: SessionState,
     logger: Logger,
     config: PluginConfig,
-) {
-    return async (input: {}, output: { messages: WithParts[] }) => {
+): (_input: Record<string, unknown>, output: { messages: WithParts[] }) => Promise<void> {
+    return async (
+        _input: Record<string, unknown>,
+        output: { messages: WithParts[] },
+    ): Promise<void> => {
         await checkSession(client, state, logger, output.messages)
 
         if (state.isSubAgent) {
@@ -88,6 +98,13 @@ export function createChatMessageTransformHandler(
         if (lastUserMessage && lastUserMessage.info.id !== state.lastUserMessageId) {
             state.lastUserMessageId = lastUserMessage.info.id
             logger.info(`New user message detected (id: ${lastUserMessage.info.id})`)
+
+            // Detect automata activation
+            safeExecute(
+                () => detectAutomataActivation(state, output.messages, logger),
+                logger,
+                "detectAutomataActivation",
+            )
         }
 
         syncToolCache(state, config, logger, output.messages)
@@ -99,12 +116,7 @@ export function createChatMessageTransformHandler(
             "injectHashesIntoToolOutputs",
         )
 
-        // Inject hashes into assistant messages
-        safeExecute(
-            () => injectHashesIntoAssistantMessages(state, config, output.messages, logger),
-            logger,
-            "injectHashesIntoAssistantMessages",
-        )
+        // Note: Assistant message hashing disabled - agents use "start...end" patterns for message operations
 
         // Run pruning strategies with error boundaries to prevent crashes
         safeExecute(
@@ -135,6 +147,20 @@ export function createChatMessageTransformHandler(
 
         safeExecute(() => prune(state, logger, config, output.messages), logger, "prune")
 
+        // Inject todo reminder if needed (after all other strategies)
+        safeExecute(
+            () => injectTodoReminder(state, config, output.messages, logger),
+            logger,
+            "injectTodoReminder",
+        )
+
+        // Inject automata reflection if needed (after todo reminder)
+        safeExecute(
+            () => injectAutomataReflection(state, config, output.messages, logger),
+            logger,
+            "injectAutomataReflection",
+        )
+
         // NOTE: insertPruneToolContext removed - hashes are now embedded in tool outputs
 
         logger.debug("Transform complete", {
@@ -151,16 +177,19 @@ export function createChatMessageTransformHandler(
 }
 
 export function createCommandExecuteHandler(
-    client: any,
+    client: OpenCodeClient,
     state: SessionState,
     logger: Logger,
     config: PluginConfig,
     workingDirectory: string,
-) {
+): (
+    input: { command: string; sessionID: string; arguments: string },
+    _output: { parts: unknown[] },
+) => Promise<void> {
     return async (
         input: { command: string; sessionID: string; arguments: string },
-        _output: { parts: any[] },
-    ) => {
+        _output: { parts: unknown[] },
+    ): Promise<void> => {
         if (!config.commands.enabled) {
             return
         }
@@ -252,16 +281,19 @@ export function createCommandExecuteHandler(
  * to keep context clean throughout the conversation.
  */
 export function createToolExecuteAfterHandler(
-    client: any,
+    client: OpenCodeClient,
     state: SessionState,
     logger: Logger,
     config: PluginConfig,
     workingDirectory: string,
-) {
+): (
+    input: { tool: string; sessionID: string; callID: string },
+    _output: { title: string; output: string; metadata: Record<string, unknown> },
+) => Promise<void> {
     return async (
         input: { tool: string; sessionID: string; callID: string },
-        _output: { title: string; output: string; metadata: any },
-    ) => {
+        _output: { title: string; output: string; metadata: Record<string, unknown> },
+    ): Promise<void> => {
         if (!config.enabled) {
             return
         }
@@ -281,7 +313,7 @@ export function createToolExecuteAfterHandler(
             const messagesResponse = await client.session.messages({
                 path: { id: sessionId },
             })
-            const messages: WithParts[] = messagesResponse.data || messagesResponse
+            const messages: WithParts[] = (messagesResponse.data || messagesResponse) as WithParts[]
 
             // Ensure session is initialized
             await ensureSessionInitialized(client, state, sessionId, logger, messages)
@@ -289,12 +321,7 @@ export function createToolExecuteAfterHandler(
             // Sync tool cache to pick up the just-executed tool
             syncToolCache(state, config, logger, messages)
 
-            // Inject hashes into assistant messages
-            safeExecute(
-                () => injectHashesIntoAssistantMessages(state, config, messages, logger),
-                logger,
-                "injectHashesIntoAssistantMessages",
-            )
+            // Note: Assistant message hashing disabled - agents use "start...end" patterns
 
             // Store initial prune count to detect changes
             const initialPruneCount = state.prune.toolIds.length + state.prune.messagePartIds.length
@@ -364,8 +391,9 @@ export function createToolExecuteAfterHandler(
                     prunedCount: newlyPrunedCount,
                 })
             }
-        } catch (error: any) {
-            logger.error("Error in tool.execute.after handler", { error: error.message })
+        } catch (error: unknown) {
+            const errorMessage = error instanceof Error ? error.message : String(error)
+            logger.error("Error in tool.execute.after handler", { error: errorMessage })
         }
     }
 }

@@ -1,0 +1,8 @@
+{
+    "track_id": "pruning-status-tui_20260202",
+    "type": "feature",
+    "status": "new",
+    "created_at": "2026-02-02T00:00:00Z",
+    "updated_at": "2026-02-02T00:00:00Z",
+    "description": "Interactive pruning status display in terminal UI showing pruned/distilled tools with max 3 items and overflow indicator"
+}

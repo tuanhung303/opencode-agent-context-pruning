@@ -1,14 +1,18 @@
 import type { Logger } from "../logger"
 import type { SessionState } from "../state"
 import {
-    countDistillationTokens,
-    formatExtracted,
+    formatDistilled,
     formatPrunedItemsList,
     formatStatsHeader,
     formatTokenCount,
 } from "./utils"
 import { ToolParameterEntry } from "../state"
 import { PluginConfig } from "../config"
+import {
+    formatDiscardNotification,
+    formatDistillNotification,
+    formatRestoreNotification,
+} from "./minimal-notifications"
 
 export type PruneReason =
     | "completion"
@@ -16,14 +20,16 @@ export type PruneReason =
     | "superseded"
     | "exploration"
     | "duplicate"
-    | "extraction"
+    | "distillation"
+    | "manual"
 export const PRUNE_REASON_LABELS: Record<PruneReason, string> = {
     completion: "Task Complete",
     noise: "Noise Removal",
     superseded: "Superseded",
     exploration: "Dead-end Exploration",
     duplicate: "Duplicate Content",
-    extraction: "Extraction",
+    distillation: "Distillation",
+    manual: "Manual Prune",
 }
 
 function buildMinimalMessage(
@@ -32,21 +38,16 @@ function buildMinimalMessage(
     distillation: string[] | undefined,
     showDistillation: boolean,
 ): string {
-    const extractedTokens = countDistillationTokens(distillation)
-    const extractedSuffix =
-        extractedTokens > 0 ? ` (extracted ${formatTokenCount(extractedTokens)})` : ""
-    const reasonSuffix = reason && extractedTokens === 0 ? ` — ${PRUNE_REASON_LABELS[reason]}` : ""
-    let message =
-        formatStatsHeader(
-            state.stats.totalPruneTokens,
-            state.stats.pruneTokenCounter,
-            state.stats.totalPruneMessages,
-            state.stats.pruneMessageCounter,
-        ) +
-        reasonSuffix +
-        extractedSuffix
+    const distilledCount = distillation?.length ?? 0
+    let message = formatStatsHeader(
+        state.stats.totalPruneTokens,
+        state.stats.pruneTokenCounter,
+        state.stats.totalPruneMessages,
+        state.stats.pruneMessageCounter,
+        distilledCount,
+    )
 
-    return message + formatExtracted(showDistillation ? distillation : undefined)
+    return message + formatDistilled(showDistillation ? distillation : undefined)
 }
 
 function buildDetailedMessage(
@@ -60,21 +61,23 @@ function buildDetailedMessage(
     simplified: boolean = false,
     pruneMessagePartIds: string[] = [],
 ): string {
+    const distilledCount = distillation?.length ?? 0
     let message = formatStatsHeader(
         state.stats.totalPruneTokens,
         state.stats.pruneTokenCounter,
         state.stats.totalPruneMessages,
         state.stats.pruneMessageCounter,
+        distilledCount,
     )
 
-    if (pruneToolIds.length > 0 || pruneMessagePartIds.length > 0) {
-        const pruneTokenCounterStr = `~${formatTokenCount(state.stats.pruneTokenCounter)}`
-        const extractedTokens = countDistillationTokens(distillation)
-        const extractedSuffix =
-            extractedTokens > 0 ? `, extracted ${formatTokenCount(extractedTokens)}` : ""
-        const reasonLabel =
-            reason && extractedTokens === 0 ? ` — ${PRUNE_REASON_LABELS[reason]}` : ""
-        message += `\n\n▣ Pruning (${pruneTokenCounterStr}${extractedSuffix})${reasonLabel}`
+    // Only show pruning details if there are tokens being pruned or distilled
+    const hasPruningActivity =
+        state.stats.pruneTokenCounter > 0 || (distillation && distillation.length > 0)
+
+    if (hasPruningActivity && (pruneToolIds.length > 0 || pruneMessagePartIds.length > 0)) {
+        const pruneTokenCounterStr = `▼ ${formatTokenCount(state.stats.pruneTokenCounter)}`
+        const reasonLabel = reason ? ` — ${PRUNE_REASON_LABELS[reason]}` : ""
+        message += `\n\n▣ Pruning (${pruneTokenCounterStr})${reasonLabel}`
 
         if (pruneToolIds.length > 0) {
             const itemLines = formatPrunedItemsList(
@@ -91,7 +94,7 @@ function buildDetailedMessage(
         }
     }
 
-    return (message + formatExtracted(showDistillation ? distillation : undefined)).trim()
+    return (message + formatDistilled(showDistillation ? distillation : undefined)).trim()
 }
 
 export interface NotifyOptions {
@@ -122,7 +125,7 @@ export async function sendUnifiedNotification(
         return false
     }
 
-    const showDistillation = config.tools.extract.showDistillation
+    const showDistillation = config.tools.distill.showDistillation
     const simplified = options?.simplified ?? false
 
     const message =

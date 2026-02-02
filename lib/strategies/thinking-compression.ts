@@ -158,15 +158,17 @@ function compressThinking(content: string, maxTokens: number): string {
     const keyTarget = Math.floor(maxTokens * 0.5)
 
     for (let i = lines.length - 1; i >= 0; i--) {
-        const line = lines[i]!.toLowerCase()
-        const isKeyLine = keyPhrases.some((phrase) => line.includes(phrase))
+        const currentLine = lines[i]
+        if (!currentLine) continue
+        const lineLower = currentLine.toLowerCase()
+        const isKeyLine = keyPhrases.some((phrase) => lineLower.includes(phrase))
 
         if (isKeyLine || i >= lines.length - 5) {
-            const lineTokens = countTokens(lines[i]! + "\n")
+            const lineTokens = countTokens(currentLine + "\n")
             if (keyTokens + lineTokens > keyTarget) {
                 break
             }
-            keyLines.unshift(lines[i]!)
+            keyLines.unshift(currentLine)
             keyTokens += lineTokens
         }
     }

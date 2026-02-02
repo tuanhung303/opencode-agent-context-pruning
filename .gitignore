@@ -1,7 +1,7 @@
 # Dependencies
 node_modules/
 bun.lock
-
+conductor/tracks
 # Build output
 dist/
 *.tgz

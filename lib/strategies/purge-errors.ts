@@ -73,6 +73,7 @@ export const purgeErrors = (
     if (newPruneIds.length > 0) {
         const tokensSaved = calculateTokensSaved(state, messages, newPruneIds)
         state.stats.totalPruneTokens += tokensSaved
+        state.stats.totalPruneMessages += newPruneIds.length
         state.stats.strategyStats.purgeErrors.count += newPruneIds.length
         state.stats.strategyStats.purgeErrors.tokens += tokensSaved
         state.prune.toolIds.push(...newPruneIds)

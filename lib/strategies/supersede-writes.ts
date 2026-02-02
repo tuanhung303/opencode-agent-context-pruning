@@ -4,6 +4,7 @@ import type { SessionState, WithParts } from "../state"
 import { buildToolIdList } from "../messages/utils"
 import { getFilePathFromParameters, isProtectedFilePath } from "../protected-file-patterns"
 import { calculateTokensSaved } from "./utils"
+import { pushToMapArray } from "../utils/array"
 
 /**
  * Supersede Writes strategy - prunes write tool inputs for files that have
@@ -64,15 +65,9 @@ export const supersedeWrites = (
         }
 
         if (metadata.tool === "write") {
-            if (!writesByFile.has(filePath)) {
-                writesByFile.set(filePath, [])
-            }
-            writesByFile.get(filePath)!.push({ id, index: i })
+            pushToMapArray(writesByFile, filePath, { id, index: i })
         } else if (metadata.tool === "read") {
-            if (!readsByFile.has(filePath)) {
-                readsByFile.set(filePath, [])
-            }
-            readsByFile.get(filePath)!.push(i)
+            pushToMapArray(readsByFile, filePath, i)
         }
     }
 
@@ -103,6 +98,7 @@ export const supersedeWrites = (
     if (newPruneIds.length > 0) {
         const tokensSaved = calculateTokensSaved(state, messages, newPruneIds)
         state.stats.totalPruneTokens += tokensSaved
+        state.stats.totalPruneMessages += newPruneIds.length
         state.stats.strategyStats.supersedeWrites.count += newPruneIds.length
         state.stats.strategyStats.supersedeWrites.tokens += tokensSaved
         state.prune.toolIds.push(...newPruneIds)

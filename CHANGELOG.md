@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.9.2] - 2026-02-02
+
+### Fixed
+
+- **Case-insensitive pattern matching**: Message pruning patterns now match regardless of case and ignore extra whitespace/newlines
+- **Graceful handling of no-match patterns**: `discard_msg` and `distill_msg` no longer throw errors when no messages match; they return empty notifications instead
+
+## [2.9.1] - 2026-02-02
+
+### Fixed
+
+- **Corrected tool parameter formats in README**: Fixed examples to match actual API:
+    - `discard_tool(["r_abc12", "r_def34"])` (was `{hashes: [...]}`)
+    - `restore_tool(["r_abc12"])` (was `{hashes: [...]}`)
+    - `discard_msg(["pattern"])` (was `{patterns: [...]}`)
+    - `restore_msg(["m_abc123"])` (was `{hashes: [...]}`)
+
+## [2.9.0] - 2026-02-02
+
+### Added
+
+- **Agent Auto section in README**: Prominent "Agent Auto" section at the top of README with tool reference table, pattern formats, and usage guidance for LLM agents
+
 ## [2.0.0] - 2026-01-31
 
 ### Breaking Changes

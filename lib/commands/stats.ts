@@ -44,7 +44,7 @@ function formatStatsMessage(
         { name: "Supersede Writes", data: strategyStats.supersedeWrites },
         { name: "Purge Errors", data: strategyStats.purgeErrors },
         { name: "Manual Discard", data: strategyStats.manualDiscard },
-        { name: "Extraction", data: strategyStats.extraction },
+        { name: "Distillation", data: strategyStats.distillation },
         { name: "Truncation", data: strategyStats.truncation },
         { name: "Thinking Compress", data: strategyStats.thinkingCompression },
     ]

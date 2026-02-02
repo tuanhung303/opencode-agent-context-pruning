@@ -9,7 +9,7 @@ export type ToolStatus = "pending" | "running" | "completed" | "error"
 
 export interface ToolParameterEntry {
     tool: string
-    parameters: any
+    parameters: Record<string, unknown>
     status?: ToolStatus
     error?: string
     turn: number
@@ -26,7 +26,7 @@ export interface SessionStats {
         supersedeWrites: { count: number; tokens: number }
         purgeErrors: { count: number; tokens: number }
         manualDiscard: { count: number; tokens: number }
-        extraction: { count: number; tokens: number }
+        distillation: { count: number; tokens: number }
         truncation: { count: number; tokens: number }
         thinkingCompression: { count: number; tokens: number }
     }
@@ -53,6 +53,13 @@ export interface DiscardStats {
     reason: string
 }
 
+export interface TodoItem {
+    id: string
+    content: string
+    status: "pending" | "in_progress" | "completed" | "cancelled"
+    priority: "high" | "medium" | "low"
+}
+
 export interface SessionState {
     sessionId: string | null
     isSubAgent: boolean
@@ -62,34 +69,50 @@ export interface SessionState {
     lastToolPrune: boolean
     lastCompaction: number
     currentTurn: number
-    variant: string | undefined
+    variant?: string
     lastDiscardStats: LastDiscardStats | null
     lastUserMessageId: string | null
-
     // Hash-based discard system
-    hashToCallId: Map<string, string> // "#r_a1b2c#" → "tooluse_abc123..."
-    callIdToHash: Map<string, string> // Reverse lookup
-    discardHistory: DiscardStats[] // Per-discard token savings
-
-    // Message part hash system (for assistant text discarding)
-    hashToMessagePart: Map<string, string> // "#a_xxxxx#" → "msgId:partIndex"
-    messagePartToHash: Map<string, string> // Reverse lookup
-
+    hashToCallId: Map<string, string>
+    callIdToHash: Map<string, string>
+    discardHistory: DiscardStats[]
+    // Message part hash system
+    hashToMessagePart: Map<string, string>
+    messagePartToHash: Map<string, string>
     // Soft prune cache for restore capability
-    softPrunedTools: Map<string, SoftPrunedEntry> // callId → original output
-    softPrunedMessageParts: Map<string, SoftPrunedMessagePart> // "msgId:partIndex" → original text
+    softPrunedTools: Map<string, SoftPrunedEntry>
+    softPrunedMessageParts: Map<string, SoftPrunedMessagePart>
+    // New: message pruning cache for pattern-based discard_msg/distill_msg
+    softPrunedMessages: Map<string, SoftPrunedMessage>
+    // Todo reminder tracking
+    lastTodoTurn: number // Turn when todowrite was last called
+    lastReminderTurn: number // Turn when reminder was last injected (0 = never)
+    lastTodowriteCallId: string | null // CallID of last processed todowrite (to avoid reprocessing)
+    todos: TodoItem[] // Current todo list state
+    // Automata Mode tracking
+    automataEnabled: boolean // Whether automata mode is active for this session
+    lastAutomataTurn: number // Turn when automata keyword was last detected
+    lastReflectionTurn: number // Turn when reflection was last injected
 }
 
 export interface SoftPrunedEntry {
     originalOutput: string
     tool: string
-    parameters: any
+    parameters: Record<string, unknown>
     prunedAt: number
     hash: string
 }
 
 export interface SoftPrunedMessagePart {
     originalText: string
+    messageId: string
+    partIndex: number
+    prunedAt: number
+    hash: string
+}
+
+export interface SoftPrunedMessage {
+    content: string
     messageId: string
     partIndex: number
     prunedAt: number

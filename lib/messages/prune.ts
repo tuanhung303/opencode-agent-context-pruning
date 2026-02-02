@@ -9,7 +9,7 @@ const PRUNED_MESSAGE_PART_REPLACEMENT = "[Assistant message part removed to save
 
 /**
  * Generates a short hash for message parts.
- * Format: #a_xxxxx# (a = assistant text)
+ * Format: a_xxxxx (a = assistant text)
  */
 function generateMessagePartHash(): string {
     const chars = "abcdefghijklmnopqrstuvwxyz0123456789"
@@ -17,12 +17,12 @@ function generateMessagePartHash(): string {
     for (let i = 0; i < 5; i++) {
         hash += chars.charAt(Math.floor(Math.random() * chars.length))
     }
-    return `#a_${hash}#`
+    return `a_${hash}`
 }
 
 /**
  * Injects hash identifiers into tool outputs for hash-based discarding.
- * Format: #x_xxxxx#\n<original output>
+ * Format: x_xxxxx\n<original output>
  *
  * This allows agents to reference tools by their stable hash when discarding,
  * eliminating the need for a separate prunable-tools list.
@@ -66,8 +66,8 @@ export const injectHashesIntoToolOutputs = (
                 continue
             }
 
-            // Skip if already has hash prefix
-            if (part.state.output?.startsWith("#")) {
+            // Skip if already has hash prefix (format: x_xxxxx where x is tool prefix)
+            if (part.state.output && /^[a-z]_[a-z0-9]{5}/i.test(part.state.output)) {
                 continue
             }
 
@@ -82,7 +82,7 @@ export const injectHashesIntoToolOutputs = (
 
 /**
  * Injects hash identifiers into assistant text parts for hash-based discarding.
- * Format: #a_xxxxx#\n<original text>
+ * Format: a_xxxxx\n<original text>
  *
  * This allows agents to discard their own verbose explanations or outdated responses.
  * Only injects into text parts that are substantial (>100 chars) and not already hashed.
@@ -129,8 +129,8 @@ export const injectHashesIntoAssistantMessages = (
                 continue
             }
 
-            // Skip if already has hash prefix
-            if (part.text.startsWith("#a_")) {
+            // Skip if already has hash prefix (format: a_xxxxx)
+            if (/^a_[a-z0-9]{5}/i.test(part.text)) {
                 continue
             }
 
@@ -214,144 +214,68 @@ export const prune = (
     config: PluginConfig,
     messages: WithParts[],
 ): void => {
-    pruneToolOutputs(state, logger, messages)
-    pruneToolInputs(state, logger, messages)
-    pruneToolErrors(state, logger, messages)
-    pruneMessageParts(state, logger, messages)
-}
+    // Convert to Set for O(1) lookup instead of O(n) array.includes()
+    const prunedToolIds = new Set(state.prune.toolIds)
+    const prunedMessagePartIds = new Set(state.prune.messagePartIds)
 
-const pruneToolOutputs = (state: SessionState, logger: Logger, messages: WithParts[]): void => {
-    for (const msg of messages) {
-        if (isMessageCompacted(state, msg)) {
-            continue
-        }
-
-        const parts = Array.isArray(msg.parts) ? msg.parts : []
-        for (const part of parts) {
-            if (part.type !== "tool") {
-                continue
-            }
-            if (!state.prune.toolIds.includes(part.callID)) {
-                continue
-            }
-            if (part.state.status !== "completed") {
-                continue
-            }
-            if (part.tool === "question") {
-                continue
-            }
-
-            part.state.output = createPrunedOutputBreadcrumb(
-                part.tool,
-                part.state.input,
-                part.state.status,
-            )
-        }
-    }
-}
-
-const pruneToolInputs = (state: SessionState, logger: Logger, messages: WithParts[]): void => {
-    for (const msg of messages) {
-        if (isMessageCompacted(state, msg)) {
-            continue
-        }
-
-        const parts = Array.isArray(msg.parts) ? msg.parts : []
-        for (const part of parts) {
-            if (part.type !== "tool") {
-                continue
-            }
-            if (!state.prune.toolIds.includes(part.callID)) {
-                continue
-            }
-            if (part.state.status !== "completed") {
-                continue
-            }
-            if (part.tool !== "question") {
-                continue
-            }
-
-            if (part.state.input?.questions !== undefined) {
-                part.state.input.questions = PRUNED_QUESTION_INPUT_REPLACEMENT
-            }
-        }
-    }
-}
-
-const pruneToolErrors = (state: SessionState, logger: Logger, messages: WithParts[]): void => {
-    for (const msg of messages) {
-        if (isMessageCompacted(state, msg)) {
-            continue
-        }
-
-        const parts = Array.isArray(msg.parts) ? msg.parts : []
-        for (const part of parts) {
-            if (part.type !== "tool") {
-                continue
-            }
-            if (!state.prune.toolIds.includes(part.callID)) {
-                continue
-            }
-            if (part.state.status !== "error") {
-                continue
-            }
-
-            // Prune all string inputs for errored tools
-            const input = part.state.input
-            if (input && typeof input === "object") {
-                for (const key of Object.keys(input)) {
-                    if (typeof input[key] === "string") {
-                        input[key] = PRUNED_TOOL_ERROR_INPUT_REPLACEMENT
-                    }
-                }
-            }
-        }
-    }
-}
-
-/**
- * Prunes assistant message text parts that have been marked for pruning.
- * Replaces the text content with a placeholder message.
- */
-const pruneMessageParts = (state: SessionState, logger: Logger, messages: WithParts[]): void => {
-    if (!state.prune.messagePartIds || state.prune.messagePartIds.length === 0) {
+    // Early exit if nothing to prune
+    if (prunedToolIds.size === 0 && prunedMessagePartIds.size === 0) {
         return
     }
 
+    // Single pass over all messages and parts
     for (const msg of messages) {
         if (isMessageCompacted(state, msg)) {
             continue
         }
 
-        // Only process assistant messages
-        if (msg.info.role !== "assistant") {
-            continue
-        }
-
-        const messageId = msg.info.id
         const parts = Array.isArray(msg.parts) ? msg.parts : []
+        const messageId = msg.info.id
+        const isAssistant = msg.info.role === "assistant"
 
         for (let partIndex = 0; partIndex < parts.length; partIndex++) {
             const part = parts[partIndex]
-            if (!part) {
-                continue
+            if (!part) continue
+
+            // Handle tool parts
+            if (part.type === "tool" && part.callID && prunedToolIds.has(part.callID)) {
+                const status = part.state?.status
+
+                if (status === "completed") {
+                    if (part.tool === "question") {
+                        // Prune question inputs
+                        if (part.state.input?.questions !== undefined) {
+                            part.state.input.questions = PRUNED_QUESTION_INPUT_REPLACEMENT
+                        }
+                    } else {
+                        // Prune tool outputs
+                        part.state.output = createPrunedOutputBreadcrumb(
+                            part.tool,
+                            part.state.input,
+                            status,
+                        )
+                    }
+                } else if (status === "error") {
+                    // Prune error inputs
+                    const input = part.state.input
+                    if (input && typeof input === "object") {
+                        for (const key of Object.keys(input)) {
+                            if (typeof input[key] === "string") {
+                                input[key] = PRUNED_TOOL_ERROR_INPUT_REPLACEMENT
+                            }
+                        }
+                    }
+                }
             }
 
-            const partId = `${messageId}:${partIndex}`
-
-            // Check if this part should be pruned
-            if (!state.prune.messagePartIds.includes(partId)) {
-                continue
+            // Handle assistant text parts
+            if (isAssistant && part.type === "text" && prunedMessagePartIds.size > 0) {
+                const partId = `${messageId}:${partIndex}`
+                if (prunedMessagePartIds.has(partId)) {
+                    part.text = PRUNED_MESSAGE_PART_REPLACEMENT
+                    logger.debug(`Pruned assistant message part ${partId}`)
+                }
             }
-
-            // Only prune text parts
-            if (part.type !== "text") {
-                continue
-            }
-
-            // Replace with placeholder
-            part.text = PRUNED_MESSAGE_PART_REPLACEMENT
-            logger.debug(`Pruned assistant message part ${partId}`)
         }
     }
 }

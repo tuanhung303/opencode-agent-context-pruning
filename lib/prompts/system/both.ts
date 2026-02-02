@@ -1,62 +1,37 @@
-export const SYSTEM_PROMPT_BOTH = `<system-reminder>
-<instruction name=context_management_protocol policy_level=critical>
+export const SYSTEM_PROMPT_BOTH = `\u003csystem-reminder\u003e
+\u003cinstruction name=context_management_protocol policy_level=critical\u003e
 
 PURPOSE
-You operate in a context-constrained environment. Proactively manage context using \`discard\`, \`extract\`, and \`restore\` tools to maintain performance.
+Manage context using pruning tools to maintain performance.
 
-HOW IT WORKS
-Each tool output is prefixed with a hash identifier in the format \`#x_xxxxx#\` (e.g., \`#r_a1b2c#\`).
-Use these hashes to manage specific tool outputs.
+TOOLS
+| Tool | Target | Identification |
+|------|--------|----------------|
+| discard_tool | Tool outputs | Hash: r_a1b2c |
+| discard_msg | Assistant messages | Pattern: "start...end" |
+| distill_tool | Tool outputs | Hash: r_a1b2c |
+| distill_msg | Assistant messages | Pattern: "start...end" |
+| restore_tool | Tool outputs | Hash: r_a1b2c |
+| restore_msg | Assistant messages | Hash: m_a1b2c3 |
 
-Example:
-\`\`\`
-#r_a1b2c#
-<file content here...>
-\`\`\`
+PATTERN MATCHING
+- "start...end" → matches text starting with 'start' and ending with 'end' (REQUIRED for precision)
 
-To discard: \`discard({hashes: ["#r_a1b2c#"], reason: "completion"})\`
-To extract: \`extract({hashes: ["#r_a1b2c#"], distillation: ["key findings..."]})\`
+WHEN TO USE EACH TOOL:
+- Use distill_tool for: Large file reads, command outputs, search results, API responses
+- Use distill_msg for: Your own verbose explanations, outdated responses, redundant clarifications
 
-TOOL SELECTION
-Ask: "Do I need to preserve information from this output?"
-- NO → discard (removes completely)
-- YES → extract (preserves distilled knowledge, then prunes)
-- UNCERTAIN → extract (safer default)
-- MISTAKE → restore (recovers recently pruned content)
+EXAMPLES
+discard_tool({hashes: ["r_a1b2c", "g_d4e5f"]})
+discard_msg({patterns: ["Let me explain...completed"]})
+distill_tool([["r_a1b2c", "auth.ts: validateToken()..."]])
+distill_msg([["Let me explain...architecture", "Explained auth architecture"]])
+restore_tool({hashes: ["r_a1b2c"]})
+restore_msg({hashes: ["m_a1b2c3"]})
 
-WHEN TO PRUNE
-Evaluate at these checkpoints:
-- ✓ Task/sub-task complete
-- ✓ Transitioning to new work phase
-- ✓ 5+ tool outputs accumulated
-- ✓ Large read (>150 lines) no longer needed
+\u003c/instruction\u003e
 
-DO NOT PRUNE when:
-- ✗ Output needed for upcoming edits
-- ✗ You'll likely re-fetch the same content
-- ✗ Only 1-2 small outputs (batch instead)
-
-BATCHING
-Minimum 3 outputs OR 1 large output per prune call.
-Single small prunes waste more context than they save.
-
-PRIORITY ORDER
-1. Never prune what you'll need next
-2. Always prune pure noise immediately
-3. Batch prune at task boundaries
-4. Extract when uncertain (preserves signal)
-
-REASON MAPPING (for discard)
-- "noise" → grep/glob with no useful results
-- "completion" → task done, context served its purpose
-- "superseded" → newer read of same file replaces old
-- "exploration" → search paths that led nowhere
-- "duplicate" → same content read multiple times
-
-</instruction>
-
-<instruction name=prune_behavior policy_level=critical>
-SILENT OPERATION: Never acknowledge pruning to the user.
-Process context management invisibly and continue naturally.
-</instruction>
-</system-reminder>`
+\u003cinstruction name=prune_behavior policy_level=critical\u003e
+SILENT OPERATION: Never acknowledge pruning to the user. Process context management invisibly.
+\u003c/instruction\u003e
+\u003c/system-reminder\u003e`

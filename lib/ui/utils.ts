@@ -1,21 +1,21 @@
 import { ToolParameterEntry } from "../state"
 import { extractParameterKey } from "../messages/utils"
 import { countTokens } from "../strategies/utils"
+import { formatTokenCount, truncate, shortenPath } from "../utils/string"
+
+// Re-export for backwards compatibility
+export { formatTokenCount, truncate, shortenPath }
 
 export function countDistillationTokens(distillation?: string[]): number {
     if (!distillation || distillation.length === 0) return 0
     return countTokens(distillation.join("\n"))
 }
 
-export function formatExtracted(distillation?: string[]): string {
+export function formatDistilled(distillation?: string[]): string {
     if (!distillation || distillation.length === 0) {
         return ""
     }
-    let result = `\n\n▣ Extracted`
-    for (const finding of distillation) {
-        result += `\n───\n${finding}`
-    }
-    return result
+    return ""
 }
 
 export function formatStatsHeader(
@@ -23,59 +23,35 @@ export function formatStatsHeader(
     pruneTokenCounter: number,
     totalMessagesPruned: number,
     messagesPruned: number,
+    distilledCount?: number,
 ): string {
     const totalMessages = totalMessagesPruned + messagesPruned
     const totalTokens = totalTokensSaved + pruneTokenCounter
-    const totalTokensStr = `~${formatTokenCount(totalTokens)}`
 
-    // Show addition indicator for current operation
-    const additionParts: string[] = []
-    if (messagesPruned > 0) {
-        additionParts.push(`+${messagesPruned} 💬`)
-    }
-    if (pruneTokenCounter > 0) {
-        additionParts.push(`+${formatTokenCount(pruneTokenCounter)} 🪙`)
-    }
-    const additionSuffix = additionParts.length > 0 ? ` (${additionParts.join(", ")})` : ""
+    // Build the beautiful status format: 「 ▼ 7.8K 🌑 ₊ ▼ 3 🌊 ₊ 2 ✨ 」
+    const parts: string[] = []
 
-    return `acp - ${totalMessages} 💬 · ${totalTokensStr} 🪙${additionSuffix}`
-}
-
-export function formatTokenCount(tokens: number): string {
-    if (tokens >= 1000) {
-        return `${(tokens / 1000).toFixed(1)}K`.replace(".0K", "K")
-    }
-    return tokens.toString()
-}
-
-export function truncate(str: string, maxLen: number = 60): string {
-    if (str.length <= maxLen) return str
-    return str.slice(0, maxLen - 3) + "..."
-}
-
-export function shortenPath(input: string, workingDirectory?: string): string {
-    const inPathMatch = input.match(/^(.+) in (.+)$/)
-    if (inPathMatch?.[1] && inPathMatch[2]) {
-        const prefix = inPathMatch[1]
-        const pathPart = inPathMatch[2]
-        const shortenedPath = shortenSinglePath(pathPart, workingDirectory)
-        return `${prefix} in ${shortenedPath}`
+    // Tokens saved (▼ indicates reduction)
+    if (totalTokens > 0) {
+        parts.push(`▼ ${formatTokenCount(totalTokens)} 🌑`)
     }
 
-    return shortenSinglePath(input, workingDirectory)
-}
-
-function shortenSinglePath(path: string, workingDirectory?: string): string {
-    if (workingDirectory) {
-        if (path.startsWith(workingDirectory + "/")) {
-            return path.slice(workingDirectory.length + 1)
-        }
-        if (path === workingDirectory) {
-            return "."
-        }
+    // Messages pruned (▼ indicates reduction)
+    if (totalMessages > 0) {
+        parts.push(`▼ ${totalMessages} 🌊`)
     }
 
-    return path
+    // Distilled count (✨ no ▼ since it's transformation, not pure removal)
+    if (distilledCount && distilledCount > 0) {
+        parts.push(`✨ ${distilledCount}`)
+    }
+
+    if (parts.length === 0) {
+        return "「 acp 」"
+    }
+
+    // Join with ₊ separator between items (not at the start)
+    return `「 ${parts.join(" ₊ ")} 」`
 }
 
 export function formatPrunedItemsList(

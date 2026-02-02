@@ -23,8 +23,13 @@
         "pruneNotification": {
             "type": "string",
             "enum": ["off", "minimal", "detailed"],
-            "default": "detailed",
+            "default": "minimal",
             "description": "Level of notification shown when pruning occurs"
+        },
+        "autoPruneAfterTool": {
+            "type": "boolean",
+            "default": false,
+            "description": "Automatically run pruning after each tool execution"
         },
         "commands": {
             "type": "object",
@@ -95,7 +100,7 @@
                                 "todowrite",
                                 "todoread",
                                 "discard",
-                                "extract",
+                                "distill",
                                 "batch",
                                 "write",
                                 "edit",
@@ -118,20 +123,59 @@
                         }
                     }
                 },
-                "extract": {
+                "distill": {
                     "type": "object",
-                    "description": "Configuration for the extract tool",
+                    "description": "Configuration for the distill tool",
                     "additionalProperties": false,
                     "properties": {
                         "enabled": {
                             "type": "boolean",
                             "default": true,
-                            "description": "Enable the extract tool"
+                            "description": "Enable the distill tool"
                         },
                         "showDistillation": {
                             "type": "boolean",
                             "default": false,
                             "description": "Show distillation output in the UI"
+                        }
+                    }
+                },
+                "todoReminder": {
+                    "type": "object",
+                    "description": "Remind agent to review/update todo list when stale",
+                    "additionalProperties": false,
+                    "properties": {
+                        "enabled": {
+                            "type": "boolean",
+                            "default": true,
+                            "description": "Enable todo reminder injection"
+                        },
+                        "initialTurns": {
+                            "type": "number",
+                            "default": 12,
+                            "description": "Turns before first reminder"
+                        },
+                        "repeatTurns": {
+                            "type": "number",
+                            "default": 6,
+                            "description": "Turns between subsequent reminders"
+                        }
+                    }
+                },
+                "automataMode": {
+                    "type": "object",
+                    "description": "Autonomous reflection mechanism that injects strategic prompts",
+                    "additionalProperties": false,
+                    "properties": {
+                        "enabled": {
+                            "type": "boolean",
+                            "default": true,
+                            "description": "Enable automata mode reflection injection"
+                        },
+                        "initialTurns": {
+                            "type": "number",
+                            "default": 8,
+                            "description": "Turns of continuous work before first reflection"
                         }
                     }
                 }
@@ -149,7 +193,7 @@
                     "properties": {
                         "enabled": {
                             "type": "boolean",
-                            "default": true,
+                            "default": false,
                             "description": "Enable deduplication strategy"
                         },
                         "protectedTools": {
@@ -162,7 +206,7 @@
                                 "todowrite",
                                 "todoread",
                                 "discard",
-                                "extract",
+                                "distill",
                                 "batch",
                                 "write",
                                 "edit",
@@ -192,7 +236,7 @@
                     "properties": {
                         "enabled": {
                             "type": "boolean",
-                            "default": true,
+                            "default": false,
                             "description": "Enable purge errors strategy"
                         },
                         "turns": {
@@ -210,7 +254,7 @@
                                 "todowrite",
                                 "todoread",
                                 "discard",
-                                "extract",
+                                "distill",
                                 "batch",
                                 "write",
                                 "edit",
@@ -218,6 +262,35 @@
                                 "plan_exit"
                             ],
                             "description": "Tool names excluded from error purging"
+                        }
+                    }
+                },
+                "truncation": {
+                    "type": "object",
+                    "description": "Truncate large tool outputs when they exceed token limits",
+                    "additionalProperties": false,
+                    "properties": {
+                        "enabled": {
+                            "type": "boolean",
+                            "default": false,
+                            "description": "Enable truncation strategy"
+                        },
+                        "maxTokens": {
+                            "type": "number",
+                            "default": 2000,
+                            "description": "Maximum tokens allowed per tool output before truncation"
+                        }
+                    }
+                },
+                "thinkingCompression": {
+                    "type": "object",
+                    "description": "Compress or remove large thinking blocks from assistant messages",
+                    "additionalProperties": false,
+                    "properties": {
+                        "enabled": {
+                            "type": "boolean",
+                            "default": false,
+                            "description": "Enable thinking compression strategy"
                         }
                     }
                 }

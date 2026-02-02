@@ -157,7 +157,8 @@ function truncateContent(
     const tailLines: string[] = []
     let tailTokenCount = 0
     for (let i = lines.length - 1; i >= 0; i--) {
-        const line = lines[i]!
+        const line = lines[i]
+        if (!line) continue
         const lineTokens = countTokens(line + "\n")
         if (tailTokenCount + lineTokens > tailTokens) {
             break

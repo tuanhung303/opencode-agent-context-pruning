@@ -4,6 +4,8 @@ import type { SessionState, WithParts } from "../state"
 import { buildToolIdList } from "../messages/utils"
 import { getFilePathFromParameters, isProtectedFilePath } from "../protected-file-patterns"
 import { calculateTokensSaved } from "./utils"
+import { sortObjectKeys, normalizeParams } from "../utils/object"
+import { at, pushToMapArray } from "../utils/array"
 
 /**
  * Represents a file read operation with offset/limit for overlap detection.
@@ -13,6 +15,7 @@ interface FileReadRange {
     filePath: string
     offset: number
     limit: number | undefined
+    index: number // chronological index
 }
 
 /**
@@ -47,13 +50,15 @@ export const deduplicate = (
 
     const protectedTools = config.strategies.deduplication.protectedTools
 
-    // Group by signature (tool name + normalized parameters)
+    // Set to collect all IDs to prune in this pass
+    const toPruneIds = new Set<string>()
+
+    // Group by signature (tool name + normalized parameters) for exact matching
     const signatureMap = new Map<string, string[]>()
 
     for (const id of unprunedIds) {
         const metadata = state.toolParameters.get(id)
         if (!metadata) {
-            // logger.warn(`Missing metadata for tool call ID: ${id}`)
             continue
         }
 
@@ -68,41 +73,44 @@ export const deduplicate = (
         }
 
         const signature = createToolSignature(metadata.tool, metadata.parameters)
-        if (!signatureMap.has(signature)) {
-            signatureMap.set(signature, [])
-        }
-        signatureMap.get(signature)!.push(id)
+        pushToMapArray(signatureMap, signature, id)
     }
 
-    // Find duplicates - keep only the most recent (last) in each group
-    const newPruneIds: string[] = []
-
+    // Phase 1: Exact duplicates - keep only the most recent (last) in each group
     for (const [, ids] of signatureMap.entries()) {
         if (ids.length > 1) {
             // All except last (most recent) should be pruned
-            const idsToRemove = ids.slice(0, -1)
-            newPruneIds.push(...idsToRemove)
+            for (let i = 0; i < ids.length - 1; i++) {
+                const id = at(ids, i)
+                if (id) toPruneIds.add(id)
+            }
         }
     }
 
-    state.stats.totalPruneTokens += calculateTokensSaved(state, messages, newPruneIds)
-
-    const allDeduplicatedIds: string[] = [...newPruneIds]
-
     // Phase 2: Fuzzy deduplication for overlapping file reads
-    const overlappingReads = findOverlappingReads(state, unprunedIds, protectedTools, config)
-    if (overlappingReads.length > 0) {
-        allDeduplicatedIds.push(...overlappingReads)
-        logger.debug(`Marked ${overlappingReads.length} overlapping file reads for pruning`)
+    // Pass unprunedIds that haven't been marked for pruning in Phase 1
+    const phase2Ids = unprunedIds.filter((id) => !toPruneIds.has(id))
+    const overlappingReads = findOverlappingReads(state, phase2Ids, protectedTools, config)
+    for (const id of overlappingReads) {
+        toPruneIds.add(id)
     }
 
-    if (allDeduplicatedIds.length > 0) {
-        state.prune.toolIds.push(...allDeduplicatedIds)
-        const tokensSaved = calculateTokensSaved(state, messages, allDeduplicatedIds)
+    if (toPruneIds.size > 0) {
+        const finalPruneIds = Array.from(toPruneIds)
+        state.prune.toolIds.push(...finalPruneIds)
+
+        const tokensSaved = calculateTokensSaved(state, messages, finalPruneIds)
+        state.stats.totalPruneMessages += finalPruneIds.length
         state.stats.totalPruneTokens += tokensSaved
-        state.stats.strategyStats.deduplication.count += allDeduplicatedIds.length
+        state.stats.strategyStats.deduplication.count += finalPruneIds.length
         state.stats.strategyStats.deduplication.tokens += tokensSaved
-        logger.debug(`Marked ${allDeduplicatedIds.length} duplicate tool calls for pruning`)
+
+        logger.debug(
+            `Marked ${finalPruneIds.length} duplicate/overlapping tool calls for pruning`,
+            {
+                tokensSaved,
+            },
+        )
     }
 }
 
@@ -120,7 +128,9 @@ function findOverlappingReads(
     const fileReads = new Map<string, FileReadRange[]>()
 
     // Collect all read operations with file paths
-    for (const id of toolIds) {
+    for (let i = 0; i < toolIds.length; i++) {
+        const id = at(toolIds, i)
+        if (!id) continue
         const metadata = state.toolParameters.get(id)
         if (!metadata || metadata.tool !== "read") continue
         if (protectedTools.includes(metadata.tool)) continue
@@ -132,10 +142,7 @@ function findOverlappingReads(
         const offset = typeof params.offset === "number" ? params.offset : 0
         const limit = typeof params.limit === "number" ? params.limit : undefined
 
-        if (!fileReads.has(filePath)) {
-            fileReads.set(filePath, [])
-        }
-        fileReads.get(filePath)!.push({ id, filePath, offset, limit })
+        pushToMapArray(fileReads, filePath, { id, filePath, offset, limit, index: i })
     }
 
     const toPrune: string[] = []
@@ -144,25 +151,35 @@ function findOverlappingReads(
     for (const [, reads] of fileReads.entries()) {
         if (reads.length < 2) continue
 
-        // Sort by offset (ascending), then by limit (descending for same offset)
-        reads.sort((a, b) => {
-            if (a.offset !== b.offset) return a.offset - b.offset
-            // If same offset, prefer the one with larger limit (or undefined = unlimited)
-            if (a.limit === undefined) return 1
-            if (b.limit === undefined) return -1
-            return b.limit - a.limit
-        })
+        // Check each read against every other read for containment
+        for (let i = 0; i < reads.length; i++) {
+            const a = at(reads, i)
+            if (!a) continue
+            for (let j = 0; j < reads.length; j++) {
+                if (i === j) continue
+                const b = at(reads, j)
+                if (!b) continue
 
-        // Check each read against later reads (which are more recent due to chronological order)
-        for (let i = 0; i < reads.length - 1; i++) {
-            const older = reads[i]!
-            const newer = reads[reads.length - 1]! // Most recent read of this file
-
-            if (older.id === newer.id) continue
-
-            // Check if older read is fully contained within newer read
-            if (isRangeContained(older, newer)) {
-                toPrune.push(older.id)
+                // If a is fully contained within b, a is potentially redundant
+                if (isRangeContained(a, b)) {
+                    // Safety for identical ranges: only prune the older one
+                    const isIdentical = areRangesIdentical(a, b)
+                    if (isIdentical) {
+                        if (a.index < b.index) {
+                            toPrune.push(a.id)
+                            break
+                        }
+                    } else {
+                        // a is strictly contained in b.
+                        // Only prune if the container (b) is MORE RECENT than the contained (a).
+                        // This prevents pruning a newer limited read just because an older unlimited read exists,
+                        // which might be desirable if we prefer keeping newer context.
+                        if (a.index < b.index) {
+                            toPrune.push(a.id)
+                            break
+                        }
+                    }
+                }
             }
         }
     }
@@ -191,35 +208,18 @@ function isRangeContained(a: FileReadRange, b: FileReadRange): boolean {
     return a.offset >= b.offset && aEnd <= bEnd
 }
 
-function createToolSignature(tool: string, parameters?: any): string {
+/**
+ * Check if two ranges are identical.
+ */
+function areRangesIdentical(a: FileReadRange, b: FileReadRange): boolean {
+    return a.offset === b.offset && a.limit === b.limit
+}
+
+function createToolSignature(tool: string, parameters?: Record<string, unknown>): string {
     if (!parameters) {
         return tool
     }
-    const normalized = normalizeParameters(parameters)
+    const normalized = normalizeParams(parameters)
     const sorted = sortObjectKeys(normalized)
     return `${tool}::${JSON.stringify(sorted)}`
-}
-
-function normalizeParameters(params: any): any {
-    if (typeof params !== "object" || params === null) return params
-    if (Array.isArray(params)) return params
-
-    const normalized: any = {}
-    for (const [key, value] of Object.entries(params)) {
-        if (value !== undefined && value !== null) {
-            normalized[key] = value
-        }
-    }
-    return normalized
-}
-
-function sortObjectKeys(obj: any): any {
-    if (typeof obj !== "object" || obj === null) return obj
-    if (Array.isArray(obj)) return obj.map(sortObjectKeys)
-
-    const sorted: any = {}
-    for (const key of Object.keys(obj).sort()) {
-        sorted[key] = sortObjectKeys(obj[key])
-    }
-    return sorted
 }
