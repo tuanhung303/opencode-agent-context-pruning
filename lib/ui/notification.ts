@@ -21,6 +21,7 @@ export type PruneReason =
     | "exploration"
     | "duplicate"
     | "distillation"
+    | "manual"
 export const PRUNE_REASON_LABELS: Record<PruneReason, string> = {
     completion: "Task Complete",
     noise: "Noise Removal",
@@ -28,6 +29,7 @@ export const PRUNE_REASON_LABELS: Record<PruneReason, string> = {
     exploration: "Dead-end Exploration",
     duplicate: "Duplicate Content",
     distillation: "Distillation",
+    manual: "Manual Prune",
 }
 
 function buildMinimalMessage(

@@ -1,19 +1,22 @@
 import { tool } from "@opencode-ai/plugin"
 import type { SessionState, ToolParameterEntry, WithParts } from "../state"
 import type { PluginConfig } from "../config"
-import { PruneReason, sendUnifiedNotification } from "../ui/notification"
+import { sendUnifiedNotification } from "../ui/notification"
 import { formatDiscardNotification, formatRestoreNotification } from "../ui/minimal-notifications"
-import { formatPruningResultForTool } from "../ui/utils"
 import { ensureSessionInitialized } from "../state"
 import { saveSessionState } from "../state/persistence"
 import type { Logger } from "../logger"
 import { loadPrompt } from "../prompts"
 import { calculateTokensSaved, getCurrentParams } from "./utils"
 import { getFilePathFromParameters } from "../protected-file-patterns"
+import { findMessagesByPattern, generateMessageHash } from "../messages/pattern-match"
 
-const DISCARD_TOOL_DESCRIPTION = loadPrompt("discard-tool-spec")
-const DISTILL_TOOL_DESCRIPTION = loadPrompt("distill-tool-spec")
-const RESTORE_TOOL_DESCRIPTION = loadPrompt("restore-tool-spec")
+const DISCARD_TOOL_SPEC = loadPrompt("discard-tool-spec")
+const DISCARD_MSG_SPEC = loadPrompt("discard-msg-spec")
+const DISTILL_TOOL_SPEC = loadPrompt("distill-tool-spec")
+const DISTILL_MSG_SPEC = loadPrompt("distill-msg-spec")
+const RESTORE_TOOL_SPEC = loadPrompt("restore-tool-spec")
+const RESTORE_MSG_SPEC = loadPrompt("restore-msg-spec")
 
 export interface PruneToolContext {
     client: any
@@ -24,30 +27,24 @@ export interface PruneToolContext {
 }
 
 /**
- * Execute a prune operation using call IDs directly.
- * This is the hash-based version that works with resolved call IDs and message part IDs.
+ * Execute a prune operation for tool outputs.
  */
-async function executePruneOperationByCallIds(
+async function executeToolPrune(
     ctx: PruneToolContext,
     toolCtx: { sessionID: string },
     callIds: string[],
     hashes: string[],
-    reason: PruneReason,
     toolName: string,
-    distillation?: string[],
-    messagePartIds: string[] = [],
 ): Promise<string> {
     const { client, state, logger, config, workingDirectory } = ctx
     const sessionId = toolCtx.sessionID
 
     logger.info(`${toolName} tool invoked`)
-    logger.info(JSON.stringify({ hashes, reason, messagePartIds }))
+    logger.info(JSON.stringify({ hashes, toolCount: callIds.length }))
 
-    if ((!callIds || callIds.length === 0) && (!messagePartIds || messagePartIds.length === 0)) {
-        logger.debug(`${toolName} tool called but no valid call IDs or message part IDs resolved`)
-        throw new Error(
-            `No valid hashes provided. Use hashes from tool outputs (e.g., r_a1b2c) or assistant messages (e.g., a_xxxxx).`,
-        )
+    if (!callIds || callIds.length === 0) {
+        logger.debug(`${toolName} tool called but no valid call IDs resolved`)
+        throw new Error(`No valid hashes provided. Use hashes from tool outputs (e.g., r_a1b2c).`)
     }
 
     // Fetch messages to calculate tokens
@@ -87,7 +84,6 @@ async function executePruneOperationByCallIds(
 
     // Add to prune lists
     state.prune.toolIds.push(...callIds)
-    state.prune.messagePartIds.push(...messagePartIds)
 
     // Collect metadata for notification
     const toolMetadata = new Map<string, ToolParameterEntry>()
@@ -101,23 +97,17 @@ async function executePruneOperationByCallIds(
     }
 
     // Calculate token savings
-    const tokensSaved = calculateTokensSaved(state, messages, callIds, messagePartIds)
+    const tokensSaved = calculateTokensSaved(state, messages, callIds, [])
     state.stats.pruneTokenCounter += tokensSaved
-    const totalItems = callIds.length + messagePartIds.length
-    state.stats.pruneMessageCounter += totalItems
+    state.stats.pruneMessageCounter += callIds.length
 
     // Track strategy effectiveness
-    if (toolName === "Discard") {
-        state.stats.strategyStats.manualDiscard.count += totalItems
-        state.stats.strategyStats.manualDiscard.tokens += tokensSaved
-    } else if (toolName === "Distill") {
-        state.stats.strategyStats.distillation.count += totalItems
-        state.stats.strategyStats.distillation.tokens += tokensSaved
-    }
+    state.stats.strategyStats.manualDiscard.count += callIds.length
+    state.stats.strategyStats.manualDiscard.tokens += tokensSaved
 
     // Store stats for display
     state.lastDiscardStats = {
-        itemCount: totalItems,
+        itemCount: callIds.length,
         tokensSaved: state.stats.pruneTokenCounter,
     }
 
@@ -126,7 +116,7 @@ async function executePruneOperationByCallIds(
         timestamp: Date.now(),
         hashes,
         tokensSaved,
-        reason,
+        reason: "manual",
     })
 
     await sendUnifiedNotification(
@@ -137,12 +127,12 @@ async function executePruneOperationByCallIds(
         sessionId,
         callIds,
         toolMetadata,
-        reason,
+        "manual",
         currentParams,
         workingDirectory,
-        distillation,
+        undefined,
         { simplified: true },
-        messagePartIds,
+        [],
     )
 
     state.stats.totalPruneTokens += state.stats.pruneTokenCounter
@@ -155,58 +145,158 @@ async function executePruneOperationByCallIds(
     )
 
     // Return minimal single-line notification
-    const totalCount = callIds.length + messagePartIds.length
-    return formatDiscardNotification(totalCount, reason)
+    return formatDiscardNotification(callIds.length, "manual")
 }
+
+/**
+ * Execute a distill operation for tool outputs.
+ */
+async function executeToolDistill(
+    ctx: PruneToolContext,
+    toolCtx: { sessionID: string },
+    callIds: string[],
+    hashes: string[],
+    distillation: string[],
+): Promise<string> {
+    const { client, state, logger, config, workingDirectory } = ctx
+    const sessionId = toolCtx.sessionID
+
+    logger.info("Distill tool invoked")
+    logger.info(JSON.stringify({ hashes, toolCount: callIds.length }))
+
+    if (!callIds || callIds.length === 0) {
+        logger.debug("Distill tool called but no valid call IDs resolved")
+        throw new Error(`No valid hashes provided. Use hashes from tool outputs (e.g., r_a1b2c).`)
+    }
+
+    // Fetch messages to calculate tokens
+    const messagesResponse = await client.session.messages({
+        path: { id: sessionId },
+    })
+    const messages: WithParts[] = messagesResponse.data || messagesResponse
+
+    await ensureSessionInitialized(ctx.client, state, sessionId, logger, messages)
+
+    const currentParams = getCurrentParams(state, messages, logger)
+
+    // Validate that all call IDs exist in cache and aren't protected
+    for (const callId of callIds) {
+        const metadata = state.toolParameters.get(callId)
+        if (!metadata) {
+            const hash = state.callIdToHash.get(callId) || "unknown"
+            logger.debug("Rejecting distill request - call ID not in cache", { callId, hash })
+            throw new Error(`Invalid hash provided. The tool may have already been discarded.`)
+        }
+
+        const allProtectedTools = config.tools.settings.protectedTools
+        if (allProtectedTools.includes(metadata.tool)) {
+            const hash = state.callIdToHash.get(callId) || "unknown"
+            logger.debug("Rejecting distill request - protected tool", {
+                callId,
+                hash,
+                tool: metadata.tool,
+            })
+            throw new Error(
+                `Cannot distill: '${metadata.tool}' is a protected tool.\n` +
+                    `Protected tools: ${allProtectedTools.join(", ")}`,
+            )
+        }
+    }
+
+    // Add to prune lists
+    state.prune.toolIds.push(...callIds)
+
+    // Collect metadata for notification
+    const toolMetadata = new Map<string, ToolParameterEntry>()
+    for (const callId of callIds) {
+        const toolParameters = state.toolParameters.get(callId)
+        if (toolParameters) {
+            toolMetadata.set(callId, toolParameters)
+        } else {
+            logger.debug("No metadata found for call ID", { callId })
+        }
+    }
+
+    // Calculate token savings
+    const tokensSaved = calculateTokensSaved(state, messages, callIds, [])
+    state.stats.pruneTokenCounter += tokensSaved
+    state.stats.pruneMessageCounter += callIds.length
+
+    // Track strategy effectiveness
+    state.stats.strategyStats.distillation.count += callIds.length
+    state.stats.strategyStats.distillation.tokens += tokensSaved
+
+    // Store stats for display
+    state.lastDiscardStats = {
+        itemCount: callIds.length,
+        tokensSaved: state.stats.pruneTokenCounter,
+    }
+
+    // Record in discard history
+    state.discardHistory.push({
+        timestamp: Date.now(),
+        hashes,
+        tokensSaved,
+        reason: "distillation",
+    })
+
+    // Log the distillation for debugging/analysis
+    logger.info("Distillation data received:")
+    logger.info(JSON.stringify(distillation, null, 2))
+
+    await sendUnifiedNotification(
+        client,
+        logger,
+        config,
+        state,
+        sessionId,
+        callIds,
+        toolMetadata,
+        "distillation",
+        currentParams,
+        workingDirectory,
+        distillation,
+        { simplified: true },
+        [],
+    )
+
+    state.stats.totalPruneTokens += state.stats.pruneTokenCounter
+    state.stats.pruneTokenCounter = 0
+    state.stats.totalPruneMessages += state.stats.pruneMessageCounter
+    state.stats.pruneMessageCounter = 0
+
+    saveSessionState(state, logger).catch((err) =>
+        logger.error("Failed to persist state", { error: err.message }),
+    )
+
+    return formatDiscardNotification(callIds.length, "distillation")
+}
+
+// ============================================================================
+// TOOL VARIANTS (Hash-based for tool outputs)
+// ============================================================================
 
 export function createDiscardTool(ctx: PruneToolContext): ReturnType<typeof tool> {
     return tool({
-        description: DISCARD_TOOL_DESCRIPTION,
+        description: DISCARD_TOOL_SPEC,
         args: {
-            reason: tool.schema
-                .string()
-                .describe(
-                    "Why you're discarding: 'noise' | 'completion' | 'superseded' | 'exploration' | 'duplicate'",
-                ),
             hashes: tool.schema
                 .array(tool.schema.string())
-                .describe(
-                    "Hash identifiers from tool outputs (e.g., r_a1b2c) or assistant messages (e.g., a_xxxxx)",
-                ),
+                .describe("Hash identifiers from tool outputs (e.g., r_a1b2c, g_d4e5f)"),
         },
         async execute(args, toolCtx) {
             const { state, logger } = ctx
 
-            // Validate reason
-            const validReasons = [
-                "completion",
-                "noise",
-                "superseded",
-                "exploration",
-                "duplicate",
-            ] as const
-            if (!args.reason || !validReasons.includes(args.reason as any)) {
-                logger.debug("Invalid discard reason provided: " + args.reason)
-                throw new Error(
-                    `Invalid reason '${args.reason}'. Use one of: ${validReasons.join(", ")}`,
-                )
-            }
-
-            // Validate hashes provided
             if (!args.hashes || args.hashes.length === 0) {
-                throw new Error(
-                    "No hashes provided. Use hash identifiers from tool outputs or assistant messages.",
-                )
+                throw new Error("No hashes provided. Use hash identifiers from tool outputs.")
             }
 
-            // Resolve hashes
+            // Resolve hashes to call IDs
             const callIds: string[] = []
-            const messagePartIds: string[] = []
             const validHashes: string[] = []
             const unknownHashes: string[] = []
 
             for (const hash of args.hashes) {
-                // Check if it's a tool hash
                 const callId = state.hashToCallId.get(hash)
                 if (callId) {
                     if (!state.prune.toolIds.includes(callId)) {
@@ -215,28 +305,15 @@ export function createDiscardTool(ctx: PruneToolContext): ReturnType<typeof tool
                     } else {
                         logger.debug(`Hash ${hash} already pruned, skipping`)
                     }
-                    continue
+                } else {
+                    unknownHashes.push(hash)
+                    logger.warn(`Unknown hash: ${hash}`)
                 }
-
-                // Check if it's an assistant message part hash
-                const messagePartId = state.hashToMessagePart.get(hash)
-                if (messagePartId) {
-                    if (!state.prune.messagePartIds.includes(messagePartId)) {
-                        messagePartIds.push(messagePartId)
-                        validHashes.push(hash)
-                    } else {
-                        logger.debug(`Hash ${hash} already pruned, skipping`)
-                    }
-                    continue
-                }
-
-                unknownHashes.push(hash)
-                logger.warn(`Unknown hash: ${hash}`)
             }
 
             if (unknownHashes.length > 0 && validHashes.length === 0) {
                 throw new Error(
-                    `Unknown hashes: ${unknownHashes.join(", ")}. Use hash identifiers from tool outputs or assistant messages.`,
+                    `Unknown hashes: ${unknownHashes.join(", ")}. Use hash identifiers from tool outputs.`,
                 )
             }
 
@@ -247,19 +324,10 @@ export function createDiscardTool(ctx: PruneToolContext): ReturnType<typeof tool
             }
 
             logger.info(
-                `Discard: ${validHashes.length} hashes resolved to ${callIds.length} tool(s) and ${messagePartIds.length} message part(s)`,
+                `Discard: ${validHashes.length} hashes resolved to ${callIds.length} tool(s)`,
             )
 
-            return executePruneOperationByCallIds(
-                ctx,
-                toolCtx,
-                callIds,
-                validHashes,
-                args.reason as PruneReason,
-                "Discard",
-                undefined,
-                messagePartIds,
-            )
+            return executeToolPrune(ctx, toolCtx, callIds, validHashes, "Discard")
         },
     })
 }
@@ -271,16 +339,14 @@ export interface DistillEntry {
 
 export function createDistillTool(ctx: PruneToolContext): ReturnType<typeof tool> {
     return tool({
-        description: DISTILL_TOOL_DESCRIPTION,
+        description: DISTILL_TOOL_SPEC,
         args: {
             entries: tool.schema
                 .array(
                     tool.schema.object({
                         hash: tool.schema
                             .string()
-                            .describe(
-                                "Hash identifier from tool outputs (e.g., r_a1b2c) or assistant messages (e.g., a_xxxxx)",
-                            ),
+                            .describe("Hash identifier from tool outputs (e.g., r_a1b2c)"),
                         replace_content: tool.schema
                             .string()
                             .describe("The distilled content to replace the raw output with"),
@@ -305,29 +371,16 @@ export function createDistillTool(ctx: PruneToolContext): ReturnType<typeof tool
 
             // Resolve hashes
             const callIds: string[] = []
-            const messagePartIds: string[] = []
             const validHashes: string[] = []
             const validDistillation: string[] = []
 
             for (const entry of args.entries) {
                 const hash = entry.hash
 
-                // Tool hash
                 const callId = state.hashToCallId.get(hash)
                 if (callId) {
                     if (!state.prune.toolIds.includes(callId)) {
                         callIds.push(callId)
-                        validHashes.push(hash)
-                        validDistillation.push(entry.replace_content)
-                    }
-                    continue
-                }
-
-                // Assistant message part hash
-                const messagePartId = state.hashToMessagePart.get(hash)
-                if (messagePartId) {
-                    if (!state.prune.messagePartIds.includes(messagePartId)) {
-                        messagePartIds.push(messagePartId)
                         validHashes.push(hash)
                         validDistillation.push(entry.replace_content)
                     }
@@ -343,38 +396,26 @@ export function createDistillTool(ctx: PruneToolContext): ReturnType<typeof tool
                 )
             }
 
-            // Log the distillation for debugging/analysis
-            logger.info("Distillation data received:")
-            logger.info(JSON.stringify(validDistillation, null, 2))
-
-            return executePruneOperationByCallIds(
-                ctx,
-                toolCtx,
-                callIds,
-                validHashes,
-                "distillation" as PruneReason,
-                "Distill",
-                validDistillation,
-                messagePartIds,
-            )
+            return executeToolDistill(ctx, toolCtx, callIds, validHashes, validDistillation)
         },
     })
 }
 
 export function createRestoreTool(ctx: PruneToolContext): ReturnType<typeof tool> {
     return tool({
-        description: RESTORE_TOOL_DESCRIPTION,
+        description: RESTORE_TOOL_SPEC,
         args: {
             hashes: tool.schema
                 .array(tool.schema.string())
-                .describe("Hash identifiers from pruned content (e.g., r_a1b2c or a_xxxxx)"),
+                .describe("Hash identifiers from pruned tool outputs (e.g., r_a1b2c)"),
         },
         async execute(args, toolCtx) {
             const { state, logger } = ctx
-            const sessionId = toolCtx.sessionID
 
             if (!args.hashes || args.hashes.length === 0) {
-                throw new Error("No hashes provided. Use hash identifiers from pruned content.")
+                throw new Error(
+                    "No hashes provided. Use hash identifiers from pruned tool outputs.",
+                )
             }
 
             // Resolve hashes to call IDs and restore
@@ -383,7 +424,6 @@ export function createRestoreTool(ctx: PruneToolContext): ReturnType<typeof tool
             const notPruned: string[] = []
 
             for (const hash of args.hashes) {
-                // Tool hash
                 const callId = state.hashToCallId.get(hash)
                 if (callId) {
                     const pruneIndex = state.prune.toolIds.indexOf(callId)
@@ -397,33 +437,290 @@ export function createRestoreTool(ctx: PruneToolContext): ReturnType<typeof tool
                     continue
                 }
 
-                // Assistant message part hash
-                const messagePartId = state.hashToMessagePart.get(hash)
-                if (messagePartId) {
-                    const pruneIndex = state.prune.messagePartIds.indexOf(messagePartId)
-                    if (pruneIndex !== -1) {
-                        state.prune.messagePartIds.splice(pruneIndex, 1)
-                        restored.push(hash)
-                        logger.info(
-                            `Restored message part with hash ${hash} (partId: ${messagePartId})`,
-                        )
-                    } else {
-                        notPruned.push(hash)
-                    }
-                    continue
-                }
-
                 notFound.push(hash)
             }
 
-            // Save state
             saveSessionState(state, logger).catch((err) =>
                 logger.error("Failed to persist state", { error: err.message }),
             )
 
-            // Return minimal notification
-            const totalRestored = restored.length
-            return formatRestoreNotification(totalRestored)
+            return formatRestoreNotification(restored.length)
+        },
+    })
+}
+
+// ============================================================================
+// MESSAGE VARIANTS (Pattern-based for assistant messages)
+// ============================================================================
+
+export function createDiscardMsgTool(ctx: PruneToolContext): ReturnType<typeof tool> {
+    return tool({
+        description: DISCARD_MSG_SPEC,
+        args: {
+            patterns: tool.schema
+                .array(tool.schema.string())
+                .describe(
+                    "Pattern strings to match assistant messages (e.g., ['Let me explain...', '...completed'])",
+                ),
+        },
+        async execute(args, toolCtx) {
+            const { client, state, logger, config, workingDirectory } = ctx
+            const sessionId = toolCtx.sessionID
+
+            if (!args.patterns || args.patterns.length === 0) {
+                throw new Error(
+                    "No patterns provided. Use pattern strings to match assistant messages.",
+                )
+            }
+
+            // Fetch messages to find matches
+            const messagesResponse = await client.session.messages({
+                path: { id: sessionId },
+            })
+            const messages: WithParts[] = messagesResponse.data || messagesResponse
+
+            await ensureSessionInitialized(ctx.client, state, sessionId, logger, messages)
+
+            // Find matching messages
+            const allMatches: Array<{
+                messageId: string
+                partIndex: number
+                content: string
+                pattern: string
+            }> = []
+            for (const pattern of args.patterns) {
+                const matches = findMessagesByPattern(messages, pattern)
+                for (const match of matches) {
+                    allMatches.push({ ...match, pattern })
+                }
+            }
+
+            if (allMatches.length === 0) {
+                throw new Error(
+                    `No messages matched the provided patterns: ${args.patterns.join(", ")}`,
+                )
+            }
+
+            // Generate hashes and add to prune list
+            const restoreHashes: string[] = []
+            for (const match of allMatches) {
+                const partId = `${match.messageId}:${match.partIndex}`
+                if (!state.prune.messagePartIds.includes(partId)) {
+                    const hash = generateMessageHash()
+                    state.prune.messagePartIds.push(partId)
+                    state.hashToMessagePart.set(hash, partId)
+                    state.messagePartToHash.set(partId, hash)
+                    state.softPrunedMessages.set(hash, {
+                        content: match.content,
+                        messageId: match.messageId,
+                        partIndex: match.partIndex,
+                        prunedAt: Date.now(),
+                        hash,
+                    })
+                    restoreHashes.push(hash)
+                    logger.info(`Discarded message part ${partId} with hash ${hash}`)
+                }
+            }
+
+            // Calculate token savings
+            const tokensSaved = calculateTokensSaved(
+                state,
+                messages,
+                [],
+                allMatches.map((m) => `${m.messageId}:${m.partIndex}`),
+            )
+            state.stats.pruneTokenCounter += tokensSaved
+            state.stats.pruneMessageCounter += restoreHashes.length
+            state.stats.strategyStats.manualDiscard.count += restoreHashes.length
+            state.stats.strategyStats.manualDiscard.tokens += tokensSaved
+
+            state.lastDiscardStats = {
+                itemCount: restoreHashes.length,
+                tokensSaved: state.stats.pruneTokenCounter,
+            }
+
+            state.discardHistory.push({
+                timestamp: Date.now(),
+                hashes: restoreHashes,
+                tokensSaved,
+                reason: "manual",
+            })
+
+            state.stats.totalPruneTokens += state.stats.pruneTokenCounter
+            state.stats.pruneTokenCounter = 0
+            state.stats.totalPruneMessages += state.stats.pruneMessageCounter
+            state.stats.pruneMessageCounter = 0
+
+            saveSessionState(state, logger).catch((err) =>
+                logger.error("Failed to persist state", { error: err.message }),
+            )
+
+            return `Discarded ${restoreHashes.length} message(s). Restore hashes: ${restoreHashes.join(", ")}`
+        },
+    })
+}
+
+export interface DistillMsgEntry {
+    pattern: string
+    replace_content: string
+}
+
+export function createDistillMsgTool(ctx: PruneToolContext): ReturnType<typeof tool> {
+    return tool({
+        description: DISTILL_MSG_SPEC,
+        args: {
+            entries: tool.schema
+                .array(
+                    tool.schema.object({
+                        pattern: tool.schema
+                            .string()
+                            .describe(
+                                "Pattern string to match assistant message (e.g., 'Let me explain...')",
+                            ),
+                        replace_content: tool.schema
+                            .string()
+                            .describe("The distilled content to replace the message with"),
+                    }),
+                )
+                .describe(
+                    "Array of entries to distill, each with a pattern and its replacement content",
+                ),
+        },
+        async execute(args, toolCtx) {
+            const { client, state, logger, config, workingDirectory } = ctx
+            const sessionId = toolCtx.sessionID
+
+            if (!args.entries || args.entries.length === 0) {
+                throw new Error(
+                    "No entries provided. Provide an array of {pattern, replace_content} objects.",
+                )
+            }
+
+            // Fetch messages to find matches
+            const messagesResponse = await client.session.messages({
+                path: { id: sessionId },
+            })
+            const messages: WithParts[] = messagesResponse.data || messagesResponse
+
+            await ensureSessionInitialized(ctx.client, state, sessionId, logger, messages)
+
+            // Find matching messages and distill
+            const restoreHashes: string[] = []
+            for (const entry of args.entries) {
+                const matches = findMessagesByPattern(messages, entry.pattern)
+                for (const match of matches) {
+                    const partId = `${match.messageId}:${match.partIndex}`
+                    if (!state.prune.messagePartIds.includes(partId)) {
+                        const hash = generateMessageHash()
+                        state.prune.messagePartIds.push(partId)
+                        state.hashToMessagePart.set(hash, partId)
+                        state.messagePartToHash.set(partId, hash)
+                        state.softPrunedMessages.set(hash, {
+                            content: entry.replace_content, // Store distilled content
+                            messageId: match.messageId,
+                            partIndex: match.partIndex,
+                            prunedAt: Date.now(),
+                            hash,
+                        })
+                        restoreHashes.push(hash)
+                        logger.info(`Distilled message part ${partId} with hash ${hash}`)
+                    }
+                }
+            }
+
+            if (restoreHashes.length === 0) {
+                throw new Error("No messages matched the provided patterns.")
+            }
+
+            // Calculate token savings
+            const tokensSaved = calculateTokensSaved(
+                state,
+                messages,
+                [],
+                restoreHashes
+                    .map((h) => {
+                        const entry = state.softPrunedMessages.get(h)
+                        return entry ? `${entry.messageId}:${entry.partIndex}` : ""
+                    })
+                    .filter(Boolean),
+            )
+            state.stats.pruneTokenCounter += tokensSaved
+            state.stats.pruneMessageCounter += restoreHashes.length
+            state.stats.strategyStats.distillation.count += restoreHashes.length
+            state.stats.strategyStats.distillation.tokens += tokensSaved
+
+            state.lastDiscardStats = {
+                itemCount: restoreHashes.length,
+                tokensSaved: state.stats.pruneTokenCounter,
+            }
+
+            state.discardHistory.push({
+                timestamp: Date.now(),
+                hashes: restoreHashes,
+                tokensSaved,
+                reason: "distillation",
+            })
+
+            state.stats.totalPruneTokens += state.stats.pruneTokenCounter
+            state.stats.pruneTokenCounter = 0
+            state.stats.totalPruneMessages += state.stats.pruneMessageCounter
+            state.stats.pruneMessageCounter = 0
+
+            saveSessionState(state, logger).catch((err) =>
+                logger.error("Failed to persist state", { error: err.message }),
+            )
+
+            return `Distilled ${restoreHashes.length} message(s). Restore hash: ${restoreHashes.join(", ")}`
+        },
+    })
+}
+
+export function createRestoreMsgTool(ctx: PruneToolContext): ReturnType<typeof tool> {
+    return tool({
+        description: RESTORE_MSG_SPEC,
+        args: {
+            hashes: tool.schema
+                .array(tool.schema.string())
+                .describe(
+                    "Message hashes from previous discard_msg/distill_msg calls (e.g., m_a1b2c3)",
+                ),
+        },
+        async execute(args, toolCtx) {
+            const { state, logger } = ctx
+
+            if (!args.hashes || args.hashes.length === 0) {
+                throw new Error(
+                    "No hashes provided. Use message hashes from discard_msg/distill_msg calls.",
+                )
+            }
+
+            const restored: string[] = []
+            const notFound: string[] = []
+            const notPruned: string[] = []
+
+            for (const hash of args.hashes) {
+                const prunedEntry = state.softPrunedMessages.get(hash)
+                if (!prunedEntry) {
+                    notFound.push(hash)
+                    continue
+                }
+
+                const partId = `${prunedEntry.messageId}:${prunedEntry.partIndex}`
+                const pruneIndex = state.prune.messagePartIds.indexOf(partId)
+                if (pruneIndex !== -1) {
+                    state.prune.messagePartIds.splice(pruneIndex, 1)
+                    restored.push(hash)
+                    logger.info(`Restored message with hash ${hash} (partId: ${partId})`)
+                } else {
+                    notPruned.push(hash)
+                }
+            }
+
+            saveSessionState(state, logger).catch((err) =>
+                logger.error("Failed to persist state", { error: err.message }),
+            )
+
+            return formatRestoreNotification(restored.length)
         },
     })
 }

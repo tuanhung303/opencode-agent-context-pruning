@@ -2,7 +2,14 @@ import type { Plugin } from "@opencode-ai/plugin"
 import { getConfig } from "./lib/config"
 import { Logger } from "./lib/logger"
 import { createSessionState } from "./lib/state"
-import { createDiscardTool, createDistillTool, createRestoreTool } from "./lib/strategies"
+import {
+    createDiscardTool,
+    createDiscardMsgTool,
+    createDistillTool,
+    createDistillMsgTool,
+    createRestoreTool,
+    createRestoreMsgTool,
+} from "./lib/strategies"
 import {
     createChatMessageTransformHandler,
     createCommandExecuteHandler,
@@ -64,7 +71,14 @@ const plugin: Plugin = (async (ctx) => {
         ),
         tool: {
             ...(config.tools.discard.enabled && {
-                discard: createDiscardTool({
+                discard_tool: createDiscardTool({
+                    client: ctx.client,
+                    state,
+                    logger,
+                    config,
+                    workingDirectory: ctx.directory,
+                }),
+                discard_msg: createDiscardMsgTool({
                     client: ctx.client,
                     state,
                     logger,
@@ -73,7 +87,14 @@ const plugin: Plugin = (async (ctx) => {
                 }),
             }),
             ...(config.tools.distill.enabled && {
-                distill: createDistillTool({
+                distill_tool: createDistillTool({
+                    client: ctx.client,
+                    state,
+                    logger,
+                    config,
+                    workingDirectory: ctx.directory,
+                }),
+                distill_msg: createDistillMsgTool({
                     client: ctx.client,
                     state,
                     logger,
@@ -81,7 +102,14 @@ const plugin: Plugin = (async (ctx) => {
                     workingDirectory: ctx.directory,
                 }),
             }),
-            restore: createRestoreTool({
+            restore_tool: createRestoreTool({
+                client: ctx.client,
+                state,
+                logger,
+                config,
+                workingDirectory: ctx.directory,
+            }),
+            restore_msg: createRestoreMsgTool({
                 client: ctx.client,
                 state,
                 logger,
@@ -99,8 +127,13 @@ const plugin: Plugin = (async (ctx) => {
             }
 
             const toolsToAdd: string[] = []
-            if (config.tools.discard.enabled) toolsToAdd.push("discard")
-            if (config.tools.distill.enabled) toolsToAdd.push("distill")
+            if (config.tools.discard.enabled) {
+                toolsToAdd.push("discard_tool", "discard_msg")
+            }
+            if (config.tools.distill.enabled) {
+                toolsToAdd.push("distill_tool", "distill_msg")
+            }
+            toolsToAdd.push("restore_tool", "restore_msg")
 
             if (toolsToAdd.length > 0) {
                 const existingPrimaryTools = opencodeConfig.experimental?.primary_tools ?? []
@@ -109,7 +142,7 @@ const plugin: Plugin = (async (ctx) => {
                     primary_tools: [...existingPrimaryTools, ...toolsToAdd],
                 }
                 logger.info(
-                    `Added ${toolsToAdd.map((t) => `'${t}'`).join(" and ")} to experimental.primary_tools via config mutation`,
+                    `Added ${toolsToAdd.map((t) => `'${t}'`).join(", ")} to experimental.primary_tools via config mutation`,
                 )
             }
         },

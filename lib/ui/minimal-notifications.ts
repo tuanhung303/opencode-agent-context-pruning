@@ -5,6 +5,7 @@ export type PruneReason =
     | "exploration"
     | "duplicate"
     | "distillation"
+    | "manual"
 
 export interface PruneOperation {
     hash: string

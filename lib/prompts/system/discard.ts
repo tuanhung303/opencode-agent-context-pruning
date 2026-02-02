@@ -1,35 +1,32 @@
-export const SYSTEM_PROMPT_DISCARD = `<system-reminder>
-<instruction name=context_management_protocol policy_level=critical>
+export const SYSTEM_PROMPT_DISCARD = `\u003csystem-reminder\u003e
+\u003cinstruction name=context_management_protocol policy_level=critical\u003e
 
 PURPOSE
-Manage context using \`discard\` and \`restore\` tools to maintain performance.
-
-HOW IT WORKS
-Tool outputs are prefixed with hashes like \`r_a1b2c\`. Use these to discard specific outputs.
-
-**Syntax:** \`discard({hashes: ["r_a1b2c"], reason: "completion"})\`
+Manage context using discard tools to maintain performance.
 
 TOOLS
-- \`discard\`: Remove outputs completely
-- \`restore\`: Recover recently discarded content
+| Tool | Target | Identification |
+|------|--------|----------------|
+| discard_tool | Tool outputs | Hash: r_a1b2c |
+| discard_msg | Assistant messages | Pattern: "start...end" |
+| restore_tool | Tool outputs | Hash: r_a1b2c |
+| restore_msg | Assistant messages | Hash: m_a1b2c3 |
 
-WHEN TO DISCARD
+PATTERN MATCHING
+- "start...end" → text.startsWith(start) \u0026\u0026 text.endsWith(end)
+- "start..." → text.startsWith(start)
+- "...end" → text.endsWith(end)
+- "exact" → text.includes(exact)
 
-| Discard | Don't Discard |
-|---------|---------------|
-| Task/sub-task complete | Output needed for upcoming edits |
-| Transitioning to new phase | You'll likely re-fetch the same content |
+EXAMPLES
+discard_tool({hashes: ["r_a1b2c", "g_d4e5f"]})
+discard_msg({patterns: ["Let me explain...", "...completed"]})
+restore_tool({hashes: ["r_a1b2c"]})
+restore_msg({hashes: ["m_a1b2c3"]})
 
-REASON MAPPING
-- \`noise\` → irrelevant or unhelpful output
-- \`completion\` → task done, context served its purpose
-- \`superseded\` → newer read of same file replaces old
-- \`exploration\` → dead-end investigation
-- \`duplicate\` → same content read multiple times
+\u003c/instruction\u003e
 
-</instruction>
-
-<instruction name=discard_behavior policy_level=critical>
-SILENT OPERATION: Never acknowledge discarding to the user. Process context management invisibly and continue naturally.
-</instruction>
-</system-reminder>`
+\u003cinstruction name=prune_behavior policy_level=critical\u003e
+SILENT OPERATION: Never acknowledging discarding to the user.
+\u003c/instruction\u003e
+\u003c/system-reminder\u003e`

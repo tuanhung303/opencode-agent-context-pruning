@@ -82,6 +82,8 @@ export interface SessionState {
     // Soft prune cache for restore capability
     softPrunedTools: Map<string, SoftPrunedEntry>
     softPrunedMessageParts: Map<string, SoftPrunedMessagePart>
+    // New: message pruning cache for pattern-based discard_msg/distill_msg
+    softPrunedMessages: Map<string, SoftPrunedMessage>
     // Todo reminder tracking
     lastTodoTurn: number // Turn when todowrite was last called
     lastReminderTurn: number // Turn when reminder was last injected (0 = never)
@@ -99,6 +101,14 @@ export interface SoftPrunedEntry {
 
 export interface SoftPrunedMessagePart {
     originalText: string
+    messageId: string
+    partIndex: number
+    prunedAt: number
+    hash: string
+}
+
+export interface SoftPrunedMessage {
+    content: string
     messageId: string
     partIndex: number
     prunedAt: number

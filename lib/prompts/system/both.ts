@@ -1,37 +1,36 @@
-export const SYSTEM_PROMPT_BOTH = `<system-reminder>
-<instruction name=context_management_protocol policy_level=critical>
+export const SYSTEM_PROMPT_BOTH = `\u003csystem-reminder\u003e
+\u003cinstruction name=context_management_protocol policy_level=critical\u003e
 
 PURPOSE
-Manage context using \`discard\`, \`distill\`, and \`restore\` tools to maintain performance.
-
-HOW IT WORKS
-Tool outputs are prefixed with hashes like \`r_a1b2c\`. Use these to discard or distill specific outputs.
-
-- **Discard:** \`discard({hashes: ["r_a1b2c"], reason: "completion"})\`
-- **Distill:** \`distill([{hash: "r_a1b2c", replace_content: "summary..."}])\`
+Manage context using pruning tools to maintain performance.
 
 TOOLS
-- \`discard\`: Remove outputs completely
-- \`distill\`: Preserve condensed knowledge, then prune raw output
-- \`restore\`: Recover recently pruned content
+| Tool | Target | Identification |
+|------|--------|----------------|
+| discard_tool | Tool outputs | Hash: r_a1b2c |
+| discard_msg | Assistant messages | Pattern: "start...end" |
+| distill_tool | Tool outputs | Hash: r_a1b2c |
+| distill_msg | Assistant messages | Pattern: "start...end" |
+| restore_tool | Tool outputs | Hash: r_a1b2c |
+| restore_msg | Assistant messages | Hash: m_a1b2c3 |
 
-WHEN TO DISCARD vs DISTILL
+PATTERN MATCHING
+- "start...end" → text.startsWith(start) \u0026\u0026 text.endsWith(end)
+- "start..." → text.startsWith(start)
+- "...end" → text.endsWith(end)
+- "exact" → text.includes(exact)
 
-| Use Discard | Use Distill |
-|-------------|-------------|
-| Output is noise or irrelevant | Preserve key findings in condensed form |
-| Task complete, no knowledge needed | Valuable info mixed with unnecessary detail |
+EXAMPLES
+discard_tool({hashes: ["r_a1b2c", "g_d4e5f"]})
+discard_msg({patterns: ["Let me explain...", "...completed"]})
+distill_tool([{hash: "r_a1b2c", replace_content: "auth.ts: validateToken()..."}])
+distill_msg([{pattern: "Let me explain...", replace_content: "Explained auth"}])
+restore_tool({hashes: ["r_a1b2c"]})
+restore_msg({hashes: ["m_a1b2c3"]})
 
-REASON MAPPING (for discard)
-- \`noise\` → irrelevant or unhelpful output
-- \`completion\` → task done, context served its purpose
-- \`superseded\` → newer read of same file replaces old
-- \`exploration\` → dead-end investigation
-- \`duplicate\` → same content read multiple times
+\u003c/instruction\u003e
 
-</instruction>
-
-<instruction name=prune_behavior policy_level=critical>
-SILENT OPERATION: Never acknowledge discarding or distilling to the user. Process context management invisibly and continue naturally.
-</instruction>
-</system-reminder>`
+\u003cinstruction name=prune_behavior policy_level=critical\u003e
+SILENT OPERATION: Never acknowledge pruning to the user. Process context management invisibly.
+\u003c/instruction\u003e
+\u003c/system-reminder\u003e`
