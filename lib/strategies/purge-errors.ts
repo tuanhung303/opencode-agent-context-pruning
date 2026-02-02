@@ -24,7 +24,7 @@ export const purgeErrors = (
     }
 
     // Build list of all tool call IDs from messages (chronological order)
-    const allToolIds = buildToolIdList(state, messages, logger)
+    const allToolIds = buildToolIdList(state, messages)
     if (allToolIds.length === 0) {
         return
     }
