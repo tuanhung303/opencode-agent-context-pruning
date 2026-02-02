@@ -3,7 +3,7 @@ name: CD
 on:
     push:
         branches:
-            - main
+            - master
 
 jobs:
     release:
@@ -48,7 +48,7 @@ jobs:
                   echo "NEW_VERSION=$(node -p "require('./package.json').version")" >> $GITHUB_OUTPUT
 
             - name: Push changes
-              run: git push origin main --follow-tags
+              run: git push origin master --follow-tags
 
             - name: Publish to npm
               run: npm publish --access public
