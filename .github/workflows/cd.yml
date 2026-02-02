@@ -1,56 +1,56 @@
 name: CD
 
 on:
-  push:
-    branches:
-      - main
+    push:
+        branches:
+            - main
 
 jobs:
-  release:
-    name: Release & Publish
-    runs-on: ubuntu-latest
-    if: "!contains(github.event.head_commit.message, 'skip ci')"
-    permissions:
-      contents: write
-      id-token: write
+    release:
+        name: Release & Publish
+        runs-on: ubuntu-latest
+        if: "!contains(github.event.head_commit.message, 'skip ci')"
+        permissions:
+            contents: write
+            id-token: write
 
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
+        steps:
+            - name: Checkout repository
+              uses: actions/checkout@v4
+              with:
+                  fetch-depth: 0
+                  token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: 'npm'
-          registry-url: 'https://registry.npmjs.org'
+            - name: Setup Node.js
+              uses: actions/setup-node@v4
+              with:
+                  node-version: 20
+                  cache: "npm"
+                  registry-url: "https://registry.npmjs.org"
 
-      - name: Install dependencies
-        run: npm ci
+            - name: Install dependencies
+              run: npm ci
 
-      - name: Build
-        run: npm run build
+            - name: Build
+              run: npm run build
 
-      - name: Configure Git
-        run: |
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+            - name: Configure Git
+              run: |
+                  git config --global user.name "github-actions[bot]"
+                  git config --global user.email "github-actions[bot]@users.noreply.github.com"
 
-      - name: Bump version
-        id: bump
-        run: |
-          # Use npm version to bump (patch by default for automated CD)
-          # In a real-world scenario, you might use semantic-release or conventional commits
-          npm version patch -m "chore(release): bump version to %s [skip ci]"
-          echo "NEW_VERSION=$(node -p "require('./package.json').version")" >> $GITHUB_OUTPUT
+            - name: Bump version
+              id: bump
+              run: |
+                  # Use npm version to bump (patch by default for automated CD)
+                  # In a real-world scenario, you might use semantic-release or conventional commits
+                  npm version patch -m "chore(release): bump version to %s [skip ci]"
+                  echo "NEW_VERSION=$(node -p "require('./package.json').version")" >> $GITHUB_OUTPUT
 
-      - name: Push changes
-        run: git push origin main --follow-tags
+            - name: Push changes
+              run: git push origin main --follow-tags
 
-      - name: Publish to npm
-        run: npm publish --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+            - name: Publish to npm
+              run: npm publish --access public
+              env:
+                  NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

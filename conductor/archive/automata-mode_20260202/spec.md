@@ -43,8 +43,8 @@ Two removal triggers:
 
 ```typescript
 automataMode: {
-  enabled: boolean      // Default: true
-  initialTurns: number  // Default: 8 (turns before first reflection)
+    enabled: boolean // Default: true
+    initialTurns: number // Default: 8 (turns before first reflection)
 }
 ```
 
@@ -52,9 +52,9 @@ automataMode: {
 
 - **Hook**: `chat.message.transform` (existing)
 - **State Tracking**: New fields in `SessionState`:
-  - `automataEnabled: boolean`
-  - `lastAutomataTurn: number`
-  - `lastReflectionTurn: number`
+    - `automataEnabled: boolean`
+    - `lastAutomataTurn: number`
+    - `lastReflectionTurn: number`
 
 ## Acceptance Criteria
 
