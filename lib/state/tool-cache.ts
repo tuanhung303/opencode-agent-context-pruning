@@ -153,7 +153,7 @@ function trackTodoInteractions(state: SessionState, messages: WithParts[], logge
                     if (Array.isArray(todos)) {
                         latestTodos = todos
                     }
-                } catch (e) {
+                } catch {
                     // Ignore parse errors
                 }
             }

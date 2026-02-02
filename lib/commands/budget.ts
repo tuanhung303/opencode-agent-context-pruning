@@ -31,7 +31,7 @@ function calculateContextStats(messages: WithParts[]): {
     toolTokens: number
     toolCount: number
 } {
-    let systemTokens = 0
+    const systemTokens = 0
     let userTokens = 0
     let assistantTokens = 0
     let toolTokens = 0

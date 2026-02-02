@@ -54,7 +54,6 @@ function formatStatsMessage(
 
     for (const strat of strategies) {
         if (strat.data.count > 0) {
-            const avgTokens = Math.round(strat.data.tokens / strat.data.count)
             const star = strat === strategies[0] && strat.data.tokens > 0 ? " ⭐" : ""
             lines.push(
                 `  ${strat.name.padEnd(18)} ${strat.data.count.toString().padStart(3)} prunes, ~${formatTokenCount(strat.data.tokens)} saved${star}`,

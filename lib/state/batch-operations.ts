@@ -1,4 +1,3 @@
-import type { SessionState } from "./types"
 import { hashObject } from "../utils/object"
 
 type OperationType = "read" | "grep" | "glob"

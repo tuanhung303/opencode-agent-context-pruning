@@ -51,7 +51,6 @@ const createToolPart = (
     tool: string,
     status: "completed" | "error",
     output: string,
-    turn: number = 1,
 ) => ({
     type: "tool" as const,
     callID,

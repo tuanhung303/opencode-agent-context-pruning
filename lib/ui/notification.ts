@@ -8,11 +8,6 @@ import {
 } from "./utils"
 import { ToolParameterEntry } from "../state"
 import { PluginConfig } from "../config"
-import {
-    formatDiscardNotification,
-    formatDistillNotification,
-    formatRestoreNotification,
-} from "./minimal-notifications"
 
 export type PruneReason =
     | "completion"
@@ -39,7 +34,7 @@ function buildMinimalMessage(
     showDistillation: boolean,
 ): string {
     const distilledCount = distillation?.length ?? 0
-    let message = formatStatsHeader(
+    const message = formatStatsHeader(
         state.stats.totalPruneTokens,
         state.stats.pruneTokenCounter,
         state.stats.totalPruneMessages,

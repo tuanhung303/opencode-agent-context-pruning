@@ -41,16 +41,13 @@ const plugin: Plugin = (async (ctx) => {
             logger,
             config,
         ),
-        "chat.message": async (
-            input: {
-                sessionID: string
-                agent?: string
-                model?: { providerID: string; modelID: string }
-                messageID?: string
-                variant?: string
-            },
-            _output: any,
-        ) => {
+        "chat.message": async (input: {
+            sessionID: string
+            agent?: string
+            model?: { providerID: string; modelID: string }
+            messageID?: string
+            variant?: string
+        }) => {
             // Cache variant from real user messages (not synthetic)
             // This avoids scanning all messages to find variant
             state.variant = input.variant

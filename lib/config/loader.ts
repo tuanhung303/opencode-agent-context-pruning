@@ -27,7 +27,7 @@ export function loadConfigFromFile(configPath: string): PluginConfig {
         const content = readFileSync(configPath, "utf-8")
         const rawConfig = JSON.parse(content)
         return validateConfig(rawConfig)
-    } catch (error) {
+    } catch {
         logger.warn(`Failed to load config from ${configPath}, using defaults`)
         return DEFAULT_CONFIG
     }

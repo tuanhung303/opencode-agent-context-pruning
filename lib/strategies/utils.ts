@@ -106,7 +106,7 @@ export const calculateTokensSaved = (
         }
         const tokenCounts: number[] = estimateTokensBatch(contents)
         return tokenCounts.reduce((sum, count) => sum + count, 0)
-    } catch (error: any) {
+    } catch {
         return 0
     }
 }

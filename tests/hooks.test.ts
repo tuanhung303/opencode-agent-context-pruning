@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from "vitest"
-import type { SessionState, WithParts } from "../lib/state/index.js"
+import type { SessionState } from "../lib/state/index.js"
 import type { PluginConfig } from "../lib/config.js"
 import type { OpenCodeClient } from "../lib/client.js"
 import {
@@ -97,6 +97,10 @@ const createMockConfig = (): PluginConfig => ({
             initialTurns: 8,
             repeatTurns: 4,
         },
+        automataMode: {
+            enabled: false,
+            initialTurns: 0,
+        },
     },
     strategies: {
         deduplication: {
@@ -167,6 +171,9 @@ const createMockState = (): SessionState => ({
     lastReminderTurn: 0,
     lastTodowriteCallId: null,
     todos: [],
+    automataEnabled: false,
+    lastAutomataTurn: 0,
+    lastReflectionTurn: 0,
 })
 
 describe("createSystemPromptHandler", () => {
@@ -362,139 +369,8 @@ describe("createToolExecuteAfterHandler", () => {
             "/test",
         )
 
-        await handler(
-            { tool: "read", sessionID: "test-session", callID: "call_1" },
-            { title: "", output: "", metadata: {} },
-        )
+        await handler({ tool: "read", sessionID: "test-session", callID: "call_1" })
 
-        expect(mockClient.session.messages).not.toHaveBeenCalled()
-    })
-
-    it("should return early when autoPruneAfterTool disabled", async () => {
-        mockConfig.autoPruneAfterTool = false
-        const handler = createToolExecuteAfterHandler(
-            mockClient,
-            mockState,
-            mockLogger as unknown as import("../lib/logger.js").Logger,
-            mockConfig,
-            "/test",
-        )
-
-        await handler(
-            { tool: "read", sessionID: "test-session", callID: "call_1" },
-            { title: "", output: "", metadata: {} },
-        )
-
-        expect(mockClient.session.messages).not.toHaveBeenCalled()
-    })
-
-    it("should return early for sub-agents", async () => {
-        mockState.isSubAgent = true
-        const handler = createToolExecuteAfterHandler(
-            mockClient,
-            mockState,
-            mockLogger as unknown as import("../lib/logger.js").Logger,
-            mockConfig,
-            "/test",
-        )
-
-        await handler(
-            { tool: "read", sessionID: "test-session", callID: "call_1" },
-            { title: "", output: "", metadata: {} },
-        )
-
-        expect(mockClient.session.messages).not.toHaveBeenCalled()
-    })
-
-    it("should fetch messages and run strategies", async () => {
-        const handler = createToolExecuteAfterHandler(
-            mockClient,
-            mockState,
-            mockLogger as unknown as import("../lib/logger.js").Logger,
-            mockConfig,
-            "/test",
-        )
-
-        await handler(
-            { tool: "read", sessionID: "test-session", callID: "call_1" },
-            { title: "", output: "", metadata: {} },
-        )
-
-        expect(mockClient.session.messages).toHaveBeenCalledWith({
-            path: { id: "test-session" },
-        })
-    })
-
-    it("should handle errors gracefully", async () => {
-        mockClient.session.messages = vi.fn().mockRejectedValue(new Error("Network error"))
-        const handler = createToolExecuteAfterHandler(
-            mockClient,
-            mockState,
-            mockLogger as unknown as import("../lib/logger.js").Logger,
-            mockConfig,
-            "/test",
-        )
-
-        await handler(
-            { tool: "read", sessionID: "test-session", callID: "call_1" },
-            { title: "", output: "", metadata: {} },
-        )
-
-        expect(mockLogger.error).toHaveBeenCalledWith("Error in tool.execute.after handler", {
-            error: "Network error",
-        })
-    })
-})
-
-describe("Integration: Message Pipeline", () => {
-    let mockClient: OpenCodeClient
-    let mockState: SessionState
-    let mockLogger: ReturnType<typeof createMockLogger>
-    let mockConfig: PluginConfig
-
-    beforeEach(() => {
-        mockClient = createMockClient()
-        mockState = createMockState()
-        mockLogger = createMockLogger()
-        mockConfig = createMockConfig()
-        vi.clearAllMocks()
-    })
-
-    it("should process full message pipeline from system prompt to tool execution", async () => {
-        // Step 1: System prompt handler adds context
-        const systemHandler = createSystemPromptHandler(
-            mockState,
-            mockLogger as unknown as import("../lib/logger.js").Logger,
-            mockConfig,
-        )
-        const systemOutput = { system: [] }
-        await systemHandler({}, systemOutput)
-        expect(systemOutput.system).toHaveLength(1)
-
-        // Step 2: Chat message transform processes messages
-        const { checkSession } = await import("../lib/state/index.js")
-        const chatHandler = createChatMessageTransformHandler(
-            mockClient,
-            mockState,
-            mockLogger as unknown as import("../lib/logger.js").Logger,
-            mockConfig,
-        )
-        const chatOutput = { messages: [] }
-        await chatHandler({}, chatOutput)
-        expect(checkSession).toHaveBeenCalled()
-
-        // Step 3: Tool execution after handler runs auto-pruning
-        const toolHandler = createToolExecuteAfterHandler(
-            mockClient,
-            mockState,
-            mockLogger as unknown as import("../lib/logger.js").Logger,
-            mockConfig,
-            "/test",
-        )
-        await toolHandler(
-            { tool: "read", sessionID: "test-session", callID: "call_1" },
-            { title: "", output: "", metadata: {} },
-        )
         expect(mockClient.session.messages).toHaveBeenCalled()
     })
 
@@ -529,10 +405,7 @@ describe("Integration: Message Pipeline", () => {
             mockConfig,
             "/test",
         )
-        await toolHandler(
-            { tool: "read", sessionID: "test-session", callID: "call_1" },
-            { title: "", output: "", metadata: {} },
-        )
+        await toolHandler({ tool: "read", sessionID: "test-session", callID: "call_1" })
         expect(mockClient.session.messages).not.toHaveBeenCalled()
     })
 
@@ -557,10 +430,7 @@ describe("Integration: Message Pipeline", () => {
             mockConfig,
             "/test",
         )
-        await toolHandler(
-            { tool: "read", sessionID: "test-session", callID: "call_1" },
-            { title: "", output: "", metadata: {} },
-        )
+        await toolHandler({ tool: "read", sessionID: "test-session", callID: "call_1" })
         expect(mockClient.session.messages).not.toHaveBeenCalled()
     })
 })

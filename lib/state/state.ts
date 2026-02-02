@@ -1,10 +1,4 @@
-import type {
-    SessionState,
-    ToolParameterEntry,
-    WithParts,
-    SoftPrunedEntry,
-    SoftPrunedMessagePart,
-} from "./types"
+import type { SessionState, WithParts } from "./types"
 import type { Logger } from "../logger"
 import { loadSessionState } from "./persistence"
 import { isSubAgentSession } from "./utils"
@@ -264,7 +258,7 @@ function restoreTodoStateFromHistory(
                         lastTodowriteTurn = currentTurn
                         lastTodos = todos
                     }
-                } catch (e) {
+                } catch {
                     // Ignore parse errors
                 }
             }
