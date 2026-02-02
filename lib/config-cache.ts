@@ -1,5 +1,6 @@
-import { readFileSync, statSync } from "node:fs"
-import { resolve } from "node:path"
+import { statSync } from "node:fs"
+import { join } from "node:path"
+import { homedir } from "node:os"
 import type { PluginInput } from "@opencode-ai/plugin"
 import type { PluginConfig } from "./config"
 import { ConfigService } from "./config"
@@ -103,7 +104,9 @@ interface ConfigPaths {
 }
 
 function getConfigPaths(ctx: PluginInput): ConfigPaths {
-    // Import from config.ts to reuse path logic
-    const { getConfigPaths: originalGetConfigPaths } = require("./config")
-    return originalGetConfigPaths(ctx)
+    return {
+        global: join(homedir(), ".config", "opencode", "opencode.json"),
+        configDir: null,
+        project: join(ctx.directory, "opencode.json"),
+    }
 }

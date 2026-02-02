@@ -1,5 +1,5 @@
 import { DEFAULT_CONFIG } from "./defaults.js"
-import { loadConfigFromFile, validateConfig } from "./loader.js"
+import { loadConfigFromFile } from "./loader.js"
 import type { PluginConfig } from "./schema.js"
 
 /**

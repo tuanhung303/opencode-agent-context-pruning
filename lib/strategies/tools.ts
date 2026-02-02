@@ -9,7 +9,6 @@ import { saveSessionState } from "../state/persistence"
 import type { Logger } from "../logger"
 import { loadPrompt } from "../prompts"
 import { calculateTokensSaved, getCurrentParams } from "./utils"
-import { getFilePathFromParameters } from "../protected-file-patterns"
 import { findMessagesByPattern, generateMessageHash } from "../messages/pattern-match"
 
 const DISCARD_TOOL_SPEC = loadPrompt("discard-tool-spec")
@@ -419,7 +418,7 @@ export function createRestoreTool(ctx: PruneToolContext): ReturnType<typeof tool
                 .array(tool.schema.string())
                 .describe("Hash identifiers from pruned tool outputs (e.g., r_a1b2c)"),
         },
-        async execute(args, toolCtx) {
+        async execute(args) {
             const { state, logger } = ctx
             const hashes = args.hashes
 
@@ -475,7 +474,7 @@ export function createDiscardMsgTool(ctx: PruneToolContext): ReturnType<typeof t
                 ),
         },
         async execute(args, toolCtx) {
-            const { client, state, logger, config, workingDirectory } = ctx
+            const { client, state, logger } = ctx
             const sessionId = toolCtx.sessionID
             const patterns = args.patterns
 
@@ -570,11 +569,6 @@ export function createDiscardMsgTool(ctx: PruneToolContext): ReturnType<typeof t
     })
 }
 
-export interface DistillMsgEntry {
-    pattern: string
-    replace_content: string
-}
-
 export function createDistillMsgTool(ctx: PruneToolContext): ReturnType<typeof tool> {
     return tool({
         description: DISTILL_MSG_SPEC,
@@ -595,7 +589,7 @@ export function createDistillMsgTool(ctx: PruneToolContext): ReturnType<typeof t
                 .describe("Array of [pattern, replace_content] tuples to distill"),
         },
         async execute(args, toolCtx) {
-            const { client, state, logger, config, workingDirectory } = ctx
+            const { client, state, logger } = ctx
             const sessionId = toolCtx.sessionID
             const entries = args.entries
 
@@ -694,7 +688,7 @@ export function createRestoreMsgTool(ctx: PruneToolContext): ReturnType<typeof t
                     "Message hashes from previous discard_msg/distill_msg calls (e.g., m_a1b2c3)",
                 ),
         },
-        async execute(args, toolCtx) {
+        async execute(args) {
             const { state, logger } = ctx
             const hashes = args.hashes
 

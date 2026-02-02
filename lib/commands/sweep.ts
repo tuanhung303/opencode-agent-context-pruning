@@ -136,7 +136,7 @@ export async function handleSweepCommand(ctx: SweepCommandContext): Promise<void
     if (isLastNMode) {
         // Mode: Sweep last N tools
         mode = "last-n"
-        const allToolIds = buildToolIdList(state, messages, logger)
+        const allToolIds = buildToolIdList(state, messages)
         const startIndex = Math.max(0, allToolIds.length - numArg!)
         toolIdsToSweep = allToolIds.slice(startIndex)
         logger.info(`Sweep command: last ${numArg} mode, found ${toolIdsToSweep.length} tools`)

@@ -1,5 +1,4 @@
 import { createHash } from "crypto"
-import { Logger } from "../logger"
 import { isMessageCompacted } from "../shared-utils"
 import type { SessionState, WithParts } from "../state"
 import type { UserMessage } from "@opencode-ai/sdk/v2"
@@ -269,11 +268,7 @@ export const extractParameterKey = (tool: string, parameters: any): string => {
     return paramStr.substring(0, 50)
 }
 
-export function buildToolIdList(
-    state: SessionState,
-    messages: WithParts[],
-    logger: Logger,
-): string[] {
+export function buildToolIdList(state: SessionState, messages: WithParts[]): string[] {
     const toolIds: string[] = []
     for (const msg of messages) {
         if (isMessageCompacted(state, msg)) {

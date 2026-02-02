@@ -1,33 +1,6 @@
-import { describe, it, expect, beforeEach, vi } from "vitest"
+import { describe, it, expect, beforeEach } from "vitest"
 import type { SessionState } from "../../lib/state"
 import type { PluginConfig } from "../../lib/config"
-
-const createMockLogger = () => ({
-    debug: () => {},
-    info: () => {},
-    warn: () => {},
-    error: () => {},
-})
-
-const createMockClient = () => ({
-    session: {
-        messages: vi.fn().mockResolvedValue({
-            data: [
-                {
-                    info: { id: "msg_1", role: "assistant", time: { created: Date.now() } },
-                    parts: [
-                        {
-                            type: "tool",
-                            callID: "call_1",
-                            tool: "read",
-                            state: { status: "completed", output: "test output" },
-                        },
-                    ],
-                },
-            ],
-        }),
-    },
-})
 
 const createMockConfig = (): PluginConfig =>
     ({
@@ -76,12 +49,10 @@ const createMockState = (): SessionState =>
 
 describe("tools strategy", () => {
     let mockState: SessionState
-    let mockLogger: ReturnType<typeof createMockLogger>
     let mockConfig: PluginConfig
 
     beforeEach(() => {
         mockState = createMockState()
-        mockLogger = createMockLogger()
         mockConfig = createMockConfig()
     })
 

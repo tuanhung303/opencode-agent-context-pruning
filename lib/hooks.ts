@@ -182,14 +182,12 @@ export function createCommandExecuteHandler(
     logger: Logger,
     config: PluginConfig,
     workingDirectory: string,
-): (
-    input: { command: string; sessionID: string; arguments: string },
-    _output: { parts: unknown[] },
-) => Promise<void> {
-    return async (
-        input: { command: string; sessionID: string; arguments: string },
-        _output: { parts: unknown[] },
-    ): Promise<void> => {
+): (input: { command: string; sessionID: string; arguments: string }) => Promise<void> {
+    return async (input: {
+        command: string
+        sessionID: string
+        arguments: string
+    }): Promise<void> => {
         if (!config.commands.enabled) {
             return
         }
@@ -286,14 +284,8 @@ export function createToolExecuteAfterHandler(
     logger: Logger,
     config: PluginConfig,
     workingDirectory: string,
-): (
-    input: { tool: string; sessionID: string; callID: string },
-    _output: { title: string; output: string; metadata: Record<string, unknown> },
-) => Promise<void> {
-    return async (
-        input: { tool: string; sessionID: string; callID: string },
-        _output: { title: string; output: string; metadata: Record<string, unknown> },
-    ): Promise<void> => {
+): (input: { tool: string; sessionID: string; callID: string }) => Promise<void> {
+    return async (input: { tool: string; sessionID: string; callID: string }): Promise<void> => {
         if (!config.enabled) {
             return
         }

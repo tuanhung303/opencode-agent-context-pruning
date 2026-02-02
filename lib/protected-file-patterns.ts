@@ -3,7 +3,7 @@ function normalizePath(input: string): string {
 }
 
 function escapeRegExpChar(ch: string): string {
-    return /[\\.^$+{}()|\[\]]/.test(ch) ? `\\${ch}` : ch
+    return /[\\.^$+{}()|[\]]/.test(ch) ? `\\${ch}` : ch
 }
 
 /**
