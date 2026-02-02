@@ -103,6 +103,7 @@
 ## Summary
 
 ### Completed
+
 - Created lib/utils/ with 51 tests (array, object, string modules)
 - Eliminated all 16 ! assertions in strategy files
 - Consolidated 4 duplicate utility functions
@@ -112,6 +113,7 @@
 - Bundle size maintained at 1.2M
 
 ### Deferred (Low Priority)
+
 - O(N²) overlap detection optimization (low frequency)
 - Configuration type inference improvements (stable)
 - Pattern matching memoization (requires profiling)
