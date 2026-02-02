@@ -371,7 +371,7 @@ describe("createToolExecuteAfterHandler", () => {
 
         await handler({ tool: "read", sessionID: "test-session", callID: "call_1" })
 
-        expect(mockClient.session.messages).toHaveBeenCalled()
+        expect(mockClient.session.messages).not.toHaveBeenCalled()
     })
 
     it("should handle disabled plugin gracefully", async () => {
