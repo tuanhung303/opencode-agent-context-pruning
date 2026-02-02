@@ -102,19 +102,19 @@ describe("tools strategy", () => {
 
     describe("hash mappings", () => {
         it("should track tool hash to call ID mappings", () => {
-            mockState.hashToCallId.set("#r_abc123#", "call_1")
-            mockState.callIdToHash.set("call_1", "#r_abc123#")
+            mockState.hashToCallId.set("r_abc123", "call_1")
+            mockState.callIdToHash.set("call_1", "r_abc123")
 
-            expect(mockState.hashToCallId.get("#r_abc123#")).toBe("call_1")
-            expect(mockState.callIdToHash.get("call_1")).toBe("#r_abc123#")
+            expect(mockState.hashToCallId.get("r_abc123")).toBe("call_1")
+            expect(mockState.callIdToHash.get("call_1")).toBe("r_abc123")
         })
 
         it("should track message part hash mappings", () => {
-            mockState.hashToMessagePart.set("#a_xyz789#", "msg_1:0")
-            mockState.messagePartToHash.set("msg_1:0", "#a_xyz789#")
+            mockState.hashToMessagePart.set("a_xyz789", "msg_1:0")
+            mockState.messagePartToHash.set("msg_1:0", "a_xyz789")
 
-            expect(mockState.hashToMessagePart.get("#a_xyz789#")).toBe("msg_1:0")
-            expect(mockState.messagePartToHash.get("msg_1:0")).toBe("#a_xyz789#")
+            expect(mockState.hashToMessagePart.get("a_xyz789")).toBe("msg_1:0")
+            expect(mockState.messagePartToHash.get("msg_1:0")).toBe("a_xyz789")
         })
     })
 
@@ -143,7 +143,7 @@ describe("tools strategy", () => {
                 tool: "read",
                 parameters: {},
                 prunedAt: Date.now(),
-                hash: "#r_abc123#",
+                hash: "r_abc123",
             })
 
             expect(mockState.softPrunedTools.has("call_1")).toBe(true)
@@ -156,7 +156,7 @@ describe("tools strategy", () => {
                 messageId: "msg_1",
                 partIndex: 0,
                 prunedAt: Date.now(),
-                hash: "#a_xyz789#",
+                hash: "a_xyz789",
             })
 
             expect(mockState.softPrunedMessageParts.has("msg_1:0")).toBe(true)
@@ -170,7 +170,7 @@ describe("tools strategy", () => {
         it("should track discard history", () => {
             mockState.discardHistory.push({
                 timestamp: Date.now(),
-                hashes: ["#r_abc123#", "#r_def456#"],
+                hashes: ["r_abc123", "r_def456"],
                 tokensSaved: 100,
                 reason: "manual",
             })

@@ -71,10 +71,10 @@ export async function syncToolCache(
                         state.hashToCallId.get(baseHash) !== part.callID
                     ) {
                         let seq = 2
-                        while (state.hashToCallId.has(`${baseHash.slice(0, -1)}_${seq}#`)) {
+                        while (state.hashToCallId.has(`${baseHash}_${seq}`)) {
                             seq++
                         }
-                        finalHash = `${baseHash.slice(0, -1)}_${seq}#`
+                        finalHash = `${baseHash}_${seq}`
                         logger.warn(`Hash collision detected for ${part.tool}, using ${finalHash}`)
                     }
 

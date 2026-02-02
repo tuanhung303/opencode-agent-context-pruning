@@ -9,7 +9,7 @@ const PRUNED_MESSAGE_PART_REPLACEMENT = "[Assistant message part removed to save
 
 /**
  * Generates a short hash for message parts.
- * Format: #a_xxxxx# (a = assistant text)
+ * Format: a_xxxxx (a = assistant text)
  */
 function generateMessagePartHash(): string {
     const chars = "abcdefghijklmnopqrstuvwxyz0123456789"
@@ -17,12 +17,12 @@ function generateMessagePartHash(): string {
     for (let i = 0; i < 5; i++) {
         hash += chars.charAt(Math.floor(Math.random() * chars.length))
     }
-    return `#a_${hash}#`
+    return `a_${hash}`
 }
 
 /**
  * Injects hash identifiers into tool outputs for hash-based discarding.
- * Format: #x_xxxxx#\n<original output>
+ * Format: x_xxxxx\n<original output>
  *
  * This allows agents to reference tools by their stable hash when discarding,
  * eliminating the need for a separate prunable-tools list.
@@ -66,8 +66,8 @@ export const injectHashesIntoToolOutputs = (
                 continue
             }
 
-            // Skip if already has hash prefix
-            if (part.state.output?.startsWith("#")) {
+            // Skip if already has hash prefix (format: x_xxxxx where x is tool prefix)
+            if (part.state.output && /^[a-z]_[a-z0-9]{5}/i.test(part.state.output)) {
                 continue
             }
 
@@ -82,7 +82,7 @@ export const injectHashesIntoToolOutputs = (
 
 /**
  * Injects hash identifiers into assistant text parts for hash-based discarding.
- * Format: #a_xxxxx#\n<original text>
+ * Format: a_xxxxx\n<original text>
  *
  * This allows agents to discard their own verbose explanations or outdated responses.
  * Only injects into text parts that are substantial (>100 chars) and not already hashed.
@@ -129,8 +129,8 @@ export const injectHashesIntoAssistantMessages = (
                 continue
             }
 
-            // Skip if already has hash prefix
-            if (part.text.startsWith("#a_")) {
+            // Skip if already has hash prefix (format: a_xxxxx)
+            if (/^a_[a-z0-9]{5}/i.test(part.text)) {
                 continue
             }
 

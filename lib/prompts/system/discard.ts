@@ -5,9 +5,9 @@ PURPOSE
 Manage context using \`discard\` and \`restore\` tools to maintain performance.
 
 HOW IT WORKS
-Tool outputs are prefixed with hashes like \`#r_a1b2c#\`. Use these to discard specific outputs.
+Tool outputs are prefixed with hashes like \`r_a1b2c\`. Use these to discard specific outputs.
 
-**Syntax:** \`discard({hashes: ["#r_a1b2c#"], reason: "completion"})\`
+**Syntax:** \`discard({hashes: ["r_a1b2c"], reason: "completion"})\`
 
 TOOLS
 - \`discard\`: Remove outputs completely
@@ -19,16 +19,6 @@ WHEN TO DISCARD
 |---------|---------------|
 | Task/sub-task complete | Output needed for upcoming edits |
 | Transitioning to new phase | You'll likely re-fetch the same content |
-| 5+ tool outputs accumulated | Only 1-2 small outputs (batch instead) |
-| Large read (>150 lines) no longer needed | — |
-
-BATCHING
-Minimum 3 outputs OR 1 large output per discard call. Single small discards waste more context than they save.
-
-PRIORITY ORDER
-1. Never discard what you'll need next
-2. Always discard pure noise immediately
-3. Batch discard at task boundaries
 
 REASON MAPPING
 - \`noise\` → irrelevant or unhelpful output

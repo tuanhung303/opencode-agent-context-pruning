@@ -46,7 +46,7 @@ async function executePruneOperationByCallIds(
     if ((!callIds || callIds.length === 0) && (!messagePartIds || messagePartIds.length === 0)) {
         logger.debug(`${toolName} tool called but no valid call IDs or message part IDs resolved`)
         throw new Error(
-            `No valid hashes provided. Use hashes from tool outputs (e.g., #r_a1b2c#) or assistant messages (e.g., #a_xxxxx#).`,
+            `No valid hashes provided. Use hashes from tool outputs (e.g., r_a1b2c) or assistant messages (e.g., a_xxxxx).`,
         )
     }
 
@@ -171,7 +171,7 @@ export function createDiscardTool(ctx: PruneToolContext): ReturnType<typeof tool
             hashes: tool.schema
                 .array(tool.schema.string())
                 .describe(
-                    "Hash identifiers from tool outputs (e.g., #r_a1b2c#) or assistant messages (e.g., #a_xxxxx#)",
+                    "Hash identifiers from tool outputs (e.g., r_a1b2c) or assistant messages (e.g., a_xxxxx)",
                 ),
         },
         async execute(args, toolCtx) {
@@ -279,7 +279,7 @@ export function createDistillTool(ctx: PruneToolContext): ReturnType<typeof tool
                         hash: tool.schema
                             .string()
                             .describe(
-                                "Hash identifier from tool outputs (e.g., #r_a1b2c#) or assistant messages (e.g., #a_xxxxx#)",
+                                "Hash identifier from tool outputs (e.g., r_a1b2c) or assistant messages (e.g., a_xxxxx)",
                             ),
                         replace_content: tool.schema
                             .string()
@@ -367,7 +367,7 @@ export function createRestoreTool(ctx: PruneToolContext): ReturnType<typeof tool
         args: {
             hashes: tool.schema
                 .array(tool.schema.string())
-                .describe("Hash identifiers from pruned content (e.g., #r_a1b2c# or #a_xxxxx#)"),
+                .describe("Hash identifiers from pruned content (e.g., r_a1b2c or a_xxxxx)"),
         },
         async execute(args, toolCtx) {
             const { state, logger } = ctx

@@ -299,14 +299,14 @@ describe("generateToolHash", () => {
         const globHash = generateToolHash("glob", { pattern: "**/*.ts" })
         const bashHash = generateToolHash("bash", { command: "npm test" })
 
-        expect(readHash).toMatch(/^#r_[a-f0-9]{5}#$/)
-        expect(globHash).toMatch(/^#g_[a-f0-9]{5}#$/)
-        expect(bashHash).toMatch(/^#b_[a-f0-9]{5}#$/)
+        expect(readHash).toMatch(/^r_[a-f0-9]{5}$/)
+        expect(globHash).toMatch(/^g_[a-f0-9]{5}$/)
+        expect(bashHash).toMatch(/^b_[a-f0-9]{5}$/)
     })
 
     it("should handle empty params", () => {
         const hash = generateToolHash("read", {})
-        expect(hash).toMatch(/^#r_[a-f0-9]{5}#$/)
+        expect(hash).toMatch(/^r_[a-f0-9]{5}$/)
     })
 
     it("should handle complex nested params", () => {
@@ -322,6 +322,6 @@ describe("generateToolHash", () => {
         })
 
         expect(hash1).toBe(hash2)
-        expect(hash1).toMatch(/^#t_[a-f0-9]{5}#$/)
+        expect(hash1).toMatch(/^t_[a-f0-9]{5}$/)
     })
 })

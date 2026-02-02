@@ -35,7 +35,7 @@ export function stableStringify(obj: unknown): string {
 
 /**
  * Generate a short, stable hash for a tool call.
- * Format: #x_xxxxx# (e.g., #r_a1b2c#)
+ * Format: x_xxxxx (e.g., r_a1b2c)
  * - First char is tool prefix (first letter of tool name)
  * - 5 hex chars from SHA256 hash of stable-stringified params
  */
@@ -43,7 +43,7 @@ export function generateToolHash(tool: string, params: unknown): string {
     const prefix = (tool[0] ?? "x").toLowerCase()
     const paramsStr = stableStringify(params)
     const hash = createHash("sha256").update(paramsStr).digest("hex").substring(0, 5)
-    return `#${prefix}_${hash}#`
+    return `${prefix}_${hash}`
 }
 const SYNTHETIC_PART_ID = "prt_01234567890123456789012345"
 const SYNTHETIC_CALL_ID = "call_01234567890123456789012345"

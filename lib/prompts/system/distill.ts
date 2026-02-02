@@ -5,10 +5,10 @@ PURPOSE
 Manage context using \`discard\`, \`distill\`, and \`restore\` tools to maintain performance.
 
 HOW IT WORKS
-Tool outputs are prefixed with hashes like \`#r_a1b2c#\`. Use these to discard or distill specific outputs.
+Tool outputs are prefixed with hashes like \`r_a1b2c\`. Use these to discard or distill specific outputs.
 
-- **Discard:** \`discard({hashes: ["#r_a1b2c#"], reason: "completion"})\`
-- **Distill:** \`distill([{hash: "#r_a1b2c#", replace_content: "summary..."}])\`
+- **Discard:** \`discard({hashes: ["r_a1b2c"], reason: "completion"})\`
+- **Distill:** \`distill([{hash: "r_a1b2c", replace_content: "summary..."}])\`
 
 TOOLS
 - \`discard\`: Remove outputs completely
@@ -21,21 +21,6 @@ WHEN TO DISCARD vs DISTILL
 |-------------|-------------|
 | Output is noise or irrelevant | Preserve key findings in condensed form |
 | Task complete, no knowledge needed | Valuable info mixed with unnecessary detail |
-| Content superseded by newer info | Unit of work done, need to preserve specifics |
-
-WHEN NOT TO PRUNE
-- Output needed for upcoming edits
-- You'll likely re-fetch the same content
-- Only 1-2 small outputs (batch instead)
-
-BATCHING
-Minimum 3 outputs OR 1 large output per prune call. Single small operations waste more context than they save.
-
-PRIORITY ORDER
-1. Never prune what you'll need next
-2. Always discard pure noise immediately
-3. Batch discard at task boundaries
-4. Distill when uncertain (preserves signal)
 
 REASON MAPPING (for discard)
 - \`noise\` → irrelevant or unhelpful output
