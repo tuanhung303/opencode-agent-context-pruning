@@ -3,7 +3,7 @@ name: CD
 on:
     push:
         branches:
-            - master
+            - main
 
 jobs:
     release:
@@ -13,7 +13,6 @@ jobs:
         permissions:
             contents: write
             id-token: write
-            pull-requests: write
 
         steps:
             - name: Checkout repository
@@ -35,8 +34,23 @@ jobs:
             - name: Build
               run: npm run build
 
-            - name: Release
+            - name: Configure Git
+              run: |
+                  git config --global user.name "github-actions[bot]"
+                  git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+            - name: Bump version
+              id: bump
+              run: |
+                  # Use npm version to bump (patch by default for automated CD)
+                  # In a real-world scenario, you might use semantic-release or conventional commits
+                  npm version patch -m "chore(release): bump version to %s [skip ci]"
+                  echo "NEW_VERSION=$(node -p "require('./package.json').version")" >> $GITHUB_OUTPUT
+
+            - name: Push changes
+              run: git push origin main --follow-tags
+
+            - name: Publish to npm
+              run: npm publish --access public
               env:
-                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-                  NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
-              run: npx semantic-release
+                  NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
