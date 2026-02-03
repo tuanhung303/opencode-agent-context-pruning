@@ -2,7 +2,7 @@ export const SYSTEM_PROMPT_BOTH = `\u003csystem-reminder\u003e
 \u003cinstruction name=context_management_protocol policy_level=critical\u003e
 
 PURPOSE
-Manage context using pruning tools to maintain performance.
+Manage context by disregarding irrelevant tool outputs and messages during exploration or development. This saves the context window for future actions and maintains overall performance.
 
 TOOLS
 | Tool | Target | Identification |
