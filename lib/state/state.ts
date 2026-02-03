@@ -1,3 +1,4 @@
+import type { OpenCodeClient } from "../client"
 import type { SessionState, WithParts } from "./types"
 import type { Logger } from "../logger"
 import { loadSessionState } from "./persistence"
@@ -5,7 +6,7 @@ import { isSubAgentSession } from "./utils"
 import { getLastUserMessage, isMessageCompacted } from "../shared-utils"
 
 export const checkSession = async (
-    client: any,
+    client: OpenCodeClient,
     state: SessionState,
     logger: Logger,
     messages: WithParts[],
@@ -21,8 +22,10 @@ export const checkSession = async (
         logger.info(`Session changed: ${state.sessionId} -> ${lastSessionId}`)
         try {
             await ensureSessionInitialized(client, state, lastSessionId, logger, messages)
-        } catch (err: any) {
-            logger.error("Failed to initialize session state", { error: err.message })
+        } catch (err: unknown) {
+            logger.error("Failed to initialize session state", {
+                error: err instanceof Error ? err.message : String(err),
+            })
         }
     }
 
@@ -139,7 +142,7 @@ export function resetSessionState(state: SessionState): void {
 }
 
 export async function ensureSessionInitialized(
-    client: any,
+    client: OpenCodeClient,
     state: SessionState,
     sessionId: string,
     logger: Logger,

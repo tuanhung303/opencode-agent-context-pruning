@@ -17,7 +17,7 @@ import {
 import { detectTargetType } from "../messages/utils"
 
 export interface PruneToolContext {
-    client: any
+    client: import("../client").OpenCodeClient
     state: SessionState
     logger: Logger
     config: PluginConfig
