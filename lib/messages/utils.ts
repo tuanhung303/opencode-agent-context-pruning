@@ -324,3 +324,88 @@ export function detectTargetType(target: string): "tool_hash" | "reasoning_hash"
     }
     return "pattern"
 }
+
+/**
+ * Pluralize a tool name for display.
+ * read → reads, grep → greps, glob → globs, task → tasks, etc.
+ */
+function pluralizeToolName(tool: string): string {
+    // Handle special cases
+    if (tool === "bash") return "bashes"
+    if (tool === "webfetch") return "fetches"
+    if (tool === "websearch" || tool === "codesearch") return "searches"
+    // Default: add 's'
+    return `${tool}s`
+}
+
+/**
+ * Group hashes by their tool name, looking up from state.
+ * Returns a map of pluralized tool names to arrays of hashes.
+ * Only includes unpruned hashes (excludes those in state.prune.toolIds).
+ */
+export function groupHashesByToolName(state: SessionState): Record<string, string[]> {
+    const grouped: Record<string, string[]> = {}
+
+    // Get all pruned callIds as a Set for O(1) lookup
+    const prunedCallIds = new Set(state.prune.toolIds)
+
+    // Iterate through all known hashes
+    for (const [hash, callId] of state.hashToCallId.entries()) {
+        // Skip if already pruned
+        if (prunedCallIds.has(callId)) {
+            continue
+        }
+
+        // Look up tool name from toolParameters
+        const toolEntry = state.toolParameters.get(callId)
+        if (!toolEntry) {
+            continue // Skip if no metadata available
+        }
+
+        const toolName = pluralizeToolName(toolEntry.tool)
+
+        // Group by tool name
+        if (!grouped[toolName]) {
+            grouped[toolName] = []
+        }
+        grouped[toolName].push(hash)
+    }
+
+    return grouped
+}
+
+/**
+ * Format grouped hashes into a display string for the reminder.
+ * Output format: "reads: r_a1b2c, r_d4e5f\ngreps: g_12345\nglobs: g_67890"
+ * Returns empty string if no hashes.
+ */
+export function formatHashInventory(grouped: Record<string, string[]>): string {
+    const toolOrder = [
+        "reads",
+        "edits",
+        "writes",
+        "greps",
+        "globs",
+        "bashes",
+        "tasks",
+        "fetches",
+        "searches",
+    ]
+    const lines: string[] = []
+
+    // First, add tools in preferred order
+    for (const toolName of toolOrder) {
+        if (grouped[toolName] && grouped[toolName].length > 0) {
+            lines.push(`${toolName}: ${grouped[toolName].join(", ")}`)
+        }
+    }
+
+    // Then add any remaining tools not in the preferred order
+    for (const [toolName, hashes] of Object.entries(grouped)) {
+        if (!toolOrder.includes(toolName) && hashes.length > 0) {
+            lines.push(`${toolName}: ${hashes.join(", ")}`)
+        }
+    }
+
+    return lines.join("\n")
+}
