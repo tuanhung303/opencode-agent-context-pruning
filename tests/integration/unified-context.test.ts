@@ -24,7 +24,7 @@ vi.mock("../../lib/prompts", () => ({
     loadPrompt: vi.fn((name: string) => `Mocked prompt: ${name}`),
 }))
 
-import { createContextTool } from "../../lib/strategies/tools"
+import { createContextTool } from "../../lib/strategies/context"
 import type { SessionState } from "../../lib/state/types"
 import type { PluginConfig } from "../../lib/config"
 

@@ -1,7 +1,17 @@
-export async function isSubAgentSession(client: any, sessionID: string): Promise<boolean> {
+import type { OpenCodeClient } from "../client"
+
+interface SessionData {
+    parentID?: string
+}
+
+export async function isSubAgentSession(
+    client: OpenCodeClient,
+    sessionID: string,
+): Promise<boolean> {
     try {
         const result = await client.session.get({ path: { id: sessionID } })
-        return !!result.data?.parentID
+        const data = result.data as SessionData | undefined
+        return !!data?.parentID
     } catch {
         return false
     }
