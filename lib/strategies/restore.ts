@@ -12,7 +12,12 @@ export async function executeContextToolRestore(
     ctx: PruneToolContext,
     hashes: string[],
 ): Promise<string> {
-    const { state, logger } = ctx
+    const { state, logger, config } = ctx
+
+    // Restore is not available when fullyForget is enabled
+    if (config.tools.discard.fullyForget) {
+        return "Cannot restore: fullyForget is enabled. Tool parts were completely removed from context and cannot be restored."
+    }
 
     const restored: string[] = []
 

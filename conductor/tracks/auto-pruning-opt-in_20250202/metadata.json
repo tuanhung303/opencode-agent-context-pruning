@@ -1,8 +1,0 @@
-{
-    "track_id": "auto-pruning-opt-in_20250202",
-    "type": "feature",
-    "status": "completed",
-    "created_at": "2025-02-02T22:30:00Z",
-    "updated_at": "2026-02-02T23:45:00Z",
-    "description": "Disable all auto-pruning by default, keeping only agentic pruning (discard/distill tools) enabled out-of-the-box. Users must explicitly opt-in to auto-pruning via configuration."
-}

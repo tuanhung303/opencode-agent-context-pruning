@@ -7,6 +7,7 @@ import { z } from "zod"
 
 export const DiscardToolSchema = z.object({
     enabled: z.boolean().default(true),
+    fullyForget: z.boolean().default(true),
 })
 
 export const DistillToolSchema = z.object({

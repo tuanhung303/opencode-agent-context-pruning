@@ -306,6 +306,8 @@ export const prune = (
         return
     }
 
+    const fullyForget = config.tools.discard.fullyForget ?? true
+
     // Single pass over all messages and parts
     for (const msg of messages) {
         if (isMessageCompacted(state, msg)) {
@@ -316,12 +318,34 @@ export const prune = (
         const messageId = msg.info.id
         const isAssistant = msg.info.role === "assistant"
 
+        // Filter out parts if fullyForget is enabled
+        if (fullyForget && prunedToolIds.size > 0) {
+            const originalLength = parts.length
+            msg.parts = parts.filter((part) => {
+                if (part.type === "tool" && part.callID && prunedToolIds.has(part.callID)) {
+                    logger.debug(`Fully forgot tool part ${part.callID} (${part.tool})`)
+                    return false
+                }
+                return true
+            })
+            const removedCount = originalLength - msg.parts.length
+            if (removedCount > 0) {
+                logger.debug(`Removed ${removedCount} tool parts via fullyForget`)
+            }
+            // Continue with remaining parts for message/reasoning pruning
+        }
+
         for (let partIndex = 0; partIndex < parts.length; partIndex++) {
             const part = parts[partIndex]
             if (!part) continue
 
-            // Handle tool parts
-            if (part.type === "tool" && part.callID && prunedToolIds.has(part.callID)) {
+            // Handle tool parts (only if fullyForget is disabled)
+            if (
+                !fullyForget &&
+                part.type === "tool" &&
+                part.callID &&
+                prunedToolIds.has(part.callID)
+            ) {
                 const status = part.state?.status
 
                 if (status === "completed") {

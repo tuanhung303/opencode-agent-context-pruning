@@ -67,6 +67,7 @@ export const DEFAULT_CONFIG: PluginConfig = {
         },
         discard: {
             enabled: true,
+            fullyForget: true,
         },
         distill: {
             enabled: true,

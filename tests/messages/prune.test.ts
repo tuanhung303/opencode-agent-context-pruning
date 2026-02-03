@@ -10,11 +10,15 @@ const createMockLogger = () => ({
     error: () => {},
 })
 
-const createMockConfig = (): PluginConfig =>
+const createMockConfig = (fullyForget = false): PluginConfig =>
     ({
         tools: {
             settings: {
                 protectedTools: [],
+            },
+            discard: {
+                enabled: true,
+                fullyForget,
             },
         },
     }) as any
@@ -66,7 +70,7 @@ describe("prune", () => {
 
     beforeEach(() => {
         mockLogger = createMockLogger()
-        mockConfig = createMockConfig()
+        mockConfig = createMockConfig(false)
     })
 
     describe("pruneToolOutputs", () => {
@@ -445,6 +449,105 @@ describe("prune", () => {
             expect((messages[0].parts[0] as any).state.output).toBe("r_abc12\ncontent1")
             expect((messages[0].parts[1] as any).state.output).toBe("g_def34\ncontent2")
             expect((messages[0].parts[2] as any).state.output).toBe("b_ghi56\ncontent3")
+        })
+    })
+
+    describe("fullyForget behavior", () => {
+        it("should completely remove tool parts when fullyForget is enabled", () => {
+            const state = createMockState(["call_123"])
+            const config = createMockConfig(true) // fullyForget = true
+            const messages: WithParts[] = [
+                createMessage("msg_1", [
+                    createToolPart(
+                        "call_123",
+                        "read",
+                        "completed",
+                        { filePath: "/test/file.ts" },
+                        "original content here...",
+                    ),
+                ]),
+            ]
+
+            prune(state, mockLogger as any, config, messages)
+
+            // Tool part should be completely removed
+            expect(messages[0].parts.length).toBe(0)
+        })
+
+        it("should keep non-pruned tool parts when fullyForget is enabled", () => {
+            const state = createMockState(["call_123"])
+            const config = createMockConfig(true) // fullyForget = true
+            const messages: WithParts[] = [
+                createMessage("msg_1", [
+                    createToolPart(
+                        "call_123",
+                        "read",
+                        "completed",
+                        { filePath: "/test/file.ts" },
+                        "content1",
+                    ),
+                    createToolPart(
+                        "call_456",
+                        "glob",
+                        "completed",
+                        { pattern: "**/*.ts" },
+                        "content2",
+                    ),
+                ]),
+            ]
+
+            prune(state, mockLogger as any, config, messages)
+
+            // Only call_123 should be removed, call_456 should remain
+            expect(messages[0].parts.length).toBe(1)
+            expect((messages[0].parts[0] as any).callID).toBe("call_456")
+        })
+
+        it("should replace output with breadcrumb when fullyForget is disabled", () => {
+            const state = createMockState(["call_123"])
+            const config = createMockConfig(false) // fullyForget = false
+            const messages: WithParts[] = [
+                createMessage("msg_1", [
+                    createToolPart(
+                        "call_123",
+                        "read",
+                        "completed",
+                        { filePath: "/test/file.ts" },
+                        "original content here...",
+                    ),
+                ]),
+            ]
+
+            prune(state, mockLogger as any, config, messages)
+
+            // Tool part should still exist with breadcrumb
+            expect(messages[0].parts.length).toBe(1)
+            const output = (messages[0].parts[0] as any).state.output
+            expect(output).toContain("[Output removed")
+            expect(output).toContain("read")
+        })
+
+        it("should handle mixed messages with fullyForget enabled", () => {
+            const state = createMockState(["call_123"])
+            const config = createMockConfig(true) // fullyForget = true
+            const messages: WithParts[] = [
+                createMessage("msg_1", [
+                    createToolPart(
+                        "call_123",
+                        "read",
+                        "completed",
+                        { filePath: "/test/file.ts" },
+                        "content1",
+                    ),
+                    { type: "text", text: "Assistant message here" },
+                ]),
+            ]
+
+            prune(state, mockLogger as any, config, messages)
+
+            // Tool part removed, text part remains
+            expect(messages[0].parts.length).toBe(1)
+            expect((messages[0].parts[0] as any).type).toBe("text")
         })
     })
 })

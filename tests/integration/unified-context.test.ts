@@ -49,7 +49,7 @@ describe("Unified Context Tool Integration", () => {
                 settings: {
                     protectedTools: ["task"],
                 },
-                discard: { enabled: true },
+                discard: { enabled: true, fullyForget: false },
                 distill: { enabled: true },
             },
         } as any
@@ -308,5 +308,38 @@ describe("Unified Context Tool Integration", () => {
         expect(result).toContain("discard")
         expect(mockState.prune.toolIds).toContain("call_1")
         expect(mockState.prune.messagePartIds).toContain("msg_1:0")
+    })
+
+    it("should reject restore when fullyForget is enabled", async () => {
+        // Setup a tool with fullyForget enabled
+        const fullyForgetConfig = {
+            ...mockConfig,
+            tools: {
+                ...mockConfig.tools,
+                discard: { enabled: true, fullyForget: true },
+            },
+        }
+
+        mockState.hashToCallId.set("abc123", "call_1")
+        mockState.callIdToHash.set("call_1", "abc123")
+
+        const tool = createContextTool({
+            client: mockClient,
+            state: mockState,
+            logger: mockLogger,
+            config: fullyForgetConfig,
+            workingDirectory: "/test",
+        })
+
+        const restoreResult = await tool.execute(
+            {
+                action: "restore",
+                targets: [["abc123"]],
+            },
+            mockToolCtx,
+        )
+
+        expect(restoreResult).toContain("Cannot restore")
+        expect(restoreResult).toContain("fullyForget")
     })
 })

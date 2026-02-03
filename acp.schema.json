@@ -112,16 +112,21 @@
                     }
                 },
                 "discard": {
+                    "description": "Configure the discard tool for manually removing specific tool outputs from context",
                     "type": "object",
-                    "description": "Configuration for the discard tool",
-                    "additionalProperties": false,
                     "properties": {
                         "enabled": {
+                            "description": "Enable the discard tool",
                             "type": "boolean",
-                            "default": true,
-                            "description": "Enable the discard tool"
+                            "default": true
+                        },
+                        "fullyForget": {
+                            "description": "When true, completely removes tool parts from messages instead of leaving breadcrumbs. Disable restore when enabled.",
+                            "type": "boolean",
+                            "default": true
                         }
-                    }
+                    },
+                    "additionalProperties": false
                 },
                 "distill": {
                     "type": "object",
