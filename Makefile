@@ -72,6 +72,10 @@ link: build
 # Integration test - build, link, run opencode with prompt
 integration-test: link
 	@echo "🧪 Running integration test..."
+	@echo "The following tests must be performed by the agent:"
+	@echo "----------------------------------------------------"
+	@cat docs/TEST_PROMPT.md
+	@echo "----------------------------------------------------"
 	@echo "Agent: $(AGENT)"
 	@echo "Prompt: $(PROMPT)"
 	@echo "---"

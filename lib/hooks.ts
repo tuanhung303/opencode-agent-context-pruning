@@ -46,27 +46,17 @@ export function createSystemPromptHandler(
             return
         }
 
+        if (!config.tools.discard.enabled && !config.tools.distill.enabled) {
+            return
+        }
+
         const systemText = output.system.join("\n")
         if (INTERNAL_AGENT_SIGNATURES.some((sig) => systemText.includes(sig))) {
             logger.info("Skipping ACP system prompt injection for internal agent")
             return
         }
 
-        const discardEnabled = config.tools.discard.enabled
-        const distillEnabled = config.tools.distill.enabled
-
-        let promptName: string
-        if (discardEnabled && distillEnabled) {
-            promptName = "system/system-prompt-both"
-        } else if (discardEnabled) {
-            promptName = "system/system-prompt-discard"
-        } else if (distillEnabled) {
-            promptName = "system/system-prompt-distill"
-        } else {
-            return
-        }
-
-        const syntheticPrompt = loadPrompt(promptName)
+        const syntheticPrompt = loadPrompt("system/system-prompt-context")
         output.system.push(syntheticPrompt)
     }
 }

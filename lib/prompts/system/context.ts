@@ -1,4 +1,4 @@
-export const SYSTEM_PROMPT_BOTH = `
+export const SYSTEM_PROMPT_CONTEXT = `
 <system-reminder>
 <instruction name=context_management_protocol policy_level=critical>
 
