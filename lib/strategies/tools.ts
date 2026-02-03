@@ -591,7 +591,7 @@ async function executeContext(
     action: "discard" | "distill" | "restore",
     targets: Array<[string] | [string, string]>,
 ): Promise<string> {
-    const { client, state, logger, config, workingDirectory } = ctx
+    const { client, state, logger } = ctx
     const sessionId = toolCtx.sessionID
 
     logger.info(`Context tool invoked: ${action}`)
