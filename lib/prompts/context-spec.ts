@@ -14,11 +14,9 @@ Restore - bring back pruned content:
 
 ## Targets
 
-Tool outputs: Hash format r_a1b2c
-  Examples: r_abc12 (read), g_def34 (glob), t_56789 (task)
+Tool outputs: r_a1b2c (e.g. r_abc12, g_def34, t_56789)
 
-Messages: Pattern format "start...end"
-  Examples: "Let me explain...architecture" (starts with "Let me explain", ends with "architecture")
+Messages: "start...end" (e.g. "The quick...lazy dog")
 
 ## Rules
 
