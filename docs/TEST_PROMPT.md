@@ -165,3 +165,290 @@ context({
 | Restore workflow | Asymmetric (pattern→hash→hash) | Symmetric (pattern→pattern) |
 | Mixed targets    | Impossible                     | Supported                   |
 | Matching         | Strict                         | Case & Whitespace agnostic  |
+
+---
+
+## Auto-Supersede Tests
+
+The auto-supersede system automatically prunes outdated tool outputs. Test these behaviors:
+
+### Test 11: Hash-Based Supersede
+
+**Objective**: Verify identical tool calls supersede old ones.
+
+**Steps**:
+
+1. `read({ filePath: "package.json" })` — Note the hash (e.g., `r_abc12`)
+2. Do some other work (at least 1 turn)
+3. `read({ filePath: "package.json" })` — Same params, new call
+4. Run `/acp stats`
+
+**Expected**:
+
+- First read should be auto-superseded
+- Stats show `🔄 hash: 1 prune`
+- Only latest read visible in context
+
+---
+
+### Test 12: File-Based Supersede (Write)
+
+**Objective**: Verify write supersedes previous reads of same file.
+
+**Steps**:
+
+1. `read({ filePath: "test-file.txt" })` — Read a file
+2. Do some other work (at least 1 turn)
+3. `write({ filePath: "test-file.txt", content: "new content" })` — Write to same file
+4. Run `/acp stats`
+
+**Expected**:
+
+- Previous read should be auto-superseded
+- Stats show `📁 file: 1 prune`
+- Only write visible, old read pruned
+
+---
+
+### Test 13: File-Based Supersede (Edit)
+
+**Objective**: Verify edit supersedes previous reads of same file.
+
+**Steps**:
+
+1. `read({ filePath: "package.json" })` — Read a file
+2. Do some other work (at least 1 turn)
+3. `edit({ filePath: "package.json", oldString: "...", newString: "..." })` — Edit same file
+4. Run `/acp stats`
+
+**Expected**:
+
+- Previous read should be auto-superseded
+- Stats show `📁 file: 1 prune`
+
+---
+
+### Test 14: Todo-Based Supersede (todowrite)
+
+**Objective**: Verify new todowrite supersedes old todowrite calls.
+
+**Steps**:
+
+1. `todowrite({ todos: [{ id: "1", content: "Task A", status: "pending", priority: "high" }] })`
+2. Do some other work
+3. `todowrite({ todos: [{ id: "1", content: "Task A", status: "completed", priority: "high" }] })`
+4. Run `/acp stats`
+
+**Expected**:
+
+- First todowrite should be auto-superseded
+- Stats show `✅ todo: 1 prune`
+- Only latest todo state visible
+
+---
+
+### Test 15: Todo-Based Supersede (todoread)
+
+**Objective**: Verify new todoread supersedes old todoread calls.
+
+**Steps**:
+
+1. `todoread()` — Read current todos
+2. Do some other work
+3. `todoread()` — Read again
+4. Run `/acp stats`
+
+**Expected**:
+
+- First todoread should be auto-superseded
+- Stats show `✅ todo: 1 prune`
+
+---
+
+### Test 16: No Supersede for Different Files
+
+**Objective**: Verify writes to different files don't supersede unrelated reads.
+
+**Steps**:
+
+1. `read({ filePath: "package.json" })`
+2. `write({ filePath: "other-file.txt", content: "..." })`
+3. Run `/acp stats`
+
+**Expected**:
+
+- package.json read should NOT be superseded
+- Stats show `📁 file: 0 prunes`
+
+---
+
+### Test 17: No Supersede for Protected Tools
+
+**Objective**: Verify protected tools are not superseded.
+
+**Steps**:
+
+1. Ensure a tool is in `protectedTools` config
+2. Call that tool twice with same params
+3. Run `/acp stats`
+
+**Expected**:
+
+- Neither call should be superseded
+- Stats show `🔄 hash: 0 prunes`
+
+---
+
+### Test 18: Combined Auto-Supersede Stats
+
+**Objective**: Verify stats breakdown shows all supersede types.
+
+**Steps**:
+
+1. Trigger hash supersede (same read twice)
+2. Trigger file supersede (read then write same file)
+3. Trigger todo supersede (todowrite twice)
+4. Run `/acp stats`
+
+**Expected**:
+
+```
+Strategy Effectiveness:
+────────────────────────────────────────────────────────────
+  Auto-Supersede         3 prunes, ~X.Xk saved ⭐
+    🔄 hash              1 prunes, ~X.Xk
+    📁 file              1 prunes, ~X.Xk
+    ✅ todo              1 prunes, ~X.Xk
+```
+
+---
+
+## Auto-Supersede Validation Checklist
+
+- [ ] Hash-based: Same tool + same params supersedes old call
+- [ ] File-based: write/edit supersedes old read/write/edit for same file
+- [ ] Todo-based: New todowrite supersedes all old todowrite calls
+- [ ] Todo-based: New todoread supersedes all old todoread calls
+- [ ] Different files: No cross-file supersede
+- [ ] Protected tools: Not superseded
+- [ ] Stats: Shows correct breakdown with emoticons
+- [ ] Turn protection: Recent turns not superseded
+
+---
+
+## Executable Todo List for Agents
+
+Copy this to `todowrite` to track test execution:
+
+```json
+[
+    {
+        "id": "t1",
+        "content": "Test 1: Basic Discard - Tool Hash",
+        "status": "pending",
+        "priority": "high"
+    },
+    {
+        "id": "t2",
+        "content": "Test 2: Basic Discard - Message Pattern",
+        "status": "pending",
+        "priority": "high"
+    },
+    {
+        "id": "t3",
+        "content": "Test 3: Mixed Discard - Tool + Message",
+        "status": "pending",
+        "priority": "high"
+    },
+    {
+        "id": "t4",
+        "content": "Test 4: Distill Tool Output",
+        "status": "pending",
+        "priority": "high"
+    },
+    {
+        "id": "t5",
+        "content": "Test 5: Distill Message (Case & Whitespace)",
+        "status": "pending",
+        "priority": "medium"
+    },
+    {
+        "id": "t6",
+        "content": "Test 6: Mixed Distill - Tool + Message",
+        "status": "pending",
+        "priority": "medium"
+    },
+    {
+        "id": "t7",
+        "content": "Test 7: Symmetric Restore - Tool Hash",
+        "status": "pending",
+        "priority": "high"
+    },
+    {
+        "id": "t8",
+        "content": "Test 8: Symmetric Restore - Message Pattern",
+        "status": "pending",
+        "priority": "high"
+    },
+    {
+        "id": "t9",
+        "content": "Test 9: Batch Operations (Large)",
+        "status": "pending",
+        "priority": "medium"
+    },
+    {
+        "id": "t10",
+        "content": "Test 10: Graceful Error Handling",
+        "status": "pending",
+        "priority": "medium"
+    },
+    {
+        "id": "t11",
+        "content": "Test 11: Hash-Based Supersede",
+        "status": "pending",
+        "priority": "high"
+    },
+    {
+        "id": "t12",
+        "content": "Test 12: File-Based Supersede (Write)",
+        "status": "pending",
+        "priority": "high"
+    },
+    {
+        "id": "t13",
+        "content": "Test 13: File-Based Supersede (Edit)",
+        "status": "pending",
+        "priority": "high"
+    },
+    {
+        "id": "t14",
+        "content": "Test 14: Todo-Based Supersede (todowrite)",
+        "status": "pending",
+        "priority": "high"
+    },
+    {
+        "id": "t15",
+        "content": "Test 15: Todo-Based Supersede (todoread)",
+        "status": "pending",
+        "priority": "medium"
+    },
+    {
+        "id": "t16",
+        "content": "Test 16: No Supersede for Different Files",
+        "status": "pending",
+        "priority": "medium"
+    },
+    {
+        "id": "t17",
+        "content": "Test 17: No Supersede for Protected Tools",
+        "status": "pending",
+        "priority": "low"
+    },
+    {
+        "id": "t18",
+        "content": "Test 18: Combined Auto-Supersede Stats",
+        "status": "pending",
+        "priority": "high"
+    }
+]
+```
