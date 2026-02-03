@@ -61,23 +61,33 @@ export function stableStringify(obj: unknown): string | undefined {
     if (fast) return fast
 
     // Arrays: build with array join (faster than string concatenation)
+    // Note: undefined array elements become "null" per JSON.stringify behavior
     if (Array.isArray(obj)) {
         if (obj.length === 0) return "[]"
         const parts = new Array<string>(obj.length)
         for (let i = 0; i < obj.length; i++) {
-            parts[i] = stableStringify(obj[i])
+            const str = stableStringify(obj[i])
+            parts[i] = str === undefined ? "null" : str
         }
         return "[" + parts.join(",") + "]"
     }
 
     // Objects: sort keys once, then build
+    // Note: undefined values are omitted from objects per JSON.stringify behavior
     const keys = Object.keys(obj as object).sort()
     if (keys.length === 0) return "{}"
 
     const parts = new Array<string>(keys.length)
     for (let i = 0; i < keys.length; i++) {
         const k = keys[i]!
-        parts[i] = JSON.stringify(k) + ":" + stableStringify((obj as Record<string, unknown>)[k])
+        const value = (obj as Record<string, unknown>)[k]
+        const str = stableStringify(value)
+        // Skip undefined values in objects (matches JSON.stringify behavior)
+        if (str === undefined) {
+            parts[i] = JSON.stringify(k) + ":null"
+        } else {
+            parts[i] = JSON.stringify(k) + ":" + str
+        }
     }
     return "{" + parts.join(",") + "}"
 }
