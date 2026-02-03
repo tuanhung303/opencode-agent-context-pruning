@@ -19,7 +19,7 @@ function generateMessagePartHash(content: string): string {
 
 /**
  * Injects hash identifiers into tool outputs for hash-based discarding.
- * Format: x_xxxxx\n<original output>
+ * Format: xxxxxx\n<original output> (6 hex chars from SHA256, no prefix)
  *
  * This allows agents to reference tools by their stable hash when discarding,
  * eliminating the need for a separate prunable-tools list.
@@ -79,7 +79,7 @@ export const injectHashesIntoToolOutputs = (
 
 /**
  * Injects hash identifiers into assistant text parts for hash-based discarding.
- * Format: a_xxxxx\n<original text>
+ * Format: xxxxxx\n<original text> (6 hex chars from SHA256, no prefix)
  *
  * This allows agents to discard their own verbose explanations or outdated responses.
  * Only injects into text parts that are substantial (>100 chars) and not already hashed.
@@ -160,7 +160,7 @@ function generateReasoningPartHash(content: string): string {
 
 /**
  * Injects hash identifiers into reasoning blocks for hash-based discarding.
- * Format: th_xxxxx\n<original reasoning>
+ * Format: xxxxxx\n<original reasoning> (6 hex chars from SHA256, no prefix)
  *
  * This allows agents to discard their own thinking/reasoning blocks when they're
  * no longer needed, saving significant tokens in long conversations.

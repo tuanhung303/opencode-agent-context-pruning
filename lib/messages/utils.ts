@@ -458,7 +458,7 @@ export function collectAllToolHashes(state: SessionState, config: PluginConfig):
 
 /**
  * Collect all assistant message part hashes eligible for bulk operations.
- * Returns all message hashes (a_xxxxx format) that haven't been pruned.
+ * Returns all message hashes (xxxxxx format) that haven't been pruned.
  *
  * @param state - Session state containing message hash mappings
  * @returns Array of message hashes eligible for bulk operations
