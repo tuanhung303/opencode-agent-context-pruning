@@ -7,7 +7,7 @@ Discard - remove completed/noisy content:
   context({ action: "discard", targets: [["a1b2c3"], ["d4e5f6"]] })
 
 Distill - replace with summaries:
-  context({ action: "distill", targets: [["a1b2c3", "Key finding"], ["Let me explain...architecture", "Summary"]] })
+  context({ action: "distill", targets: [["a1b2c3", "Key finding"], ["d4e5f6", "Summary"]] })
 
 Restore - bring back pruned content:
   context({ action: "restore", targets: [["a1b2c3"]] })
@@ -39,8 +39,6 @@ Distill everything:
 
 Tool outputs: 6 hex characters (e.g. a1b2c3, d4e5f6, 123abc)
 
-Messages: "start...end" (e.g. "The quick...lazy dog")
-
 Bulk patterns: [tools], [messages], [*], [all]
 
 ## Hash Format
@@ -58,7 +56,7 @@ Example - thinking block with hash:
 ## Rules
 
 1. Batch: Multiple targets in one call
-2. Mix: Tool hashes + message patterns + bulk patterns together
+2. Mix: Tool hashes + bulk patterns together
 3. Every cycle: After research, after implement, during reflect
 4. Silent: Never mention pruning to users
 `

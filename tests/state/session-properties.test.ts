@@ -11,7 +11,6 @@ const createMockConfig = (): PluginConfig =>
             settings: {
                 protectedTools: [],
                 enableAssistantMessagePruning: true,
-                minAssistantTextLength: 100,
             },
         },
         protectedFilePatterns: [],
@@ -162,10 +161,6 @@ describe("tools strategy", () => {
 
         it("should have assistant message pruning enabled", () => {
             expect(mockConfig.tools.settings.enableAssistantMessagePruning).toBe(true)
-        })
-
-        it("should have minimum assistant text length configured", () => {
-            expect(mockConfig.tools.settings.minAssistantTextLength).toBeGreaterThan(0)
         })
     })
 

@@ -47,16 +47,27 @@ function formatStatsMessage(
         tokens: autoSupersede.hash.tokens + autoSupersede.file.tokens + autoSupersede.todo.tokens,
     }
 
+    // Calculate manual discard totals (new nested structure)
+    const manualDiscard = strategyStats.manualDiscard
+    const manualDiscardTotal = {
+        count:
+            manualDiscard.message.count + manualDiscard.thinking.count + manualDiscard.tool.count,
+        tokens:
+            manualDiscard.message.tokens +
+            manualDiscard.thinking.tokens +
+            manualDiscard.tool.tokens,
+    }
+
     const strategies = [
-        { name: "Auto-Supersede", data: autoSupersedeTotal, isAutoSupersede: true },
-        { name: "Purge Errors", data: strategyStats.purgeErrors, isAutoSupersede: false },
-        { name: "Manual Discard", data: strategyStats.manualDiscard, isAutoSupersede: false },
-        { name: "Distillation", data: strategyStats.distillation, isAutoSupersede: false },
-        { name: "Truncation", data: strategyStats.truncation, isAutoSupersede: false },
+        { name: "Auto-Supersede", data: autoSupersedeTotal, breakdown: "autoSupersede" },
+        { name: "Purge Errors", data: strategyStats.purgeErrors, breakdown: null },
+        { name: "Manual Discard", data: manualDiscardTotal, breakdown: "manualDiscard" },
+        { name: "Distillation", data: strategyStats.distillation, breakdown: null },
+        { name: "Truncation", data: strategyStats.truncation, breakdown: null },
         {
             name: "Thinking Compress",
             data: strategyStats.thinkingCompression,
-            isAutoSupersede: false,
+            breakdown: null,
         },
     ]
 
@@ -71,7 +82,7 @@ function formatStatsMessage(
             )
 
             // Show sub-breakdown for Auto-Supersede
-            if (strat.isAutoSupersede) {
+            if (strat.breakdown === "autoSupersede") {
                 if (autoSupersede.hash.count > 0) {
                     lines.push(
                         `    🔄 hash          ${autoSupersede.hash.count.toString().padStart(3)} prunes, ~${formatTokenCount(autoSupersede.hash.tokens)}`,
@@ -85,6 +96,25 @@ function formatStatsMessage(
                 if (autoSupersede.todo.count > 0) {
                     lines.push(
                         `    ✅ todo          ${autoSupersede.todo.count.toString().padStart(3)} prunes, ~${formatTokenCount(autoSupersede.todo.tokens)}`,
+                    )
+                }
+            }
+
+            // Show sub-breakdown for Manual Discard
+            if (strat.breakdown === "manualDiscard") {
+                if (manualDiscard.message.count > 0) {
+                    lines.push(
+                        `    💬 message       ${manualDiscard.message.count.toString().padStart(3)} prunes, ~${formatTokenCount(manualDiscard.message.tokens)}`,
+                    )
+                }
+                if (manualDiscard.thinking.count > 0) {
+                    lines.push(
+                        `    🧠 thinking      ${manualDiscard.thinking.count.toString().padStart(3)} prunes, ~${formatTokenCount(manualDiscard.thinking.tokens)}`,
+                    )
+                }
+                if (manualDiscard.tool.count > 0) {
+                    lines.push(
+                        `    ⚙️ tool          ${manualDiscard.tool.count.toString().padStart(3)} prunes, ~${formatTokenCount(manualDiscard.tool.tokens)}`,
                     )
                 }
             }

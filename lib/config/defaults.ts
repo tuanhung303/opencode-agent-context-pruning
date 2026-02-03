@@ -63,7 +63,6 @@ export const DEFAULT_CONFIG: PluginConfig = {
         settings: {
             protectedTools: [...DEFAULT_PROTECTED_TOOLS],
             enableAssistantMessagePruning: true,
-            minAssistantTextLength: 100,
             enableReasoningPruning: true,
         },
         discard: {
@@ -77,6 +76,7 @@ export const DEFAULT_CONFIG: PluginConfig = {
             enabled: true,
             initialTurns: 8,
             repeatTurns: 4,
+            stuckTaskTurns: 12,
         },
         automataMode: {
             enabled: true,

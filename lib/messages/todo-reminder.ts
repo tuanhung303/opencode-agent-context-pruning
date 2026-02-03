@@ -6,17 +6,21 @@ import { groupHashesByToolName, formatHashInventory } from "./utils"
 
 const REMINDER_TEMPLATE = `
 ---
-📋 **Todo Review Reminder** (not updated for {turns} turns)
-Before moving to the next task, please review your todo list and update if needed.
-Use \`todoread\` to check status, then \`todowrite\` to mark progress.
+## 🔖 Checkpoint
+
+I've noticed your todo list hasn't been updated for {turns} turns. Before continuing:
+
+### 1. Reflect — What changed? Any new risks or blockers?
+### 2. Update — Call \`todowrite\` to sync progress
+### 3. Prune — Call \`context\` to discard/distill noise
 {prunable_hashes}{stuck_task_guidance}
-💡 **Tip**: After updating your todo list, consider using context pruning tools (\`discard\` or \`distill\`) to keep the conversation focused and efficient.
 ---
 `
 
 const STUCK_TASK_GUIDANCE = `
-⚠️ **Task Breakdown Suggestion**
-A task has been in progress for {stuck_turns} turns. If you're finding it difficult to complete, consider:
+### ⚠️ Stuck Task Detected
+
+I've noticed a task has been in progress for {stuck_turns} turns. If you're finding it difficult to complete, consider:
 - Breaking it into smaller, more specific subtasks
 - Identifying blockers or dependencies that need resolution first
 - Marking it as blocked and moving to another task
@@ -26,7 +30,7 @@ Use \`todowrite\` to split the task or update its status.
 
 // Regex to match the reminder block (with any number of turns and optional prunable hashes)
 const REMINDER_REGEX =
-    /\n?---\n📋 \*\*Todo Review Reminder\*\* \(not updated for \d+ turns\)\nBefore moving to the next task, please review your todo list and update if needed\.\nUse `todoread` to check status, then `todowrite` to mark progress\.\n(?:\n\*\*Prunable Outputs:\*\*\n(?:[a-z]+: [a-z]_[a-f0-9, _]+\n?)+\n)?💡 \*\*Tip\*\*: After updating your todo list, consider using context pruning tools \(`discard` or `distill`\) to keep the conversation focused and efficient\.\n---\n?/g
+    /\n?---\n## 🔖 Checkpoint\n\nI've noticed your todo list hasn't been updated for \d+ turns\. Before continuing:\n\n### 1\. Reflect — What changed\? Any new risks or blockers\?\n### 2\. Update — Call `todowrite` to sync progress\n### 3\. Prune — Call `context` to discard\/distill noise\n(?:\n\*\*Prunable Outputs:\*\*\n(?:[a-z]+: [a-z]_[a-f0-9, _]+\n?)+\n)?\n?(?:### ⚠️ Stuck Task Detected\n\nI've noticed a task has been in progress for \d+ turns\. If you're finding it difficult to complete, consider:\n- Breaking it into smaller, more specific subtasks\n- Identifying blockers or dependencies that need resolution first\n- Marking it as blocked and moving to another task\n\nUse `todowrite` to split the task or update its status\.\n)?---\n?/g
 
 /**
  * Remove any todo reminder from messages.
@@ -126,23 +130,37 @@ export function injectTodoReminder(
         return false
     }
 
-    // Check if we already have a reminder message at the end
-    const lastMessage = messages[messages.length - 1]
-    if (lastMessage?.info.role === "user" && isTodoReminderMessage(lastMessage)) {
-        logger.debug("Reminder message already exists at the end")
-        return false
-    }
+    // Remove any existing reminder messages first (ensure only one exists)
+    removeTodoReminder(state, messages, logger)
 
     // Generate prunable hashes section
     const grouped = groupHashesByToolName(state)
     const hashInventory = formatHashInventory(grouped)
     const prunableSection = hashInventory ? `\n**Prunable Outputs:**\n${hashInventory}\n` : "\n"
 
-    // Create reminder content
-    const reminderContent = REMINDER_TEMPLATE.replace("{turns}", String(turnsSinceTodo)).replace(
-        "{prunable_hashes}",
-        prunableSection,
+    // Detect stuck tasks (in_progress for too long)
+    const stuckTaskTurns = config.tools.todoReminder.stuckTaskTurns ?? 12
+    const stuckTasks = state.todos.filter(
+        (t) =>
+            t.status === "in_progress" &&
+            t.inProgressSince !== undefined &&
+            state.currentTurn - t.inProgressSince >= stuckTaskTurns,
     )
+
+    // Generate stuck task guidance if any task is stuck
+    let stuckTaskSection = ""
+    if (stuckTasks.length > 0) {
+        const longestStuck = Math.max(
+            ...stuckTasks.map((t) => state.currentTurn - (t.inProgressSince ?? state.currentTurn)),
+        )
+        stuckTaskSection = STUCK_TASK_GUIDANCE.replace("{stuck_turns}", String(longestStuck))
+        logger.info(`Detected ${stuckTasks.length} stuck task(s), longest: ${longestStuck} turns`)
+    }
+
+    // Create reminder content
+    const reminderContent = REMINDER_TEMPLATE.replace("{turns}", String(turnsSinceTodo))
+        .replace("{prunable_hashes}", prunableSection)
+        .replace("{stuck_task_guidance}", stuckTaskSection)
 
     // Create a new user message with the reminder
     const reminderMessage: WithParts = {
@@ -177,7 +195,7 @@ function isTodoReminderMessage(message: WithParts): boolean {
     if (!message.parts) return false
     for (const part of message.parts) {
         if (part?.type === "text" && part.text) {
-            if (part.text.includes("Todo Review Reminder")) {
+            if (part.text.includes("🔖 Checkpoint")) {
                 return true
             }
         }

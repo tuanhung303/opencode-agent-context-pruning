@@ -16,7 +16,8 @@ Automatic context cleanup that runs in `syncToolCache()` before any agentic stra
 syncToolCache()              ← AUTO-SUPERSEDE runs here
 ├── 1. Hash-based supersede  (same params → supersede old)
 ├── 2. File-based supersede  (write/edit → clear old read/write/edit)
-└── 3. Todo supersede        (todowrite/todoread → clear both old)
+├── 3. Todo supersede        (todowrite/todoread → clear both old)
+└── 4. Track in_progress     (set/preserve inProgressSince for stuck detection)
 
 [agentic strategies run AFTER]
 ├── purgeErrors()
@@ -75,6 +76,67 @@ todowrite([...])  ← Turn 5 (superseded)
 todowrite([...])  ← Turn 8 (kept)
 todoread()        ← Turn 9 (kept)
 ```
+
+## Stuck Task Detection
+
+When a task stays `in_progress` for too long (default: 12 turns), the system injects guidance suggesting task breakdown.
+
+### How It Works
+
+1. **Tracking**: When `todowrite` is called, the system compares old vs new todos
+2. **Timestamp**: Tasks transitioning to `in_progress` get `inProgressSince` set to current turn
+3. **Preservation**: Tasks already `in_progress` preserve their original timestamp
+4. **Detection**: During reminder injection, tasks with `(currentTurn - inProgressSince) >= stuckTaskTurns` trigger guidance
+
+### Configuration
+
+```json
+{
+    "tools": {
+        "todoReminder": {
+            "enabled": true,
+            "initialTurns": 8,
+            "repeatTurns": 4,
+            "stuckTaskTurns": 12
+        }
+    }
+}
+```
+
+### Guidance Message
+
+When stuck tasks are detected, the reminder includes:
+
+```
+⚠️ **Task Breakdown Suggestion**
+A task has been in progress for {N} turns. If you're finding it difficult to complete, consider:
+- Breaking it into smaller, more specific subtasks
+- Identifying blockers or dependencies that need resolution first
+- Marking it as blocked and moving to another task
+
+Use `todowrite` to split the task or update its status.
+```
+
+### Example Flow
+
+```
+Turn 1:  todowrite([{id: "1", status: "pending"}])
+Turn 3:  todowrite([{id: "1", status: "in_progress"}])  ← inProgressSince = 3
+Turn 5:  todowrite([{id: "1", status: "in_progress"}])  ← inProgressSince preserved = 3
+...
+Turn 15: Todo reminder injected with stuck task guidance (15 - 3 = 12 turns)
+```
+
+## Reminder Deduplication
+
+Both reminder types ensure only ONE instance exists at any time:
+
+| Reminder Type           | Cleanup Logic                                        |
+| ----------------------- | ---------------------------------------------------- |
+| **Todo Reminder**       | `removeTodoReminder()` called before injection       |
+| **Automata Reflection** | `removeAutomataReflection()` called before injection |
+
+This prevents context fragmentation from multiple stale reminders.
 
 ## Protection Rules
 

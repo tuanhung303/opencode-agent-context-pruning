@@ -33,14 +33,7 @@ function buildMinimalMessage(
     distillation: string[] | undefined,
     showDistillation: boolean,
 ): string {
-    const distilledCount = distillation?.length ?? 0
-    const message = formatStatsHeader(
-        state.stats.totalPruneTokens,
-        state.stats.pruneTokenCounter,
-        state.stats.totalPruneMessages,
-        state.stats.pruneMessageCounter,
-        distilledCount,
-    )
+    const message = formatStatsHeader(state.stats.strategyStats)
 
     return message + formatDistilled(showDistillation ? distillation : undefined)
 }
@@ -56,14 +49,7 @@ function buildDetailedMessage(
     simplified: boolean = false,
     pruneMessagePartIds: string[] = [],
 ): string {
-    const distilledCount = distillation?.length ?? 0
-    let message = formatStatsHeader(
-        state.stats.totalPruneTokens,
-        state.stats.pruneTokenCounter,
-        state.stats.totalPruneMessages,
-        state.stats.pruneMessageCounter,
-        distilledCount,
-    )
+    let message = formatStatsHeader(state.stats.strategyStats)
 
     // Only show pruning details if there are tokens being pruned or distilled
     const hasPruningActivity =

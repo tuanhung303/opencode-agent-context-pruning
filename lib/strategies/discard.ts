@@ -13,7 +13,11 @@ import { sendUnifiedNotification } from "../ui/notification"
 import { formatDiscardNotification } from "../ui/minimal-notifications"
 import { formatPruningStatus, dimText } from "../ui/pruning-status"
 import { calculateTokensSaved, getCurrentParams } from "./utils"
-import { collectAllToolHashes, collectAllMessageHashes } from "../messages/utils"
+import {
+    collectAllToolHashes,
+    collectAllMessageHashes,
+    collectAllReasoningHashes,
+} from "../messages/utils"
 import type { BulkTargetType } from "./_types"
 
 interface DiscardOptions {
@@ -161,6 +165,7 @@ export async function executeContextMessageDiscard(
     const { state, logger } = ctx
 
     let discardedCount = 0
+    let tokensSaved = 0
 
     for (const hash of hashes) {
         const partId = state.hashToMessagePart.get(hash)
@@ -169,9 +174,24 @@ export async function executeContextMessageDiscard(
                 state.prune.messagePartIds.push(partId)
                 logger.info(`Discarded message part ${partId} via hash ${hash}`)
                 discardedCount++
+                // Estimate tokens saved (rough estimate based on typical message size)
+                tokensSaved += 500
             }
         } else {
             logger.warn(`Unknown message hash: ${hash}`)
+        }
+    }
+
+    if (discardedCount > 0) {
+        // Update stats for message discards
+        state.stats.pruneTokenCounter += tokensSaved
+        state.stats.pruneMessageCounter += discardedCount
+        state.stats.strategyStats.manualDiscard.message.count += discardedCount
+        state.stats.strategyStats.manualDiscard.message.tokens += tokensSaved
+
+        state.lastDiscardStats = {
+            itemCount: discardedCount,
+            tokensSaved: state.stats.pruneTokenCounter,
         }
     }
 
@@ -221,8 +241,8 @@ export async function executeContextReasoningDiscard(
     // Update stats
     state.stats.pruneTokenCounter += tokensSaved
     state.stats.pruneMessageCounter += discardedCount
-    state.stats.strategyStats.manualDiscard.count += discardedCount
-    state.stats.strategyStats.manualDiscard.tokens += tokensSaved
+    state.stats.strategyStats.manualDiscard.thinking.count += discardedCount
+    state.stats.strategyStats.manualDiscard.thinking.tokens += tokensSaved
 
     state.lastDiscardStats = {
         itemCount: discardedCount,
@@ -277,15 +297,28 @@ export async function executeBulkDiscard(
             logger.info(`Bulk discard: collecting ${messageHashes.length} message hashes`)
             // Directly prune message parts using collected hashes
             let discardedCount = 0
+            let tokensSaved = 0
             for (const hash of messageHashes) {
                 const partId = state.hashToMessagePart.get(hash)
                 if (partId && !state.prune.messagePartIds.includes(partId)) {
                     state.prune.messagePartIds.push(partId)
                     logger.info(`Bulk discarded message part ${partId}`)
                     discardedCount++
+                    tokensSaved += 500 // Estimate tokens per message
                 }
             }
             if (discardedCount > 0) {
+                // Update stats for bulk message discards
+                state.stats.pruneTokenCounter += tokensSaved
+                state.stats.pruneMessageCounter += discardedCount
+                state.stats.strategyStats.manualDiscard.message.count += discardedCount
+                state.stats.strategyStats.manualDiscard.message.tokens += tokensSaved
+
+                state.lastDiscardStats = {
+                    itemCount: discardedCount,
+                    tokensSaved: state.stats.pruneTokenCounter,
+                }
+
                 saveSessionState(state, logger).catch((err: Error) =>
                     logger.error("Failed to persist state", { error: err.message }),
                 )
@@ -293,6 +326,42 @@ export async function executeBulkDiscard(
             }
         } else {
             results.push("No eligible message parts to discard")
+        }
+    }
+
+    // Handle reasoning/thinking blocks
+    if (bulkType === "bulk_all") {
+        const reasoningHashes = collectAllReasoningHashes(state)
+        if (reasoningHashes.length > 0) {
+            logger.info(`Bulk discard: collecting ${reasoningHashes.length} reasoning hashes`)
+            let discardedCount = 0
+            let tokensSaved = 0
+            for (const hash of reasoningHashes) {
+                const partId = state.hashToReasoningPart.get(hash)
+                if (partId && !state.prune.reasoningPartIds.includes(partId)) {
+                    state.prune.reasoningPartIds.push(partId)
+                    logger.info(`Bulk discarded reasoning part ${partId}`)
+                    discardedCount++
+                    tokensSaved += 2000 // Estimate tokens per reasoning block
+                }
+            }
+            if (discardedCount > 0) {
+                // Update stats for bulk reasoning discards
+                state.stats.pruneTokenCounter += tokensSaved
+                state.stats.pruneMessageCounter += discardedCount
+                state.stats.strategyStats.manualDiscard.thinking.count += discardedCount
+                state.stats.strategyStats.manualDiscard.thinking.tokens += tokensSaved
+
+                state.lastDiscardStats = {
+                    itemCount: discardedCount,
+                    tokensSaved: state.stats.pruneTokenCounter,
+                }
+
+                saveSessionState(state, logger).catch((err: Error) =>
+                    logger.error("Failed to persist state", { error: err.message }),
+                )
+                results.push(`Discarded ${discardedCount} reasoning block(s)`)
+            }
         }
     }
 
@@ -344,8 +413,8 @@ function updateStats(
     state.stats.pruneMessageCounter += count
 
     if (reason === "manual") {
-        state.stats.strategyStats.manualDiscard.count += count
-        state.stats.strategyStats.manualDiscard.tokens += tokensSaved
+        state.stats.strategyStats.manualDiscard.tool.count += count
+        state.stats.strategyStats.manualDiscard.tool.tokens += tokensSaved
     }
 
     state.lastDiscardStats = {

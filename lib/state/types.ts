@@ -28,7 +28,11 @@ export interface SessionStats {
             todo: { count: number; tokens: number }
         }
         purgeErrors: { count: number; tokens: number }
-        manualDiscard: { count: number; tokens: number }
+        manualDiscard: {
+            message: { count: number; tokens: number }
+            thinking: { count: number; tokens: number }
+            tool: { count: number; tokens: number }
+        }
         distillation: { count: number; tokens: number }
         truncation: { count: number; tokens: number }
         thinkingCompression: { count: number; tokens: number }

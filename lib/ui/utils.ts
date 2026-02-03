@@ -1,10 +1,18 @@
-import { ToolParameterEntry } from "../state"
+import { ToolParameterEntry, SessionState } from "../state"
 import { extractParameterKey } from "../messages/utils"
 import { countTokens } from "../strategies/utils"
 import { formatTokenCount, truncate, shortenPath } from "../utils/string"
 
 // Re-export for backwards compatibility
 export { formatTokenCount, truncate, shortenPath }
+
+// Category emojis for prune notifications
+export const PRUNE_CATEGORY_ICONS = {
+    message: "💬",
+    thinking: "🧠",
+    tool: "⚙️",
+    distill: "✨",
+} as const
 
 export function countDistillationTokens(distillation?: string[]): number {
     if (!distillation || distillation.length === 0) return 0
@@ -18,39 +26,55 @@ export function formatDistilled(distillation?: string[]): string {
     return ""
 }
 
-export function formatStatsHeader(
-    totalTokensSaved: number,
-    pruneTokenCounter: number,
-    totalMessagesPruned: number,
-    messagesPruned: number,
-    distilledCount?: number,
-): string {
-    const totalMessages = totalMessagesPruned + messagesPruned
-    const totalTokens = totalTokensSaved + pruneTokenCounter
-
-    // Build the beautiful status format: 「 ▼ 7.8K 🌑 ₊ ▼ 3 🌊 ₊ 2 ✨ 」
+export function formatStatsHeader(strategyStats: SessionState["stats"]["strategyStats"]): string {
+    // Build the categorized status format:
+    // 「 💬 2(1.2K) ▼ ₊ 🧠 1(3.5K) ▼ ₊ 🔧 5(8.1K) ▼ ₊ ✨ 3(500) 」
     const parts: string[] = []
 
-    // Tokens saved (▼ indicates reduction)
-    if (totalTokens > 0) {
-        parts.push(`▼ ${formatTokenCount(totalTokens)} 🌑`)
+    const { manualDiscard, autoSupersede, distillation } = strategyStats
+
+    // 💬 Message discard (with ▼)
+    if (manualDiscard.message.count > 0) {
+        parts.push(
+            `${PRUNE_CATEGORY_ICONS.message} ${manualDiscard.message.count}(${formatTokenCount(manualDiscard.message.tokens)}) ▼`,
+        )
     }
 
-    // Messages pruned (▼ indicates reduction)
-    if (totalMessages > 0) {
-        parts.push(`▼ ${totalMessages} 🌊`)
+    // 🧠 Thinking discard (with ▼)
+    if (manualDiscard.thinking.count > 0) {
+        parts.push(
+            `${PRUNE_CATEGORY_ICONS.thinking} ${manualDiscard.thinking.count}(${formatTokenCount(manualDiscard.thinking.tokens)}) ▼`,
+        )
     }
 
-    // Distilled count (✨ no ▼ since it's transformation, not pure removal)
-    if (distilledCount && distilledCount > 0) {
-        parts.push(`✨ ${distilledCount}`)
+    // 🔧 Tool discard = manual tool + all auto-supersede (with ▼)
+    const toolCount =
+        manualDiscard.tool.count +
+        autoSupersede.hash.count +
+        autoSupersede.file.count +
+        autoSupersede.todo.count
+    const toolTokens =
+        manualDiscard.tool.tokens +
+        autoSupersede.hash.tokens +
+        autoSupersede.file.tokens +
+        autoSupersede.todo.tokens
+
+    if (toolCount > 0) {
+        parts.push(`${PRUNE_CATEGORY_ICONS.tool} ${toolCount}(${formatTokenCount(toolTokens)}) ▼`)
+    }
+
+    // ✨ Distillation (no ▼ - transformation, not removal)
+    if (distillation.count > 0) {
+        parts.push(
+            `${PRUNE_CATEGORY_ICONS.distill} ${distillation.count}(${formatTokenCount(distillation.tokens)})`,
+        )
     }
 
     if (parts.length === 0) {
         return "「 acp 」"
     }
 
-    // Join with ₊ separator between items (not at the start)
+    // Join with ₊ separator
     return `「 ${parts.join(" ₊ ")} 」`
 }
 

@@ -78,8 +78,20 @@ describe("Unified Context Tool Integration", () => {
                 pruneMessageCounter: 0,
                 totalPruneMessages: 0,
                 strategyStats: {
-                    manualDiscard: { count: 0, tokens: 0 },
+                    autoSupersede: {
+                        hash: { count: 0, tokens: 0 },
+                        file: { count: 0, tokens: 0 },
+                        todo: { count: 0, tokens: 0 },
+                    },
+                    purgeErrors: { count: 0, tokens: 0 },
+                    manualDiscard: {
+                        message: { count: 0, tokens: 0 },
+                        thinking: { count: 0, tokens: 0 },
+                        tool: { count: 0, tokens: 0 },
+                    },
                     distillation: { count: 0, tokens: 0 },
+                    truncation: { count: 0, tokens: 0 },
+                    thinkingCompression: { count: 0, tokens: 0 },
                 },
             },
         } as any

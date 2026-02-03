@@ -478,3 +478,26 @@ export function collectAllMessageHashes(state: SessionState): string[] {
 
     return hashes
 }
+
+/**
+ * Collect all reasoning/thinking block hashes eligible for bulk operations.
+ * Returns all reasoning hashes that haven't been pruned.
+ *
+ * @param state - Session state containing reasoning hash mappings
+ * @returns Array of reasoning hashes eligible for bulk operations
+ */
+export function collectAllReasoningHashes(state: SessionState): string[] {
+    const prunedPartIds = new Set(state.prune.reasoningPartIds)
+    const hashes: string[] = []
+
+    for (const [hash, partId] of state.hashToReasoningPart.entries()) {
+        // Skip if already pruned
+        if (prunedPartIds.has(partId)) {
+            continue
+        }
+
+        hashes.push(hash)
+    }
+
+    return hashes
+}

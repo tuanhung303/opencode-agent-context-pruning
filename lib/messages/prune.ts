@@ -90,8 +90,6 @@ export const injectHashesIntoAssistantMessages = (
     messages: WithParts[],
     logger: Logger,
 ): void => {
-    const minTextLength = config.tools?.settings?.minAssistantTextLength ?? 100
-
     for (const msg of messages) {
         if (isMessageCompacted(state, msg)) {
             continue
@@ -113,11 +111,6 @@ export const injectHashesIntoAssistantMessages = (
 
             // Only process text parts
             if (part.type !== "text" || !part.text) {
-                continue
-            }
-
-            // Skip short text parts
-            if (part.text.length < minTextLength) {
                 continue
             }
 

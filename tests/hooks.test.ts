@@ -62,6 +62,8 @@ const createMockClient = (): OpenCodeClient => ({
         messages: vi.fn().mockResolvedValue({
             data: [],
         }),
+        get: vi.fn().mockResolvedValue({ data: {} }),
+        prompt: vi.fn().mockResolvedValue({ data: {} }),
     },
 })
 
@@ -83,7 +85,7 @@ const createMockConfig = (): PluginConfig => ({
         settings: {
             protectedTools: [],
             enableAssistantMessagePruning: true,
-            minAssistantTextLength: 100,
+            enableReasoningPruning: true,
         },
         discard: {
             enabled: true,
@@ -96,6 +98,7 @@ const createMockConfig = (): PluginConfig => ({
             enabled: true,
             initialTurns: 8,
             repeatTurns: 4,
+            stuckTaskTurns: 12,
         },
         automataMode: {
             enabled: false,
@@ -103,13 +106,6 @@ const createMockConfig = (): PluginConfig => ({
         },
     },
     strategies: {
-        deduplication: {
-            enabled: true,
-            protectedTools: [],
-        },
-        supersedeWrites: {
-            enabled: false,
-        },
         purgeErrors: {
             enabled: true,
             turns: 4,
@@ -137,6 +133,7 @@ const createMockState = (): SessionState => ({
     prune: {
         toolIds: [],
         messagePartIds: [],
+        reasoningPartIds: [],
     },
     stats: {
         pruneTokenCounter: 0,
@@ -144,8 +141,11 @@ const createMockState = (): SessionState => ({
         pruneMessageCounter: 0,
         totalPruneMessages: 0,
         strategyStats: {
-            deduplication: { count: 0, tokens: 0 },
-            supersedeWrites: { count: 0, tokens: 0 },
+            autoSupersede: {
+                hash: { count: 0, tokens: 0 },
+                file: { count: 0, tokens: 0 },
+                todo: { count: 0, tokens: 0 },
+            },
             purgeErrors: { count: 0, tokens: 0 },
             manualDiscard: { count: 0, tokens: 0 },
             distillation: { count: 0, tokens: 0 },
@@ -164,13 +164,18 @@ const createMockState = (): SessionState => ({
     discardHistory: [],
     hashToMessagePart: new Map(),
     messagePartToHash: new Map(),
+    hashToReasoningPart: new Map(),
+    reasoningPartToHash: new Map(),
     softPrunedTools: new Map(),
     softPrunedMessageParts: new Map(),
     softPrunedMessages: new Map(),
+    softPrunedReasoningParts: new Map(),
     lastTodoTurn: 0,
     lastReminderTurn: 0,
     lastTodowriteCallId: null,
+    lastTodoreadCallId: null,
     todos: [],
+    filePathToCallIds: new Map(),
     automataEnabled: false,
     lastAutomataTurn: 0,
     lastReflectionTurn: 0,

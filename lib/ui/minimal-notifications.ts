@@ -26,7 +26,7 @@ const TYPE_ICONS: Record<MinimalNotification["type"], string> = {
     test: "🧪",
     npm: "📦",
     protected: "⚠️",
-    distill: "💧",
+    distill: "✨",
     discard: "🗑️",
     restore: "↩️",
 }

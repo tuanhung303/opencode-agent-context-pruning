@@ -63,7 +63,11 @@ export function createSessionState(): SessionState {
                     todo: { count: 0, tokens: 0 },
                 },
                 purgeErrors: { count: 0, tokens: 0 },
-                manualDiscard: { count: 0, tokens: 0 },
+                manualDiscard: {
+                    message: { count: 0, tokens: 0 },
+                    thinking: { count: 0, tokens: 0 },
+                    tool: { count: 0, tokens: 0 },
+                },
                 distillation: { count: 0, tokens: 0 },
                 truncation: { count: 0, tokens: 0 },
                 thinkingCompression: { count: 0, tokens: 0 },
@@ -121,7 +125,11 @@ export function resetSessionState(state: SessionState): void {
                 todo: { count: 0, tokens: 0 },
             },
             purgeErrors: { count: 0, tokens: 0 },
-            manualDiscard: { count: 0, tokens: 0 },
+            manualDiscard: {
+                message: { count: 0, tokens: 0 },
+                thinking: { count: 0, tokens: 0 },
+                tool: { count: 0, tokens: 0 },
+            },
             distillation: { count: 0, tokens: 0 },
             truncation: { count: 0, tokens: 0 },
             thinkingCompression: { count: 0, tokens: 0 },
@@ -154,6 +162,55 @@ export function resetSessionState(state: SessionState): void {
     state.automataEnabled = false
     state.lastAutomataTurn = 0
     state.lastReflectionTurn = 0
+}
+
+/**
+ * Migrate strategyStats from old flat manualDiscard to new nested structure.
+ * Handles backward compatibility with persisted sessions.
+ */
+function migrateStrategyStats(persisted: any): SessionState["stats"]["strategyStats"] {
+    const defaultStats: SessionState["stats"]["strategyStats"] = {
+        autoSupersede: {
+            hash: { count: 0, tokens: 0 },
+            file: { count: 0, tokens: 0 },
+            todo: { count: 0, tokens: 0 },
+        },
+        purgeErrors: { count: 0, tokens: 0 },
+        manualDiscard: {
+            message: { count: 0, tokens: 0 },
+            thinking: { count: 0, tokens: 0 },
+            tool: { count: 0, tokens: 0 },
+        },
+        distillation: { count: 0, tokens: 0 },
+        truncation: { count: 0, tokens: 0 },
+        thinkingCompression: { count: 0, tokens: 0 },
+    }
+
+    if (!persisted) {
+        return defaultStats
+    }
+
+    // Check if manualDiscard is old flat format (has 'count' property directly)
+    const isOldFormat = persisted.manualDiscard && typeof persisted.manualDiscard.count === "number"
+
+    return {
+        autoSupersede: persisted.autoSupersede || defaultStats.autoSupersede,
+        purgeErrors: persisted.purgeErrors || defaultStats.purgeErrors,
+        manualDiscard: isOldFormat
+            ? {
+                  // Migrate old flat format: assign all to 'tool' category
+                  message: { count: 0, tokens: 0 },
+                  thinking: { count: 0, tokens: 0 },
+                  tool: {
+                      count: persisted.manualDiscard.count,
+                      tokens: persisted.manualDiscard.tokens,
+                  },
+              }
+            : persisted.manualDiscard || defaultStats.manualDiscard,
+        distillation: persisted.distillation || defaultStats.distillation,
+        truncation: persisted.truncation || defaultStats.truncation,
+        thinkingCompression: persisted.thinkingCompression || defaultStats.thinkingCompression,
+    }
 }
 
 export async function ensureSessionInitialized(
@@ -195,18 +252,7 @@ export async function ensureSessionInitialized(
         totalPruneTokens: persisted.stats?.totalPruneTokens || 0,
         pruneMessageCounter: persisted.stats?.pruneMessageCounter || 0,
         totalPruneMessages: persisted.stats?.totalPruneMessages || 0,
-        strategyStats: persisted.stats?.strategyStats || {
-            autoSupersede: {
-                hash: { count: 0, tokens: 0 },
-                file: { count: 0, tokens: 0 },
-                todo: { count: 0, tokens: 0 },
-            },
-            purgeErrors: { count: 0, tokens: 0 },
-            manualDiscard: { count: 0, tokens: 0 },
-            distillation: { count: 0, tokens: 0 },
-            truncation: { count: 0, tokens: 0 },
-            thinkingCompression: { count: 0, tokens: 0 },
-        },
+        strategyStats: migrateStrategyStats(persisted.stats?.strategyStats),
     }
     // Restore hash-based discard system (convert objects back to Maps)
     if (persisted.hashToCallId) {

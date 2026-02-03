@@ -17,7 +17,6 @@ export const DistillToolSchema = z.object({
 export const ToolSettingsSchema = z.object({
     protectedTools: z.array(z.string()).default([]),
     enableAssistantMessagePruning: z.boolean().default(true),
-    minAssistantTextLength: z.number().positive().default(100),
     enableReasoningPruning: z.boolean().default(true),
 })
 
@@ -25,6 +24,7 @@ export const TodoReminderSchema = z.object({
     enabled: z.boolean().default(true),
     initialTurns: z.number().positive().default(8),
     repeatTurns: z.number().positive().default(4),
+    stuckTaskTurns: z.number().positive().default(12),
 })
 
 export const AutomataModeSchema = z.object({

@@ -73,7 +73,7 @@ describe("Integration: Automata Hook", () => {
         expect(output.messages.length).toBe(3)
 
         // Verify order: Original -> Todo Reminder -> Automata Reflection
-        expect(output.messages[1].parts[0].text).toContain("Todo Review Reminder")
+        expect(output.messages[1].parts[0].text).toContain("🔖 Checkpoint")
         expect(output.messages[2].parts[0].text).toContain("Strategic Reflection")
     })
 })

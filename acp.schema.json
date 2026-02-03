@@ -159,6 +159,11 @@
                             "type": "number",
                             "default": 6,
                             "description": "Turns between subsequent reminders"
+                        },
+                        "stuckTaskTurns": {
+                            "type": "number",
+                            "default": 12,
+                            "description": "Turns a task can be in_progress before suggesting breakdown"
                         }
                     }
                 },

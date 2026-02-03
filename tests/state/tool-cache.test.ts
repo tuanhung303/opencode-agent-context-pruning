@@ -326,6 +326,99 @@ describe("tool-cache auto-supersede", () => {
             expect(state.todos).toEqual(todos)
             expect(state.lastTodoTurn).toBe(1)
         })
+
+        it("should set inProgressSince when task transitions to in_progress", async () => {
+            // Initial state: task is pending
+            state.todos = [{ id: "1", content: "task1", status: "pending", priority: "high" }]
+
+            const newTodos = [
+                { id: "1", content: "task1", status: "in_progress", priority: "high" },
+            ]
+
+            const messages: WithParts[] = [
+                createMessage("msg1", "assistant", [
+                    createStepPart(),
+                    createStepPart(),
+                    createStepPart(), // Turn 3
+                    createToolPart(
+                        "call_001",
+                        "todowrite",
+                        { todos: newTodos },
+                        "completed",
+                        JSON.stringify(newTodos),
+                    ),
+                ]),
+            ]
+
+            await syncToolCache(state, config, logger, messages)
+
+            expect(state.todos[0].status).toBe("in_progress")
+            expect(state.todos[0].inProgressSince).toBe(3) // Set to turn when todowrite was called
+        })
+
+        it("should preserve inProgressSince when task stays in_progress", async () => {
+            // Initial state: task already in_progress since turn 2
+            state.todos = [
+                {
+                    id: "1",
+                    content: "task1",
+                    status: "in_progress",
+                    priority: "high",
+                    inProgressSince: 2,
+                },
+            ]
+
+            const newTodos = [
+                { id: "1", content: "task1 (updated)", status: "in_progress", priority: "high" },
+            ]
+
+            const messages: WithParts[] = [
+                createMessage("msg1", "assistant", [
+                    createStepPart(),
+                    createStepPart(),
+                    createStepPart(),
+                    createStepPart(),
+                    createStepPart(), // Turn 5
+                    createToolPart(
+                        "call_001",
+                        "todowrite",
+                        { todos: newTodos },
+                        "completed",
+                        JSON.stringify(newTodos),
+                    ),
+                ]),
+            ]
+
+            await syncToolCache(state, config, logger, messages)
+
+            expect(state.todos[0].status).toBe("in_progress")
+            expect(state.todos[0].inProgressSince).toBe(2) // Preserved from original
+        })
+
+        it("should not set inProgressSince for non-in_progress tasks", async () => {
+            const todos = [
+                { id: "1", content: "task1", status: "completed", priority: "high" },
+                { id: "2", content: "task2", status: "pending", priority: "medium" },
+            ]
+
+            const messages: WithParts[] = [
+                createMessage("msg1", "assistant", [
+                    createStepPart(),
+                    createToolPart(
+                        "call_001",
+                        "todowrite",
+                        { todos },
+                        "completed",
+                        JSON.stringify(todos),
+                    ),
+                ]),
+            ]
+
+            await syncToolCache(state, config, logger, messages)
+
+            expect(state.todos[0].inProgressSince).toBeUndefined()
+            expect(state.todos[1].inProgressSince).toBeUndefined()
+        })
     })
 
     describe("protection rules", () => {
