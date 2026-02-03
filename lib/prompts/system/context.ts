@@ -20,13 +20,11 @@ TARGET TYPES (Auto-detected)
 
 PATTERN MATCHING
 - "start...end" → matches text starting with 'start' AND ending with 'end'
-- "start..." → matches text starting with 'start'
-- "...end" → matches text ending with 'end'
 
 EXAMPLES
-context({ action: "discard", targets: [["r_a1b2c"], ["Let me...auth"]] })
-context({ action: "distill", targets: [["r_a1b2c", "JWT validation"], ["Let me...", "Explained flow"]] })
-context({ action: "restore", targets: [["r_a1b2c"], ["Let me...auth"]] })
+context({ action: "discard", targets: [["r_a1b2c"], ["Let me explain...architecture"]] })
+context({ action: "distill", targets: [["r_a1b2c", "JWT validation"], ["Let me explain...architecture", "Explained flow"]] })
+context({ action: "restore", targets: [["r_a1b2c"], ["Let me explain...architecture"]] })
 
 </instruction>
 

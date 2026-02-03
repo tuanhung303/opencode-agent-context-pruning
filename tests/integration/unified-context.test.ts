@@ -25,8 +25,7 @@ vi.mock("../../lib/prompts", () => ({
 }))
 
 import { createContextTool } from "../../lib/strategies/tools"
-import type { SessionState, WithParts } from "../../lib/state/types"
-import type { Logger } from "../../lib/logger"
+import type { SessionState } from "../../lib/state/types"
 import type { PluginConfig } from "../../lib/config"
 
 describe("Unified Context Tool Integration", () => {

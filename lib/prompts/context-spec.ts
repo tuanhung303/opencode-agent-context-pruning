@@ -7,7 +7,7 @@ Discard - remove completed/noisy content:
   context({ action: "discard", targets: [["r_a1b2c"], ["g_d4e5f"]] })
 
 Distill - replace with summaries:
-  context({ action: "distill", targets: [["r_a1b2c", "Key finding"], ["Let me...", "Summary"]] })
+  context({ action: "distill", targets: [["r_a1b2c", "Key finding"], ["Let me explain...architecture", "Summary"]] })
 
 Restore - bring back pruned content:
   context({ action: "restore", targets: [["r_a1b2c"]] })
@@ -18,7 +18,7 @@ Tool outputs: Hash format r_a1b2c
   Examples: r_abc12 (read), g_def34 (glob), t_56789 (task)
 
 Messages: Pattern format "start...end"
-  Examples: "Let me..." (starts with), "...done" (ends with)
+  Examples: "Let me explain...architecture" (starts with "Let me explain", ends with "architecture")
 
 ## Rules
 

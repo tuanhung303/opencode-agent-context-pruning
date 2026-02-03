@@ -13,42 +13,22 @@ function normalizeForMatching(text: string): string {
 /**
  * Pattern matching rules for message pruning:
  * - "start...end" → text.startsWith(start) && text.endsWith(end)
- * - "start..."    → text.startsWith(start)
- * - "...end"      → text.endsWith(end)
- * - "exact"       → text.includes(exact) (no ... delimiter)
+ * Both start and end parts must be non-empty.
  */
 export function matchesPattern(text: string, pattern: string): boolean {
     const normText = normalizeForMatching(text)
     const normPattern = normalizeForMatching(pattern)
 
-    // Handle exact match (no ... delimiter)
-    if (!normPattern.includes("...")) {
-        return normText.includes(normPattern)
-    }
-
-    // Handle start...end pattern
-    if (normPattern.startsWith("...") && normPattern.endsWith("...")) {
-        // Pattern is "...middle..." - treat as includes
-        const middle = normPattern.slice(3, -3)
-        return normText.includes(middle)
-    }
-
-    if (normPattern.startsWith("...")) {
-        // Pattern is "...end" - match end only
-        const endPart = normPattern.slice(3)
-        return normText.endsWith(endPart)
-    }
-
-    if (normPattern.endsWith("...")) {
-        // Pattern is "start..." - match start only
-        const startPart = normPattern.slice(0, -3)
-        return normText.startsWith(startPart)
-    }
-
-    // Pattern is "start...end" - match both
+    // Only support "start...end" pattern format (both parts required)
     const parts = normPattern.split("...", 2)
     const startPart = parts[0] ?? ""
     const endPart = parts[1] ?? ""
+
+    // Both start and end must be non-empty
+    if (!startPart || !endPart) {
+        return false
+    }
+
     return normText.startsWith(startPart) && normText.endsWith(endPart)
 }
 
