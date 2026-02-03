@@ -10,31 +10,31 @@ ACP exposes the `context` tool to manage conversation context efficiently.
 
 ```typescript
 // Discard - remove completed/noisy content
-context({ action: "discard", targets: [["r_a1b2c"], ["g_d4e5f"]] })
+context({ action: "discard", targets: [["a1b2c3"], ["d4e5f6"]] })
 
 // Distill - replace with summaries
 context({
     action: "distill",
     targets: [
-        ["r_a1b2c", "Key finding"],
+        ["a1b2c3", "Key finding"],
         ["Let me...", "Summary"],
     ],
 })
 
 // Restore - bring back pruned content
-context({ action: "restore", targets: [["r_a1b2c"]] })
+context({ action: "restore", targets: [["a1b2c3"]] })
 
 // Discard old reasoning/thinking blocks
-context({ action: "discard", targets: [["th_abc12"], ["th_def34"]] })
+context({ action: "discard", targets: [["abc123"], ["def456"]] })
 ```
 
 **Targets:**
 
-| Type         | Format                  | Example                                              |
-| ------------ | ----------------------- | ---------------------------------------------------- |
-| Tool outputs | Hash `r_a1b2c`          | `r_abc12` (read), `g_def34` (glob), `t_56789` (task) |
-| Reasoning    | Hash `th_xxxxx`         | `th_abc12` (thinking block)                          |
-| Messages     | Pattern `"start...end"` | `"Let me..."` (starts), `"...done"` (ends)           |
+| Type         | Format                  | Example                                    |
+| ------------ | ----------------------- | ------------------------------------------ |
+| Tool outputs | 6 hex chars             | `a1b2c3`, `d4e5f6`, `123abc`               |
+| Reasoning    | 6 hex chars             | `abc123` (thinking block hash)             |
+| Messages     | Pattern `"start...end"` | `"Let me..."` (starts), `"...done"` (ends) |
 
 **When:**
 

@@ -15,13 +15,17 @@ A unified tool to discard, distill, or restore content.
 | restore | Bring back content | [[target], ...] |
 
 TARGET TYPES (Auto-detected)
-- Tool outputs: r_a1b2c, g_d4e5f, t_12345
+- Tool outputs: a1b2c3 (6 hex characters, no prefix)
 - Messages: "start...end" (e.g. "The quick...lazy dog")
 
+HASH FORMAT
+- Exactly 6 hex chars (0-9, a-f) - no prefix needed
+- Example: <thinking>a1b2c3\nreasoning...</thinking> → hash is a1b2c3
+
 EXAMPLES
-context({ action: "discard", targets: [["r_a1b2c"], ["Let me explain...architecture"]] })
-context({ action: "distill", targets: [["r_a1b2c", "JWT validation"], ["Let me explain...architecture", "Explained flow"]] })
-context({ action: "restore", targets: [["r_a1b2c"], ["Let me explain...architecture"]] })
+context({ action: "discard", targets: [["a1b2c3"], ["Let me explain...architecture"]] })
+context({ action: "distill", targets: [["a1b2c3", "JWT validation"], ["Let me explain...architecture", "Explained flow"]] })
+context({ action: "restore", targets: [["a1b2c3"], ["Let me explain...architecture"]] })
 
 </instruction>
 

@@ -385,7 +385,7 @@ export function groupHashesByToolName(state: SessionState): Record<string, strin
 
 /**
  * Format grouped hashes into a display string for the reminder.
- * Output format: "reads: r_a1b2c, r_d4e5f\ngreps: g_12345\nglobs: g_67890"
+ * Output format: "reads: a1b2c3, d4e5f6\ngreps: 123abc\nglobs: 67890a"
  * Returns empty string if no hashes.
  */
 export function formatHashInventory(grouped: Record<string, string[]>): string {

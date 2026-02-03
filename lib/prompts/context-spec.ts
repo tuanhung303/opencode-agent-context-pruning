@@ -4,13 +4,13 @@ Manage conversation context. Remove noise, preserve essentials.
 ## Usage
 
 Discard - remove completed/noisy content:
-  context({ action: "discard", targets: [["r_a1b2c"], ["g_d4e5f"]] })
+  context({ action: "discard", targets: [["a1b2c3"], ["d4e5f6"]] })
 
 Distill - replace with summaries:
-  context({ action: "distill", targets: [["r_a1b2c", "Key finding"], ["Let me explain...architecture", "Summary"]] })
+  context({ action: "distill", targets: [["a1b2c3", "Key finding"], ["Let me explain...architecture", "Summary"]] })
 
 Restore - bring back pruned content:
-  context({ action: "restore", targets: [["r_a1b2c"]] })
+  context({ action: "restore", targets: [["a1b2c3"]] })
 
 ## Bulk Operations
 
@@ -37,11 +37,23 @@ Distill everything:
 
 ## Targets
 
-Tool outputs: r_a1b2c (e.g. r_abc12, g_def34, t_56789)
+Tool outputs: 6 hex characters (e.g. a1b2c3, d4e5f6, 123abc)
 
 Messages: "start...end" (e.g. "The quick...lazy dog")
 
 Bulk patterns: [tools], [messages], [*], [all]
+
+## Hash Format
+
+- **Exactly 6 hex chars** (0-9, a-f) - no prefixes, no separators
+
+Example - thinking block with hash:
+  <thinking>
+  a1b2c3
+  The quick brown fox jumps over...
+  </thinking>
+  → Hash is: a1b2c3
+  → Prune with: context({ action: "discard", targets: [["a1b2c3"]] })
 
 ## Rules
 

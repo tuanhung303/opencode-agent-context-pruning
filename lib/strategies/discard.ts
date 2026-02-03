@@ -41,7 +41,9 @@ export async function executeToolPrune(
 
     if (!callIds || callIds.length === 0) {
         logger.debug(`${toolName} tool called but no valid call IDs resolved`)
-        throw new Error(`No valid hashes provided. Use hashes from tool outputs (e.g., r_a1b2c).`)
+        throw new Error(
+            `No valid hashes provided. Use 6-char hashes from tool outputs (e.g., a1b2c3).`,
+        )
     }
 
     const messagesResponse = await client.session.messages({
