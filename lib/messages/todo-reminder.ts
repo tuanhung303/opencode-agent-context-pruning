@@ -2,20 +2,21 @@ import type { SessionState, WithParts } from "../state/types"
 import type { PluginConfig } from "../config"
 import type { Logger } from "../logger"
 import { isMessageCompacted } from "../shared-utils"
+import { groupHashesByToolName, formatHashInventory } from "./utils"
 
 const REMINDER_TEMPLATE = `
 ---
 📋 **Todo Review Reminder** (not updated for {turns} turns)
 Before moving to the next task, please review your todo list and update if needed.
 Use \`todoread\` to check status, then \`todowrite\` to mark progress.
-
+{prunable_hashes}
 💡 **Tip**: After updating your todo list, consider using context pruning tools (\`discard\` or \`distill\`) to keep the conversation focused and efficient.
 ---
 `
 
-// Regex to match the reminder block (with any number of turns)
+// Regex to match the reminder block (with any number of turns and optional prunable hashes)
 const REMINDER_REGEX =
-    /\n?---\n📋 \*\*Todo Review Reminder\*\* \(not updated for \d+ turns\)\nBefore moving to the next task, please review your todo list and update if needed\.\nUse `todoread` to check status, then `todowrite` to mark progress\.\n\n💡 \*\*Tip\*\*: After updating your todo list, consider using context pruning tools \(`discard` or `distill`\) to keep the conversation focused and efficient\.\n---\n?/g
+    /\n?---\n📋 \*\*Todo Review Reminder\*\* \(not updated for \d+ turns\)\nBefore moving to the next task, please review your todo list and update if needed\.\nUse `todoread` to check status, then `todowrite` to mark progress\.\n(?:\n\*\*Prunable Outputs:\*\*\n(?:[a-z]+: [a-z]_[a-f0-9, _]+\n?)+\n)?💡 \*\*Tip\*\*: After updating your todo list, consider using context pruning tools \(`discard` or `distill`\) to keep the conversation focused and efficient\.\n---\n?/g
 
 /**
  * Remove any todo reminder from messages.
@@ -122,8 +123,16 @@ export function injectTodoReminder(
         return false
     }
 
+    // Generate prunable hashes section
+    const grouped = groupHashesByToolName(state)
+    const hashInventory = formatHashInventory(grouped)
+    const prunableSection = hashInventory ? `\n**Prunable Outputs:**\n${hashInventory}\n` : "\n"
+
     // Create reminder content
-    const reminderContent = REMINDER_TEMPLATE.replace("{turns}", String(turnsSinceTodo))
+    const reminderContent = REMINDER_TEMPLATE.replace("{turns}", String(turnsSinceTodo)).replace(
+        "{prunable_hashes}",
+        prunableSection,
+    )
 
     // Create a new user message with the reminder
     const reminderMessage: WithParts = {
