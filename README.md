@@ -6,23 +6,37 @@ Automatically reduces token usage in OpenCode by intelligently managing conversa
 
 ## 🤖 Agent Auto
 
-ACP exposes pruning tools to manage context efficiently. Use these when context grows large.
+ACP exposes the `context` tool to manage conversation context efficiently.
 
-| Tool           | Target             | Pattern Format           | Example                                                   |
-| -------------- | ------------------ | ------------------------ | --------------------------------------------------------- |
-| `discard_tool` | Tool outputs       | Hash: `r_a1b2c`          | `discard_tool(["r_abc12", "r_def34"])`                    |
-| `distill_tool` | Tool outputs       | Hash + summary           | `distill_tool([["r_abc12", "auth.ts validates JWT..."]])` |
-| `restore_tool` | Tool outputs       | Hash: `r_a1b2c`          | `restore_tool(["r_abc12"])`                               |
-| `discard_msg`  | Assistant messages | Pattern: `"start...end"` | `discard_msg(["Let me explain...completed"])`             |
-| `distill_msg`  | Assistant messages | Pattern + summary        | `distill_msg([["Let me explain...auth", "Auth logic"]])`  |
+```typescript
+// Discard - remove completed/noisy content
+context({ action: "discard", targets: [["r_a1b2c"], ["g_d4e5f"]] })
 
-**Pattern format:** `"start...end"` (Always provide both start and end markers for precise matching)
+// Distill - replace with summaries
+context({
+    action: "distill",
+    targets: [
+        ["r_a1b2c", "Key finding"],
+        ["Let me...", "Summary"],
+    ],
+})
 
-**When to use:**
+// Restore - bring back pruned content
+context({ action: "restore", targets: [["r_a1b2c"]] })
+```
+
+**Targets:**
+
+| Type         | Format                  | Example                                              |
+| ------------ | ----------------------- | ---------------------------------------------------- |
+| Tool outputs | Hash `r_a1b2c`          | `r_abc12` (read), `g_def34` (glob), `t_56789` (task) |
+| Messages     | Pattern `"start...end"` | `"Let me..."` (starts), `"...done"` (ends)           |
+
+**When:**
 
 - `discard` — Completed tasks, noise, redundant outputs
-- `distill` — Valuable context you want to preserve in summary form
-- `restore` — Bring back previously pruned content if needed
+- `distill` — Large outputs to preserve as summaries
+- `restore` — Bring back previously pruned content
 
 ## 🏗️ CI/CD Pipeline
 
@@ -52,7 +66,7 @@ ACP provides two modes of operation: **Agentic Pruning** (enabled by default) an
 
 | Mode        | Enabled by Default | Control                | Strategies                                                          |
 | :---------- | :----------------- | :--------------------- | :------------------------------------------------------------------ |
-| **Agentic** | ✅ Yes             | Explicit Agent Control | `discard_tool`, `distill_tool`, `discard_msg`, `distill_msg`        |
+| **Agentic** | ✅ Yes             | Explicit Agent Control | `context` (discard/distill/restore)                                 |
 | **Auto**    | ❌ No              | Implicit/Automatic     | `deduplication`, `purgeErrors`, `truncation`, `thinkingCompression` |
 
 #### 1. Agentic Pruning (LLM-Driven)

@@ -1,59 +1,28 @@
-Manages conversation context by removing, summarizing, or restoring content. Use this to prevent context bloat and maintain performance.
+Manage conversation context. Remove noise, preserve essentials.
 
-## When to Use
+## Usage
 
-| Action | Use Case |
-|--------|----------|
-| **discard** | Completed tasks, noise, redundant outputs, temporary exploration data |
-| **distill** | Large outputs you want to preserve as summaries (file reads, command outputs, research findings) |
-| **restore** | Bring back previously pruned content if needed |
+```typescript
+// Discard - remove completed/noisy content
+context({ action: "discard", targets: [["r_a1b2c"], ["g_d4e5f"]] })
 
-## Parameters
+// Distill - replace with summaries
+context({ action: "distill", targets: [["r_a1b2c", "Key finding"], ["Let me...", "Summary"]] })
 
-- `action`: `"discard"` | `"distill"` | `"restore"`
-- `targets`: Array of `[target]` or `[target, summary]` tuples
-  - For **discard/restore**: `[[target], [target], ...]`
-  - For **distill**: `[[target, summary], [target, summary], ...]`
+// Restore - bring back pruned content
+context({ action: "restore", targets: [["r_a1b2c"]] })
+```
 
-## Target Types (Auto-detected)
+## Targets
 
 | Type | Format | Example |
 |------|--------|---------|
-| **Tool outputs** | Hash: `r_a1b2c` (letter + 5 hex chars) | `r_a1b2c` (read), `g_d4e5f` (glob), `t_12345` (task) |
-| **Messages** | Pattern string | `"Let me explain..."` (starts with), `"...completed"` (ends with), `"Start...end"` (both) |
+| Tool outputs | Hash `r_a1b2c` | `r_abc12` (read), `g_def34` (glob), `t_56789` (task) |
+| Messages | Pattern `"start...end"` | `"Let me..."` (starts), `"...done"` (ends) |
 
-## Examples
+## Rules
 
-### Discard (tool + message)
-```typescript
-context({ 
-  action: "discard", 
-  targets: [["r_a1b2c"], ["Let me explain...architecture"]] 
-})
-```
-
-### Distill (tool + message with summaries)
-```typescript
-context({ 
-  action: "distill", 
-  targets: [
-    ["r_a1b2c", "auth.ts: JWT validation in validateToken()"],
-    ["Let me explain...", "Explained auth flow"]
-  ] 
-})
-```
-
-### Restore (symmetric - same identifiers)
-```typescript
-context({ 
-  action: "restore", 
-  targets: [["r_a1b2c"], ["Let me explain...architecture"]] 
-})
-```
-
-## Best Practices
-
-- **Batch operations**: Combine multiple targets in one call
-- **Mixed targets**: Tool hashes and message patterns together
-- **Prune every cycle**: After RESEARCH, after IMPLEMENT, during REFLECT
-- **Silent operation**: Never mention pruning to users
+1. **Batch**: Multiple targets in one call
+2. **Mix**: Tool hashes + message patterns together
+3. **Every cycle**: After research, after implement, during reflect
+4. **Silent**: Never mention pruning to users
