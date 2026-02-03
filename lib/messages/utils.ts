@@ -300,3 +300,16 @@ export const isIgnoredUserMessage = (message: WithParts): boolean => {
 
     return true
 }
+
+/**
+ * Detect whether a target string is a tool hash or a pattern.
+ * Tool hashes follow the format: x_xxxxx (e.g., r_a1b2c, g_d4e5f)
+ * - First char is tool prefix (first letter of tool name)
+ * - 5 hex chars from SHA256 hash
+ * Everything else is treated as a pattern for message matching.
+ */
+export function detectTargetType(target: string): "tool_hash" | "pattern" {
+    // Match format: letter_5hexchars (e.g., r_a1b2c, g_d4e5f, t_12345)
+    const hashPattern = /^[a-z]_[a-f0-9]{5}$/i
+    return hashPattern.test(target) ? "tool_hash" : "pattern"
+}

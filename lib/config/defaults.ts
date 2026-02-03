@@ -24,6 +24,7 @@ export const DEFAULT_PROTECTED_TOOLS = [
     "distill_msg",
     "restore_tool",
     "restore_msg",
+    "context",
     "batch",
     "write",
     "edit",
