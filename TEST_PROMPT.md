@@ -74,7 +74,6 @@ context({
 ```typescript
 read({ filePath: "README.md" })
 // Note the hash
-
 ;("Here's a detailed analysis of the architecture...")
 
 context({
@@ -135,7 +134,6 @@ context({
 ```typescript
 glob({ pattern: "**/*.ts" })
 // Note hash
-
 ;("Here's a detailed breakdown of the test results...")
 
 context({
