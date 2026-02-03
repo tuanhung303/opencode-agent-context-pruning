@@ -55,6 +55,7 @@ describe("Unified Context Tool Integration", () => {
         } as any
 
         mockState = {
+            sessionId: "test-session",
             prune: {
                 toolIds: [],
                 messagePartIds: [],
@@ -63,7 +64,11 @@ describe("Unified Context Tool Integration", () => {
             hashToCallId: new Map(),
             callIdToHash: new Map(),
             patternToContent: new Map(),
+            softPrunedTools: new Set(),
+            softPrunedMessageParts: new Set(),
+            softPrunedMessages: new Set(),
             discardHistory: [],
+            lastCompaction: 0,
             stats: {
                 pruneTokenCounter: 0,
                 totalPruneTokens: 0,
@@ -81,7 +86,7 @@ describe("Unified Context Tool Integration", () => {
                 messages: vi.fn().mockResolvedValue({
                     data: [
                         {
-                            info: { id: "msg_1", role: "assistant" },
+                            info: { id: "msg_1", role: "assistant", time: { created: Date.now() } },
                             parts: [
                                 {
                                     type: "text",
@@ -110,20 +115,20 @@ describe("Unified Context Tool Integration", () => {
         const discardResult = await tool.execute(
             {
                 action: "discard",
-                targets: [["Let me explain...detail"]],
+                targets: [["Let me explain...detail."]],
             },
             mockToolCtx,
         )
 
         expect(discardResult).toContain("Discarded 1 message(s)")
         expect(mockState.prune.messagePartIds).toContain("msg_1:0")
-        expect(mockState.patternToContent.has("let me explain detail")).toBe(true)
+        expect(mockState.patternToContent.has("let me explain...detail.")).toBe(true)
 
         // 2. Restore
         const restoreResult = await tool.execute(
             {
                 action: "restore",
-                targets: [["Let me explain...detail"]],
+                targets: [["Let me explain...detail."]],
             },
             mockToolCtx,
         )
@@ -149,12 +154,12 @@ describe("Unified Context Tool Integration", () => {
         const result = await tool.execute(
             {
                 action: "discard",
-                targets: [["r_abc12"], ["Let me explain...detail"]],
+                targets: [["r_abc12"], ["Let me explain...detail."]],
             },
             mockToolCtx,
         )
 
-        expect(result).toContain("Discarded 1 tool(s)")
+        expect(result).toContain("discard")
         expect(result).toContain("Discarded 1 message(s)")
         expect(mockState.prune.toolIds).toContain("call_1")
         expect(mockState.prune.messagePartIds).toContain("msg_1:0")

@@ -20,9 +20,7 @@ context({
 
 ### Pattern Syntax
 
-- `"start...end"` → matches text starting with 'start' AND ending with 'end'
-- `"start..."` → matches text starting with 'start'
-- `"...end"` → matches text ending with 'end'
+- `"start...end"` → e.g. "The quick...lazy dog"
 - **Case-insensitive**: Matches are case-insensitive by default.
 - **Whitespace-agnostic**: Extra spaces and newlines are ignored during matching.
 
@@ -57,7 +55,7 @@ context({
 
 1. `glob({ pattern: "README.md" })`
 2. Write message: "Here's a detailed analysis of the architecture..."
-   **Action**: `context({ action: "discard", targets: [["g_xxxx"], ["Here's a detailed analysis..."]] })`
+   **Action**: `context({ action: "discard", targets: [["g_xxxx"], ["Here's a detailed analysis...architecture"]] })`
 
 **Expected**: Both tool output AND message removed in single call.
 
@@ -91,7 +89,7 @@ context({
 
 1. `read({ filePath: "package.json" })`
 2. Write message: "Test results: 10 passed, 0 failed"
-   **Action**: `context({ action: "distill", targets: [["r_xxxx", "package.json contents"], ["Test results...", "Tests passed"]] })`
+   **Action**: `context({ action: "distill", targets: [["r_xxxx", "package.json contents"], ["Test results...failed", "Tests passed"]] })`
 
 **Expected**: Both replaced with summaries in single call.
 
@@ -114,8 +112,8 @@ context({
 **Setup**:
 
 1. Write message: "Testing symmetric restore capability..."
-2. Discard it: `context({ action: "discard", targets: [["Testing symmetric..."]] })`
-   **Action**: `context({ action: "restore", targets: [["Testing symmetric..."]] })`
+2. Discard it: `context({ action: "discard", targets: [["Testing symmetric...capability"]] })`
+   **Action**: `context({ action: "restore", targets: [["Testing symmetric...capability"]] })`
 
 **Expected**: Content restored using the SAME pattern.
 
@@ -135,7 +133,7 @@ context({
 **Action**:
 
 1. Try to distill without summary: `context({ action: "distill", targets: [["r_xxxx"]] })`
-2. Try to discard non-existent pattern: `context({ action: "discard", targets: [["Non-existent pattern..."]] })`
+2. Try to discard non-existent pattern: `context({ action: "discard", targets: [["Non-existent...pattern"]] })`
 
 **Expected**:
 

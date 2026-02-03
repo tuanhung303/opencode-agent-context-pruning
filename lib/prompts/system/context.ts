@@ -15,11 +15,8 @@ A unified tool to discard, distill, or restore content.
 | restore | Bring back content | [[target], ...] |
 
 TARGET TYPES (Auto-detected)
-- Tool outputs: Hash format (e.g., r_a1b2c, g_d4e5f, t_12345)
-- Messages: Pattern format (e.g., "Let me explain...architecture")
-
-PATTERN MATCHING
-- "start...end" → matches text starting with 'start' AND ending with 'end'
+- Tool outputs: r_a1b2c, g_d4e5f, t_12345
+- Messages: "start...end" (e.g. "The quick...lazy dog")
 
 EXAMPLES
 context({ action: "discard", targets: [["r_a1b2c"], ["Let me explain...architecture"]] })
