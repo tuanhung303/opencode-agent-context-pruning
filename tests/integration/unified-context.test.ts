@@ -63,7 +63,10 @@ describe("Unified Context Tool Integration", () => {
             toolParameters: new Map(),
             hashToCallId: new Map(),
             callIdToHash: new Map(),
-            patternToContent: new Map(),
+            hashToMessagePart: new Map(),
+            messagePartToHash: new Map(),
+            hashToReasoningPart: new Map(),
+            reasoningPartToHash: new Map(),
             softPrunedTools: new Set(),
             softPrunedMessageParts: new Set(),
             softPrunedMessages: new Set(),
@@ -102,7 +105,11 @@ describe("Unified Context Tool Integration", () => {
         mockToolCtx = { sessionID: "test-session" }
     })
 
-    it("should discard a message by pattern and then restore it symmetrically", async () => {
+    it("should discard a message by hash and then restore it symmetrically", async () => {
+        // Setup: Pre-inject a hash for the message
+        mockState.hashToMessagePart.set("a1b2c3", "msg_1:0")
+        mockState.messagePartToHash.set("msg_1:0", "a1b2c3")
+
         const tool = createContextTool({
             client: mockClient,
             state: mockState,
@@ -111,24 +118,23 @@ describe("Unified Context Tool Integration", () => {
             workingDirectory: "/test",
         })
 
-        // 1. Discard
+        // 1. Discard by hash
         const discardResult = await tool.execute(
             {
                 action: "discard",
-                targets: [["Let me explain...detail."]],
+                targets: [["a1b2c3"]],
             },
             mockToolCtx,
         )
 
         expect(discardResult).toContain("Discarded 1 message(s)")
         expect(mockState.prune.messagePartIds).toContain("msg_1:0")
-        expect(mockState.patternToContent.has("let me explain...detail.")).toBe(true)
 
-        // 2. Restore
+        // 2. Restore by hash
         const restoreResult = await tool.execute(
             {
                 action: "restore",
-                targets: [["Let me explain...detail."]],
+                targets: [["a1b2c3"]],
             },
             mockToolCtx,
         )
@@ -137,11 +143,15 @@ describe("Unified Context Tool Integration", () => {
         expect(mockState.prune.messagePartIds).not.toContain("msg_1:0")
     })
 
-    it("should handle mixed targets (tool hash + message pattern) in a single call", async () => {
+    it("should handle mixed targets (tool hash + message hash) in a single call", async () => {
         // Setup a tool in state
-        mockState.hashToCallId.set("r_abc12", "call_1")
-        mockState.callIdToHash.set("call_1", "r_abc12")
+        mockState.hashToCallId.set("abc123", "call_1")
+        mockState.callIdToHash.set("call_1", "abc123")
         mockState.toolParameters.set("call_1", { tool: "read", turn: 1, parameters: {} } as any)
+
+        // Setup a message hash
+        mockState.hashToMessagePart.set("d4e5f6", "msg_1:0")
+        mockState.messagePartToHash.set("msg_1:0", "d4e5f6")
 
         const tool = createContextTool({
             client: mockClient,
@@ -154,13 +164,136 @@ describe("Unified Context Tool Integration", () => {
         const result = await tool.execute(
             {
                 action: "discard",
-                targets: [["r_abc12"], ["Let me explain...detail."]],
+                targets: [["abc123"], ["d4e5f6"]],
             },
             mockToolCtx,
         )
 
         expect(result).toContain("discard")
         expect(result).toContain("Discarded 1 message(s)")
+        expect(mockState.prune.toolIds).toContain("call_1")
+        expect(mockState.prune.messagePartIds).toContain("msg_1:0")
+    })
+
+    it("should discard all tools using bulk pattern [tools]", async () => {
+        // Setup multiple tools in state (task is protected, so use other tools)
+        mockState.hashToCallId.set("abc123", "call_1")
+        mockState.hashToCallId.set("def456", "call_2")
+        mockState.hashToCallId.set("567890", "call_3")
+        mockState.callIdToHash.set("call_1", "abc123")
+        mockState.callIdToHash.set("call_2", "def456")
+        mockState.callIdToHash.set("call_3", "w_56789")
+        mockState.toolParameters.set("call_1", { tool: "read", turn: 1, parameters: {} } as any)
+        mockState.toolParameters.set("call_2", { tool: "grep", turn: 2, parameters: {} } as any)
+        mockState.toolParameters.set("call_3", { tool: "write", turn: 3, parameters: {} } as any)
+
+        const tool = createContextTool({
+            client: mockClient,
+            state: mockState,
+            logger: mockLogger,
+            config: mockConfig,
+            workingDirectory: "/test",
+        })
+
+        const result = await tool.execute(
+            {
+                action: "discard",
+                targets: [["[tools]"]],
+            },
+            mockToolCtx,
+        )
+
+        expect(result).toContain("discard")
+        expect(mockState.prune.toolIds).toContain("call_1")
+        expect(mockState.prune.toolIds).toContain("call_2")
+        expect(mockState.prune.toolIds).toContain("call_3")
+    })
+
+    it("should distill all tools using bulk pattern [tools] with summary", async () => {
+        // Setup multiple tools in state
+        mockState.hashToCallId.set("abc123", "call_1")
+        mockState.hashToCallId.set("def456", "call_2")
+        mockState.callIdToHash.set("call_1", "abc123")
+        mockState.callIdToHash.set("call_2", "def456")
+        mockState.toolParameters.set("call_1", { tool: "read", turn: 1, parameters: {} } as any)
+        mockState.toolParameters.set("call_2", { tool: "grep", turn: 2, parameters: {} } as any)
+
+        const tool = createContextTool({
+            client: mockClient,
+            state: mockState,
+            logger: mockLogger,
+            config: mockConfig,
+            workingDirectory: "/test",
+        })
+
+        const result = await tool.execute(
+            {
+                action: "distill",
+                targets: [["[tools]", "Research complete"]],
+            },
+            mockToolCtx,
+        )
+
+        expect(result).toContain("distill")
+        expect(mockState.prune.toolIds).toContain("call_1")
+        expect(mockState.prune.toolIds).toContain("call_2")
+    })
+
+    it("should exclude protected tools from bulk operations", async () => {
+        // Setup tools including a protected one
+        mockState.hashToCallId.set("abc123", "call_1")
+        mockState.hashToCallId.set("t_def34", "call_2") // task is protected
+        mockState.callIdToHash.set("call_1", "abc123")
+        mockState.callIdToHash.set("call_2", "t_def34")
+        mockState.toolParameters.set("call_1", { tool: "read", turn: 1, parameters: {} } as any)
+        mockState.toolParameters.set("call_2", { tool: "task", turn: 2, parameters: {} } as any)
+
+        const tool = createContextTool({
+            client: mockClient,
+            state: mockState,
+            logger: mockLogger,
+            config: mockConfig,
+            workingDirectory: "/test",
+        })
+
+        const result = await tool.execute(
+            {
+                action: "discard",
+                targets: [["[tools]"]],
+            },
+            mockToolCtx,
+        )
+
+        expect(result).toContain("discard")
+        expect(mockState.prune.toolIds).toContain("call_1")
+        expect(mockState.prune.toolIds).not.toContain("call_2") // Protected tool excluded
+    })
+
+    it("should handle bulk all pattern [*] for discard", async () => {
+        // Setup tools and messages
+        mockState.hashToCallId.set("abc123", "call_1")
+        mockState.callIdToHash.set("call_1", "abc123")
+        mockState.toolParameters.set("call_1", { tool: "read", turn: 1, parameters: {} } as any)
+        mockState.hashToMessagePart = new Map()
+        mockState.hashToMessagePart.set("a_xyz12", "msg_1:0")
+
+        const tool = createContextTool({
+            client: mockClient,
+            state: mockState,
+            logger: mockLogger,
+            config: mockConfig,
+            workingDirectory: "/test",
+        })
+
+        const result = await tool.execute(
+            {
+                action: "discard",
+                targets: [["[*]"]],
+            },
+            mockToolCtx,
+        )
+
+        expect(result).toContain("discard")
         expect(mockState.prune.toolIds).toContain("call_1")
         expect(mockState.prune.messagePartIds).toContain("msg_1:0")
     })

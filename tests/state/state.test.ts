@@ -91,8 +91,9 @@ describe("createSessionState", () => {
     it("should initialize all strategy stats", () => {
         const state = createSessionState()
 
-        expect(state.stats.strategyStats.deduplication.count).toBe(0)
-        expect(state.stats.strategyStats.supersedeWrites.count).toBe(0)
+        expect(state.stats.strategyStats.autoSupersede.hash.count).toBe(0)
+        expect(state.stats.strategyStats.autoSupersede.file.count).toBe(0)
+        expect(state.stats.strategyStats.autoSupersede.todo.count).toBe(0)
         expect(state.stats.strategyStats.purgeErrors.count).toBe(0)
         expect(state.stats.strategyStats.manualDiscard.count).toBe(0)
         expect(state.stats.strategyStats.distillation.count).toBe(0)
@@ -301,10 +302,10 @@ describe("session stats", () => {
     })
 
     it("should track strategy-specific stats", () => {
-        mockState.stats.strategyStats.deduplication.count += 1
-        mockState.stats.strategyStats.deduplication.tokens += 50
+        mockState.stats.strategyStats.autoSupersede.hash.count += 1
+        mockState.stats.strategyStats.autoSupersede.hash.tokens += 50
 
-        expect(mockState.stats.strategyStats.deduplication.count).toBe(1)
-        expect(mockState.stats.strategyStats.deduplication.tokens).toBe(50)
+        expect(mockState.stats.strategyStats.autoSupersede.hash.count).toBe(1)
+        expect(mockState.stats.strategyStats.autoSupersede.hash.tokens).toBe(50)
     })
 })

@@ -2,8 +2,6 @@
 export { PruneToolContext } from "./_types"
 
 // Strategy implementations
-export { deduplicate } from "./deduplication"
-export { supersedeWrites } from "./supersede-writes"
 export { purgeErrors } from "./purge-errors"
 export { truncateLargeOutputs } from "./truncation"
 export { compressThinkingBlocks } from "./thinking-compression"

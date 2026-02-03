@@ -2,6 +2,7 @@ import { createHash } from "crypto"
 import { isMessageCompacted } from "../shared-utils"
 import type { SessionState, WithParts } from "../state"
 import type { UserMessage } from "@opencode-ai/sdk/v2"
+import type { PluginConfig } from "../config"
 
 const SYNTHETIC_MESSAGE_ID = "msg_01234567890123456789012345"
 
@@ -34,15 +35,13 @@ export function stableStringify(obj: unknown): string {
 
 /**
  * Generate a short, stable hash for a tool call.
- * Format: x_xxxxx (e.g., r_a1b2c)
- * - First char is tool prefix (first letter of tool name)
- * - 5 hex chars from SHA256 hash of stable-stringified params
+ * Format: xxxxxx (e.g., a1b2c3)
+ * - 6 hex chars from SHA256 hash of stable-stringified params
  */
-export function generateToolHash(tool: string, params: unknown): string {
-    const prefix = (tool[0] ?? "x").toLowerCase()
+export function generateToolHash(_tool: string, params: unknown): string {
     const paramsStr = stableStringify(params)
-    const hash = createHash("sha256").update(paramsStr).digest("hex").substring(0, 5)
-    return `${prefix}_${hash}`
+    const hash = createHash("sha256").update(paramsStr).digest("hex").substring(0, 6)
+    return hash
 }
 const SYNTHETIC_PART_ID = "prt_01234567890123456789012345"
 const SYNTHETIC_CALL_ID = "call_01234567890123456789012345"
@@ -301,28 +300,38 @@ export const isIgnoredUserMessage = (message: WithParts): boolean => {
     return true
 }
 
+import type { TargetTypeResult } from "../strategies/_types"
+
 /**
- * Detect whether a target string is a tool hash, reasoning hash, or a pattern.
- * Tool hashes follow the format: x_xxxxx (e.g., r_a1b2c, g_d4e5f)
- * - First char is tool prefix (first letter of tool name)
- * - 5 hex chars from SHA256 hash
- * Reasoning hashes follow the format: th_xxxxx (th = thinking/reasoning)
- * - "th" prefix
- * - 5 alphanumeric chars
- * Everything else is treated as a pattern for message matching.
+ * Detect target type using state map lookups (no prefix-based detection).
+ * Supports: tool_hash, message_hash, reasoning_hash, bulk patterns
+ * Format: 6 hex chars (e.g., a1b2c3) for all hash types
+ * Bulk patterns: [tools], [messages], [*], [all]
  */
-export function detectTargetType(target: string): "tool_hash" | "reasoning_hash" | "pattern" {
-    // Match format: th_5alphanum (e.g., th_abc12, th_x7y9z) - reasoning hashes
-    const reasoningHashPattern = /^th_[a-z0-9]{5}$/i
-    if (reasoningHashPattern.test(target)) {
-        return "reasoning_hash"
+export function detectTargetType(target: string, state: SessionState): TargetTypeResult {
+    // Match bulk patterns first
+    if (target === "[tools]") {
+        return "bulk_tools"
     }
-    // Match format: letter_5hexchars (e.g., r_a1b2c, g_d4e5f, t_12345) - tool hashes
-    const hashPattern = /^[a-z]_[a-f0-9]{5}$/i
-    if (hashPattern.test(target)) {
+    if (target === "[messages]") {
+        return "bulk_messages"
+    }
+    if (target === "[*]" || target === "[all]") {
+        return "bulk_all"
+    }
+
+    // Lookup-based detection (no prefix required)
+    if (state.hashToCallId.has(target)) {
         return "tool_hash"
     }
-    return "pattern"
+    if (state.hashToMessagePart.has(target)) {
+        return "message_hash"
+    }
+    if (state.hashToReasoningPart.has(target)) {
+        return "reasoning_hash"
+    }
+
+    return "tool_hash" // Default assumption for unknown targets
 }
 
 /**
@@ -408,4 +417,64 @@ export function formatHashInventory(grouped: Record<string, string[]>): string {
     }
 
     return lines.join("\n")
+}
+
+/**
+ * Collect all tool hashes eligible for bulk operations.
+ * Respects turn protection (tools without hashes are excluded) and protected tools list.
+ * Also excludes already pruned tools.
+ *
+ * @param state - Session state containing hash mappings
+ * @param config - Plugin config for protected tools list
+ * @returns Array of tool hashes eligible for bulk operations
+ */
+export function collectAllToolHashes(state: SessionState, config: PluginConfig): string[] {
+    const allProtectedTools = config.tools.settings.protectedTools
+    const prunedCallIds = new Set(state.prune.toolIds)
+    const hashes: string[] = []
+
+    for (const [hash, callId] of state.hashToCallId.entries()) {
+        // Skip if already pruned
+        if (prunedCallIds.has(callId)) {
+            continue
+        }
+
+        // Look up tool metadata
+        const toolEntry = state.toolParameters.get(callId)
+        if (!toolEntry) {
+            continue
+        }
+
+        // Skip protected tools
+        if (allProtectedTools.includes(toolEntry.tool)) {
+            continue
+        }
+
+        hashes.push(hash)
+    }
+
+    return hashes
+}
+
+/**
+ * Collect all assistant message part hashes eligible for bulk operations.
+ * Returns all message hashes (a_xxxxx format) that haven't been pruned.
+ *
+ * @param state - Session state containing message hash mappings
+ * @returns Array of message hashes eligible for bulk operations
+ */
+export function collectAllMessageHashes(state: SessionState): string[] {
+    const prunedPartIds = new Set(state.prune.messagePartIds)
+    const hashes: string[] = []
+
+    for (const [hash, partId] of state.hashToMessagePart.entries()) {
+        // Skip if already pruned
+        if (prunedPartIds.has(partId)) {
+            continue
+        }
+
+        hashes.push(hash)
+    }
+
+    return hashes
 }

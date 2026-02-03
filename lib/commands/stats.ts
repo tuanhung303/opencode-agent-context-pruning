@@ -39,14 +39,25 @@ function formatStatsMessage(
     // Strategy effectiveness
     lines.push("Strategy Effectiveness:")
     lines.push("─".repeat(60))
+
+    // Calculate auto-supersede totals
+    const autoSupersede = strategyStats.autoSupersede
+    const autoSupersedeTotal = {
+        count: autoSupersede.hash.count + autoSupersede.file.count + autoSupersede.todo.count,
+        tokens: autoSupersede.hash.tokens + autoSupersede.file.tokens + autoSupersede.todo.tokens,
+    }
+
     const strategies = [
-        { name: "Deduplication", data: strategyStats.deduplication },
-        { name: "Supersede Writes", data: strategyStats.supersedeWrites },
-        { name: "Purge Errors", data: strategyStats.purgeErrors },
-        { name: "Manual Discard", data: strategyStats.manualDiscard },
-        { name: "Distillation", data: strategyStats.distillation },
-        { name: "Truncation", data: strategyStats.truncation },
-        { name: "Thinking Compress", data: strategyStats.thinkingCompression },
+        { name: "Auto-Supersede", data: autoSupersedeTotal, isAutoSupersede: true },
+        { name: "Purge Errors", data: strategyStats.purgeErrors, isAutoSupersede: false },
+        { name: "Manual Discard", data: strategyStats.manualDiscard, isAutoSupersede: false },
+        { name: "Distillation", data: strategyStats.distillation, isAutoSupersede: false },
+        { name: "Truncation", data: strategyStats.truncation, isAutoSupersede: false },
+        {
+            name: "Thinking Compress",
+            data: strategyStats.thinkingCompression,
+            isAutoSupersede: false,
+        },
     ]
 
     // Sort by token savings (descending)
@@ -58,6 +69,25 @@ function formatStatsMessage(
             lines.push(
                 `  ${strat.name.padEnd(18)} ${strat.data.count.toString().padStart(3)} prunes, ~${formatTokenCount(strat.data.tokens)} saved${star}`,
             )
+
+            // Show sub-breakdown for Auto-Supersede
+            if (strat.isAutoSupersede) {
+                if (autoSupersede.hash.count > 0) {
+                    lines.push(
+                        `    🔄 hash          ${autoSupersede.hash.count.toString().padStart(3)} prunes, ~${formatTokenCount(autoSupersede.hash.tokens)}`,
+                    )
+                }
+                if (autoSupersede.file.count > 0) {
+                    lines.push(
+                        `    📁 file          ${autoSupersede.file.count.toString().padStart(3)} prunes, ~${formatTokenCount(autoSupersede.file.tokens)}`,
+                    )
+                }
+                if (autoSupersede.todo.count > 0) {
+                    lines.push(
+                        `    ✅ todo          ${autoSupersede.todo.count.toString().padStart(3)} prunes, ~${formatTokenCount(autoSupersede.todo.tokens)}`,
+                    )
+                }
+            }
         }
     }
     lines.push("")

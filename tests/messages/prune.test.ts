@@ -274,7 +274,7 @@ describe("prune", () => {
 
     describe("injectHashesIntoToolOutputs", () => {
         it("should inject hash prefix into tool output", () => {
-            const hashMappings = new Map([["call_123", "r_a1b2c"]])
+            const hashMappings = new Map([["call_123", "abc123"]])
             const state = createMockState([], hashMappings)
             const messages: WithParts[] = [
                 createMessage("msg_1", [
@@ -291,11 +291,11 @@ describe("prune", () => {
             injectHashesIntoToolOutputs(state, mockConfig, messages, mockLogger as any)
 
             const output = (messages[0].parts[0] as any).state.output
-            expect(output).toBe("r_a1b2c\nfile content here")
+            expect(output).toBe("abc123\nfile content here")
         })
 
         it("should not inject hash if tool is already pruned", () => {
-            const hashMappings = new Map([["call_123", "r_a1b2c"]])
+            const hashMappings = new Map([["call_123", "abc123"]])
             const state = createMockState(["call_123"], hashMappings)
             const originalOutput = "file content here"
             const messages: WithParts[] = [
@@ -317,7 +317,7 @@ describe("prune", () => {
         })
 
         it("should not inject hash if tool is protected", () => {
-            const hashMappings = new Map([["call_123", "r_a1b2c"]])
+            const hashMappings = new Map([["call_123", "abc123"]])
             const state = createMockState([], hashMappings)
             const protectedConfig = {
                 ...mockConfig,
@@ -349,9 +349,9 @@ describe("prune", () => {
         })
 
         it("should not inject hash if output already has hash prefix", () => {
-            const hashMappings = new Map([["call_123", "r_a1b2c"]])
+            const hashMappings = new Map([["call_123", "abc123"]])
             const state = createMockState([], hashMappings)
-            const alreadyHashedOutput = "r_a1b2c\nfile content here"
+            const alreadyHashedOutput = "abc123\nfile content here"
             const messages: WithParts[] = [
                 createMessage("msg_1", [
                     createToolPart(
@@ -371,7 +371,7 @@ describe("prune", () => {
         })
 
         it("should not inject hash for errored tools", () => {
-            const hashMappings = new Map([["call_123", "r_a1b2c"]])
+            const hashMappings = new Map([["call_123", "abc123"]])
             const state = createMockState([], hashMappings)
             const originalOutput = "error message"
             const messages: WithParts[] = [

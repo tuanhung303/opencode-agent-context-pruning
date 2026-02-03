@@ -29,7 +29,10 @@ export interface PersistedSessionState {
     lastTodoTurn?: number
     lastReminderTurn?: number
     lastTodowriteCallId?: string | null
+    lastTodoreadCallId?: string | null
     todos?: TodoItem[]
+    // File-based supersede tracking
+    filePathToCallIds?: Record<string, string[]>
     // Automata Mode tracking
     automataEnabled?: boolean
     lastAutomataTurn?: number
@@ -129,7 +132,15 @@ export async function saveSessionState(
             lastTodoTurn: sessionState.lastTodoTurn,
             lastReminderTurn: sessionState.lastReminderTurn,
             lastTodowriteCallId: sessionState.lastTodowriteCallId,
+            lastTodoreadCallId: sessionState.lastTodoreadCallId,
             todos: sessionState.todos,
+            // File-based supersede tracking
+            filePathToCallIds: Object.fromEntries(
+                Array.from(sessionState.filePathToCallIds.entries()).map(([k, v]) => [
+                    k,
+                    Array.from(v),
+                ]),
+            ),
             // Automata Mode tracking
             automataEnabled: sessionState.automataEnabled,
             lastAutomataTurn: sessionState.lastAutomataTurn,

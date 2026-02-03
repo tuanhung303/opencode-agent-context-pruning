@@ -167,7 +167,6 @@ const createMockState = (): SessionState => ({
     softPrunedTools: new Map(),
     softPrunedMessageParts: new Map(),
     softPrunedMessages: new Map(),
-    patternToContent: new Map(),
     lastTodoTurn: 0,
     lastReminderTurn: 0,
     lastTodowriteCallId: null,

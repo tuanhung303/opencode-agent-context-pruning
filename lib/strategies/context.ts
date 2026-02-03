@@ -12,8 +12,13 @@ import {
     executeContextToolDiscard,
     executeContextMessageDiscard,
     executeContextReasoningDiscard,
+    executeBulkDiscard,
 } from "./discard"
-import { executeContextToolDistill, executeContextMessageDistill } from "./distill"
+import {
+    executeContextToolDistill,
+    executeContextMessageDistill,
+    executeBulkDistill,
+} from "./distill"
 import { executeContextToolRestore, executeContextMessageRestore } from "./restore"
 
 const CONTEXT_TOOL_SPEC = loadPrompt("context-spec")
@@ -52,14 +57,19 @@ export async function executeContext(
     const toolSummaries: string[] = []
     const reasoningHashes: string[] = []
     const reasoningSummaries: string[] = []
-    const messagePatterns: string[] = []
+    const messageHashes: string[] = []
     const messageSummaries: string[] = []
+    // Track bulk operations
+    const bulkTargets: Array<{
+        type: "bulk_tools" | "bulk_messages" | "bulk_all"
+        summary?: string
+    }> = []
 
     for (const tuple of targets) {
         const target = tuple[0]
         const summary = tuple[1]
 
-        const targetType = detectTargetType(target)
+        const targetType = detectTargetType(target, state)
         if (targetType === "tool_hash") {
             toolHashes.push(target)
             if (action === "distill") {
@@ -67,6 +77,14 @@ export async function executeContext(
                     throw new Error(`Summary required for distill action on target: ${target}`)
                 }
                 toolSummaries.push(summary)
+            }
+        } else if (targetType === "message_hash") {
+            messageHashes.push(target)
+            if (action === "distill") {
+                if (!summary) {
+                    throw new Error(`Summary required for distill action on message: ${target}`)
+                }
+                messageSummaries.push(summary)
             }
         } else if (targetType === "reasoning_hash") {
             reasoningHashes.push(target)
@@ -78,14 +96,16 @@ export async function executeContext(
                 }
                 reasoningSummaries.push(summary)
             }
-        } else {
-            messagePatterns.push(target)
-            if (action === "distill") {
-                if (!summary) {
-                    throw new Error(`Summary required for distill action on pattern: ${target}`)
-                }
-                messageSummaries.push(summary)
+        } else if (
+            targetType === "bulk_tools" ||
+            targetType === "bulk_messages" ||
+            targetType === "bulk_all"
+        ) {
+            // Bulk operations - validate summary requirement for distill
+            if (action === "distill" && !summary) {
+                throw new Error(`Summary required for distill action on bulk target: ${target}`)
             }
+            bulkTargets.push({ type: targetType, summary })
         }
     }
 
@@ -94,6 +114,9 @@ export async function executeContext(
     let reasoningResult = ""
     let messageResult = ""
 
+    // Track bulk operation results
+    const bulkResults: string[] = []
+
     if (action === "discard") {
         if (toolHashes.length > 0) {
             toolResult = await executeContextToolDiscard(ctx, toolCtx, toolHashes)
@@ -101,37 +124,47 @@ export async function executeContext(
         if (reasoningHashes.length > 0) {
             reasoningResult = await executeContextReasoningDiscard(ctx, toolCtx, reasoningHashes)
         }
-        if (messagePatterns.length > 0) {
-            messageResult = await executeContextMessageDiscard(
-                ctx,
-                toolCtx,
-                messagePatterns,
-                messages,
-            )
+        if (messageHashes.length > 0) {
+            messageResult = await executeContextMessageDiscard(ctx, toolCtx, messageHashes)
+        }
+        // Execute bulk discard operations
+        for (const bulkTarget of bulkTargets) {
+            const bulkResult = await executeBulkDiscard(ctx, toolCtx, bulkTarget.type)
+            bulkResults.push(bulkResult)
         }
     } else if (action === "distill") {
         if (toolHashes.length > 0) {
             toolResult = await executeContextToolDistill(ctx, toolCtx, toolHashes, toolSummaries)
         }
-        if (messagePatterns.length > 0) {
+        if (messageHashes.length > 0) {
             messageResult = await executeContextMessageDistill(
                 ctx,
                 toolCtx,
-                messagePatterns.map((p, i) => [p, messageSummaries[i]!] as [string, string]),
-                messages,
+                messageHashes.map((h, i) => [h, messageSummaries[i]!] as [string, string]),
             )
+        }
+        // Execute bulk distill operations
+        for (const bulkTarget of bulkTargets) {
+            const bulkResult = await executeBulkDistill(
+                ctx,
+                toolCtx,
+                bulkTarget.type,
+                bulkTarget.summary || "",
+            )
+            bulkResults.push(bulkResult)
         }
     } else if (action === "restore") {
         if (toolHashes.length > 0) {
             toolResult = await executeContextToolRestore(ctx, toolHashes)
         }
-        if (messagePatterns.length > 0) {
-            messageResult = await executeContextMessageRestore(ctx, messagePatterns)
+        if (messageHashes.length > 0) {
+            messageResult = await executeContextMessageRestore(ctx, toolCtx, messageHashes)
         }
+        // Note: Bulk restore is not supported
     }
 
     // Combine results
-    const results = [toolResult, reasoningResult, messageResult].filter(Boolean)
+    const results = [toolResult, reasoningResult, messageResult, ...bulkResults].filter(Boolean)
     return results.join("\n") || `${action} completed: 0 items processed`
 }
 
@@ -158,7 +191,9 @@ export function createContextTool(ctx: PruneToolContext): ReturnType<typeof tool
                     ]),
                 )
                 .describe(
-                    "Array of [target] or [target, summary] tuples. Use [target] for discard/restore, [target, summary] for distill.",
+                    "Array of [target] or [target, summary] tuples. Use [target] for discard/restore, [target, summary] for distill. " +
+                        "Bulk patterns: use '[tools]' to target all tool outputs, '[messages]' for all assistant messages, " +
+                        "or '[*]'/'[all]' for all eligible items. Example: [['[tools]', 'Summary']] for bulk distill.",
                 ),
         },
         async execute(args, toolCtx) {

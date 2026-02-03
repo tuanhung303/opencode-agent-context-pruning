@@ -14,3 +14,21 @@ export interface PruneToolContext {
     config: PluginConfig
     workingDirectory: string
 }
+
+/**
+ * Special bulk target patterns for pruning all items of a type.
+ * - "[tools]": All tool outputs eligible for pruning
+ * - "[messages]": All assistant message parts eligible for pruning
+ * - "[*]" or "[all]": All eligible items (tools + messages)
+ */
+export type BulkTargetPattern = "[tools]" | "[messages]" | "[*]" | "[all]"
+
+/**
+ * Internal bulk target type for categorization.
+ */
+export type BulkTargetType = "bulk_tools" | "bulk_messages" | "bulk_all"
+
+/**
+ * Result type for target type detection including bulk patterns.
+ */
+export type TargetTypeResult = "tool_hash" | "message_hash" | "reasoning_hash" | BulkTargetType

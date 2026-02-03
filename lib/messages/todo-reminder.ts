@@ -9,9 +9,19 @@ const REMINDER_TEMPLATE = `
 📋 **Todo Review Reminder** (not updated for {turns} turns)
 Before moving to the next task, please review your todo list and update if needed.
 Use \`todoread\` to check status, then \`todowrite\` to mark progress.
-{prunable_hashes}
+{prunable_hashes}{stuck_task_guidance}
 💡 **Tip**: After updating your todo list, consider using context pruning tools (\`discard\` or \`distill\`) to keep the conversation focused and efficient.
 ---
+`
+
+const STUCK_TASK_GUIDANCE = `
+⚠️ **Task Breakdown Suggestion**
+A task has been in progress for {stuck_turns} turns. If you're finding it difficult to complete, consider:
+- Breaking it into smaller, more specific subtasks
+- Identifying blockers or dependencies that need resolution first
+- Marking it as blocked and moving to another task
+
+Use \`todowrite\` to split the task or update its status.
 `
 
 // Regex to match the reminder block (with any number of turns and optional prunable hashes)

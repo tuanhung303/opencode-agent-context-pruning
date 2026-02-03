@@ -191,9 +191,9 @@ describe("Config Defaults", () => {
         expect(actualDefaults.tools.settings.protectedTools.length).toBeGreaterThan(0)
     })
 
-    it("should have deduplication disabled by default", async () => {
+    it("should have purgeErrors disabled by default", async () => {
         const { DEFAULT_CONFIG: actualDefaults } = await import("../lib/config/defaults.js")
 
-        expect(actualDefaults.strategies.deduplication.enabled).toBe(false)
+        expect(actualDefaults.strategies.purgeErrors.enabled).toBe(false)
     })
 })

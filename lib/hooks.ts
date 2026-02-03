@@ -3,16 +3,11 @@ import type { Logger } from "./logger"
 import type { PluginConfig } from "./config"
 import type { OpenCodeClient } from "./client"
 import { syncToolCache } from "./state/tool-cache"
-import {
-    deduplicate,
-    supersedeWrites,
-    purgeErrors,
-    truncateLargeOutputs,
-    compressThinkingBlocks,
-} from "./strategies"
+import { purgeErrors, truncateLargeOutputs, compressThinkingBlocks } from "./strategies"
 import {
     prune,
     injectHashesIntoToolOutputs,
+    injectHashesIntoAssistantMessages,
     injectHashesIntoReasoningBlocks,
     injectTodoReminder,
     detectAutomataActivation,
@@ -114,19 +109,14 @@ export function createChatMessageTransformHandler(
             "injectHashesIntoReasoningBlocks",
         )
 
-        // Note: Assistant message hashing disabled - agents use "start...end" patterns for message operations
+        // Inject hashes into assistant messages for hash-based operations
+        safeExecute(
+            () => injectHashesIntoAssistantMessages(state, config, output.messages, logger),
+            logger,
+            "injectHashesIntoAssistantMessages",
+        )
 
         // Run pruning strategies with error boundaries to prevent crashes
-        safeExecute(
-            () => deduplicate(state, logger, config, output.messages),
-            logger,
-            "deduplicate",
-        )
-        safeExecute(
-            () => supersedeWrites(state, logger, config, output.messages),
-            logger,
-            "supersedeWrites",
-        )
         safeExecute(
             () => purgeErrors(state, logger, config, output.messages),
             logger,
@@ -317,12 +307,6 @@ export function createToolExecuteAfterHandler(
             const initialPruneCount = state.prune.toolIds.length + state.prune.messagePartIds.length
 
             // Run lightweight strategies
-            safeExecute(() => deduplicate(state, logger, config, messages), logger, "deduplicate")
-            safeExecute(
-                () => supersedeWrites(state, logger, config, messages),
-                logger,
-                "supersedeWrites",
-            )
             safeExecute(() => purgeErrors(state, logger, config, messages), logger, "purgeErrors")
             safeExecute(
                 () => truncateLargeOutputs(state, logger, config, messages),

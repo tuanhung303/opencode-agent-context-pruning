@@ -22,8 +22,11 @@ export interface SessionStats {
     totalPruneMessages: number
     // Strategy effectiveness tracking
     strategyStats: {
-        deduplication: { count: number; tokens: number }
-        supersedeWrites: { count: number; tokens: number }
+        autoSupersede: {
+            hash: { count: number; tokens: number }
+            file: { count: number; tokens: number }
+            todo: { count: number; tokens: number }
+        }
         purgeErrors: { count: number; tokens: number }
         manualDiscard: { count: number; tokens: number }
         distillation: { count: number; tokens: number }
@@ -59,6 +62,7 @@ export interface TodoItem {
     content: string
     status: "pending" | "in_progress" | "completed" | "cancelled"
     priority: "high" | "medium" | "low"
+    inProgressSince?: number // Turn when task became in_progress (for stuck task detection)
 }
 
 export interface SessionState {
@@ -89,13 +93,15 @@ export interface SessionState {
     softPrunedReasoningParts: Map<string, SoftPrunedReasoningPart>
     // New: message pruning cache for pattern-based discard_msg/distill_msg
     softPrunedMessages: Map<string, SoftPrunedMessage>
-    // Pattern-based restore system for unified context tool
-    patternToContent: Map<string, PatternContentEntry>
+
     // Todo reminder tracking
     lastTodoTurn: number // Turn when todowrite was last called
     lastReminderTurn: number // Turn when reminder was last injected (0 = never)
     lastTodowriteCallId: string | null // CallID of last processed todowrite (to avoid reprocessing)
+    lastTodoreadCallId: string | null // CallID of last processed todoread (for supersede)
     todos: TodoItem[] // Current todo list state
+    // File-based supersede tracking
+    filePathToCallIds: Map<string, Set<string>> // Maps file paths to tool call IDs for supersede
     // Automata Mode tracking
     automataEnabled: boolean // Whether automata mode is active for this session
     lastAutomataTurn: number // Turn when automata keyword was last detected
@@ -132,10 +138,4 @@ export interface SoftPrunedReasoningPart {
     partIndex: number
     prunedAt: number
     hash: string
-}
-
-export interface PatternContentEntry {
-    originalContent: string
-    partId: string
-    normalizedPattern: string
 }

@@ -5,11 +5,6 @@ import { z } from "zod"
  * Extracted from config-schema.ts and config.ts
  */
 
-export const DeduplicationSchema = z.object({
-    enabled: z.boolean().default(false),
-    protectedTools: z.array(z.string()).default([]),
-})
-
 export const DiscardToolSchema = z.object({
     enabled: z.boolean().default(true),
 })
@@ -50,10 +45,6 @@ export const CommandsSchema = z.object({
     protectedTools: z.array(z.string()).default([]),
 })
 
-export const SupersedeWritesSchema = z.object({
-    enabled: z.boolean().default(false),
-})
-
 export const PurgeErrorsSchema = z.object({
     enabled: z.boolean().default(false),
     turns: z.number().positive().default(4),
@@ -81,8 +72,6 @@ export const TurnProtectionSchema = z.object({
 })
 
 export const StrategiesSchema = z.object({
-    deduplication: DeduplicationSchema,
-    supersedeWrites: SupersedeWritesSchema,
     purgeErrors: PurgeErrorsSchema,
     truncation: TruncationSchema,
     thinkingCompression: ThinkingCompressionSchema,
@@ -100,7 +89,6 @@ export const PluginConfigSchema = z.object({
     strategies: StrategiesSchema,
 })
 
-export type Deduplication = z.infer<typeof DeduplicationSchema>
 export type DiscardTool = z.infer<typeof DiscardToolSchema>
 export type DistillTool = z.infer<typeof DistillToolSchema>
 export type ToolSettings = z.infer<typeof ToolSettingsSchema>
@@ -108,7 +96,6 @@ export type TodoReminder = z.infer<typeof TodoReminderSchema>
 export type AutomataMode = z.infer<typeof AutomataModeSchema>
 export type Tools = z.infer<typeof ToolsSchema>
 export type Commands = z.infer<typeof CommandsSchema>
-export type SupersedeWrites = z.infer<typeof SupersedeWritesSchema>
 export type PurgeErrors = z.infer<typeof PurgeErrorsSchema>
 export type Truncation = z.infer<typeof TruncationSchema>
 export type ThinkingCompression = z.infer<typeof ThinkingCompressionSchema>

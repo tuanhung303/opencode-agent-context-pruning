@@ -10,7 +10,8 @@ import { sendUnifiedNotification } from "../ui/notification"
 import { formatDiscardNotification } from "../ui/minimal-notifications"
 import { formatPruningStatus, dimText } from "../ui/pruning-status"
 import { calculateTokensSaved, getCurrentParams } from "./utils"
-import { findMessagesByPattern, storePatternMapping } from "../messages/pattern-match"
+import { collectAllToolHashes, collectAllMessageHashes } from "../messages/utils"
+import type { BulkTargetType } from "./_types"
 
 /**
  * Core distill operation for tool outputs.
@@ -147,28 +148,38 @@ export async function executeContextToolDistill(
 }
 
 /**
- * Distill messages by pattern.
+ * Distill message parts by hash.
  */
 export async function executeContextMessageDistill(
     ctx: PruneToolContext,
     _toolCtx: { sessionID: string },
     entries: Array<[string, string]>,
-    messages: WithParts[],
 ): Promise<string> {
     const { state, logger } = ctx
 
     let distilledCount = 0
 
-    for (const [pattern, summary] of entries) {
-        const matches = findMessagesByPattern(messages, pattern)
-        for (const match of matches) {
-            const partId = `${match.messageId}:${match.partIndex}`
+    for (const [hash, summary] of entries) {
+        const partId = state.hashToMessagePart.get(hash)
+        if (partId) {
             if (!state.prune.messagePartIds.includes(partId)) {
                 state.prune.messagePartIds.push(partId)
-                storePatternMapping(pattern, summary, partId, state)
-                logger.info(`Distilled message part ${partId} via pattern`)
+                // Parse partId to get messageId and partIndex
+                const [messageId, partIndexStr] = partId.split(":")
+                const partIndex = parseInt(partIndexStr!, 10)
+                // Store the summary as soft-pruned content for restore capability
+                state.softPrunedMessages.set(partId, {
+                    content: summary,
+                    messageId: messageId!,
+                    partIndex: partIndex,
+                    prunedAt: Date.now(),
+                    hash: hash,
+                })
+                logger.info(`Distilled message part ${partId} via hash ${hash}`)
                 distilledCount++
             }
+        } else {
+            logger.warn(`Unknown message hash: ${hash}`)
         }
     }
 
@@ -216,6 +227,86 @@ function validateCallIds(
         }
     }
 }
+
+// ============================================================================
+// Bulk Operations
+// ============================================================================
+
+/**
+ * Execute bulk distill operation for tools, messages, or all eligible items.
+ * Collects all eligible items based on bulkType and applies a single summary to all.
+ *
+ * @param ctx - Prune tool context
+ * @param toolCtx - Tool context with session ID
+ * @param bulkType - Type of bulk operation: "bulk_tools", "bulk_messages", or "bulk_all"
+ * @param summary - Single summary to apply to all distilled items
+ * @returns Status message describing what was distilled
+ */
+export async function executeBulkDistill(
+    ctx: PruneToolContext,
+    toolCtx: { sessionID: string },
+    bulkType: BulkTargetType,
+    summary: string,
+): Promise<string> {
+    const { state, logger, config } = ctx
+
+    if (!summary) {
+        throw new Error("Summary is required for bulk distill operations")
+    }
+
+    const results: string[] = []
+
+    // Handle tools
+    if (bulkType === "bulk_tools" || bulkType === "bulk_all") {
+        const toolHashes = collectAllToolHashes(state, config)
+        if (toolHashes.length > 0) {
+            logger.info(`Bulk distill: collecting ${toolHashes.length} tool hashes`)
+            // Create array of same summary repeated for each hash
+            const distillations = toolHashes.map(() => summary)
+            const toolResult = await executeContextToolDistill(
+                ctx,
+                toolCtx,
+                toolHashes,
+                distillations,
+            )
+            results.push(toolResult)
+        } else {
+            results.push("No eligible tool outputs to distill")
+        }
+    }
+
+    // Handle messages
+    if (bulkType === "bulk_messages" || bulkType === "bulk_all") {
+        const messageHashes = collectAllMessageHashes(state)
+        if (messageHashes.length > 0) {
+            logger.info(`Bulk distill: collecting ${messageHashes.length} message hashes`)
+            // Directly distill message parts using collected hashes
+            let distilledCount = 0
+            for (const hash of messageHashes) {
+                const partId = state.hashToMessagePart.get(hash)
+                if (partId && !state.prune.messagePartIds.includes(partId)) {
+                    state.prune.messagePartIds.push(partId)
+                    logger.info(`Bulk distilled message part ${partId}`)
+                    distilledCount++
+                }
+            }
+            if (distilledCount > 0) {
+                saveSessionState(state, logger).catch((err: Error) =>
+                    logger.error("Failed to persist state", { error: err.message }),
+                )
+                results.push(`Distilled ${distilledCount} message(s)`)
+            }
+        } else {
+            results.push("No eligible message parts to distill")
+        }
+    }
+
+    return results.join("; ")
+}
+
+// ============================================================================
+// Helpers
+// ============================================================================
 
 function updateStats(state: SessionState, count: number, tokensSaved: number): void {
     state.stats.pruneTokenCounter += tokensSaved

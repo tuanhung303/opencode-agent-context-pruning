@@ -3,7 +3,6 @@
  */
 
 import type { PruneToolContext } from "./_types"
-import { restoreByPattern } from "../messages/pattern-match"
 import { saveSessionState } from "../state/persistence"
 
 /**
@@ -37,25 +36,28 @@ export async function executeContextToolRestore(
 }
 
 /**
- * Restore messages by pattern (symmetric restore).
+ * Restore messages by hash (symmetric restore).
  */
 export async function executeContextMessageRestore(
     ctx: PruneToolContext,
-    patterns: string[],
+    _toolCtx: { sessionID: string },
+    hashes: string[],
 ): Promise<string> {
     const { state, logger } = ctx
 
     const restored: string[] = []
 
-    for (const pattern of patterns) {
-        const entry = restoreByPattern(pattern, state)
-        if (entry) {
-            const pruneIndex = state.prune.messagePartIds.indexOf(entry.partId)
+    for (const hash of hashes) {
+        const partId = state.hashToMessagePart.get(hash)
+        if (partId) {
+            const pruneIndex = state.prune.messagePartIds.indexOf(partId)
             if (pruneIndex !== -1) {
                 state.prune.messagePartIds.splice(pruneIndex, 1)
-                restored.push(pattern)
-                logger.info(`Restored message via pattern: ${pattern}`)
+                restored.push(hash)
+                logger.info(`Restored message via hash: ${hash}`)
             }
+        } else {
+            logger.warn(`Unknown message hash for restore: ${hash}`)
         }
     }
 

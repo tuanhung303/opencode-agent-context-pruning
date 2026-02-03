@@ -57,8 +57,11 @@ export function createSessionState(): SessionState {
             pruneMessageCounter: 0,
             totalPruneMessages: 0,
             strategyStats: {
-                deduplication: { count: 0, tokens: 0 },
-                supersedeWrites: { count: 0, tokens: 0 },
+                autoSupersede: {
+                    hash: { count: 0, tokens: 0 },
+                    file: { count: 0, tokens: 0 },
+                    todo: { count: 0, tokens: 0 },
+                },
                 purgeErrors: { count: 0, tokens: 0 },
                 manualDiscard: { count: 0, tokens: 0 },
                 distillation: { count: 0, tokens: 0 },
@@ -83,12 +86,14 @@ export function createSessionState(): SessionState {
         softPrunedMessageParts: new Map(),
         softPrunedReasoningParts: new Map(),
         softPrunedMessages: new Map(),
-        patternToContent: new Map(),
         // Todo reminder tracking
         lastTodoTurn: 0,
         lastReminderTurn: 0,
         lastTodowriteCallId: null,
+        lastTodoreadCallId: null,
         todos: [],
+        // File-based supersede tracking
+        filePathToCallIds: new Map(),
         // Automata Mode tracking
         automataEnabled: false,
         lastAutomataTurn: 0,
@@ -110,8 +115,11 @@ export function resetSessionState(state: SessionState): void {
         pruneMessageCounter: 0,
         totalPruneMessages: 0,
         strategyStats: {
-            deduplication: { count: 0, tokens: 0 },
-            supersedeWrites: { count: 0, tokens: 0 },
+            autoSupersede: {
+                hash: { count: 0, tokens: 0 },
+                file: { count: 0, tokens: 0 },
+                todo: { count: 0, tokens: 0 },
+            },
             purgeErrors: { count: 0, tokens: 0 },
             manualDiscard: { count: 0, tokens: 0 },
             distillation: { count: 0, tokens: 0 },
@@ -134,12 +142,14 @@ export function resetSessionState(state: SessionState): void {
     state.softPrunedTools.clear()
     state.softPrunedMessageParts.clear()
     state.softPrunedMessages.clear()
-    state.patternToContent.clear()
     // Todo reminder tracking
     state.lastTodoTurn = 0
     state.lastReminderTurn = 0
     state.lastTodowriteCallId = null
+    state.lastTodoreadCallId = null
     state.todos = []
+    // File-based supersede tracking
+    state.filePathToCallIds.clear()
     // Automata Mode tracking
     state.automataEnabled = false
     state.lastAutomataTurn = 0
@@ -186,8 +196,11 @@ export async function ensureSessionInitialized(
         pruneMessageCounter: persisted.stats?.pruneMessageCounter || 0,
         totalPruneMessages: persisted.stats?.totalPruneMessages || 0,
         strategyStats: persisted.stats?.strategyStats || {
-            deduplication: { count: 0, tokens: 0 },
-            supersedeWrites: { count: 0, tokens: 0 },
+            autoSupersede: {
+                hash: { count: 0, tokens: 0 },
+                file: { count: 0, tokens: 0 },
+                todo: { count: 0, tokens: 0 },
+            },
             purgeErrors: { count: 0, tokens: 0 },
             manualDiscard: { count: 0, tokens: 0 },
             distillation: { count: 0, tokens: 0 },
@@ -216,7 +229,17 @@ export async function ensureSessionInitialized(
     state.lastTodoTurn = persisted.lastTodoTurn ?? 0
     state.lastReminderTurn = persisted.lastReminderTurn ?? 0
     state.lastTodowriteCallId = persisted.lastTodowriteCallId ?? null
+    state.lastTodoreadCallId = persisted.lastTodoreadCallId ?? null
     state.todos = persisted.todos ?? []
+    // Restore file-based supersede tracking
+    if (persisted.filePathToCallIds) {
+        state.filePathToCallIds = new Map(
+            Object.entries(persisted.filePathToCallIds).map(([k, v]) => [
+                k,
+                new Set(v as string[]),
+            ]),
+        )
+    }
     // Restore automata mode state
     state.automataEnabled = persisted.automataEnabled ?? false
     state.lastAutomataTurn = persisted.lastAutomataTurn ?? 0

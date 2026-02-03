@@ -68,7 +68,10 @@ const createMockState = (): SessionState =>
         currentTurn: 0,
         hashToCallId: new Map(),
         callIdToHash: new Map(),
-        patternToContent: new Map(),
+        hashToMessagePart: new Map(),
+        messagePartToHash: new Map(),
+        hashToReasoningPart: new Map(),
+        reasoningPartToHash: new Map(),
         todos: [],
     }) as unknown as SessionState
 

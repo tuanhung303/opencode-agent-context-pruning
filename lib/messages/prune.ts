@@ -2,6 +2,7 @@ import type { SessionState, WithParts } from "../state"
 import type { Logger } from "../logger"
 import type { PluginConfig } from "../config"
 import { isMessageCompacted } from "../shared-utils"
+import { generatePartHash } from "../utils/hash"
 
 const PRUNED_TOOL_ERROR_INPUT_REPLACEMENT = "[input removed due to failed tool call]"
 const PRUNED_QUESTION_INPUT_REPLACEMENT = "[questions removed - see output for user's answers]"
@@ -9,16 +10,11 @@ const PRUNED_MESSAGE_PART_REPLACEMENT = "[Assistant message part removed to save
 const PRUNED_REASONING_REPLACEMENT = "[Reasoning redacted to save context]"
 
 /**
- * Generates a short hash for message parts.
- * Format: a_xxxxx (a = assistant text)
+ * Generates a deterministic hash for message parts.
+ * Format: xxxxxx (6 hex chars from SHA256 of content)
  */
-function generateMessagePartHash(): string {
-    const chars = "abcdefghijklmnopqrstuvwxyz0123456789"
-    let hash = ""
-    for (let i = 0; i < 5; i++) {
-        hash += chars.charAt(Math.floor(Math.random() * chars.length))
-    }
-    return `a_${hash}`
+function generateMessagePartHash(content: string): string {
+    return generatePartHash(content)
 }
 
 /**
@@ -67,8 +63,8 @@ export const injectHashesIntoToolOutputs = (
                 continue
             }
 
-            // Skip if already has hash prefix (format: x_xxxxx where x is tool prefix)
-            if (part.state.output && /^[a-z]_[a-z0-9]{5}/i.test(part.state.output)) {
+            // Skip if already has hash prefix (format: xxxxxx - 6 hex chars)
+            if (part.state.output && /^[a-f0-9]{6}/i.test(part.state.output)) {
                 continue
             }
 
@@ -94,11 +90,6 @@ export const injectHashesIntoAssistantMessages = (
     messages: WithParts[],
     logger: Logger,
 ): void => {
-    // Skip if feature is disabled
-    if (!config.tools?.settings?.enableAssistantMessagePruning) {
-        return
-    }
-
     const minTextLength = config.tools?.settings?.minAssistantTextLength ?? 100
 
     for (const msg of messages) {
@@ -130,8 +121,8 @@ export const injectHashesIntoAssistantMessages = (
                 continue
             }
 
-            // Skip if already has hash prefix (format: a_xxxxx)
-            if (/^a_[a-z0-9]{5}/i.test(part.text)) {
+            // Skip if already has hash prefix (format: xxxxxx - 6 hex chars)
+            if (/^[a-f0-9]{6}/i.test(part.text)) {
                 continue
             }
 
@@ -145,8 +136,15 @@ export const injectHashesIntoAssistantMessages = (
             // Check if we already have a hash for this part
             let hash = state.messagePartToHash.get(partId)
             if (!hash) {
-                // Generate new hash
-                hash = generateMessagePartHash()
+                // Generate new hash from content with collision handling
+                const baseHash = generateMessagePartHash(part.text)
+                let finalHash = baseHash
+                let seq = 2
+                while (state.hashToMessagePart.has(finalHash)) {
+                    finalHash = `${baseHash}_${seq}`
+                    seq++
+                }
+                hash = finalHash
                 state.hashToMessagePart.set(hash, partId)
                 state.messagePartToHash.set(partId, hash)
                 logger.debug(`Generated hash ${hash} for assistant text part ${partId}`)
@@ -160,16 +158,11 @@ export const injectHashesIntoAssistantMessages = (
 }
 
 /**
- * Generates a short hash for reasoning parts.
- * Format: th_xxxxx (th = thinking/reasoning)
+ * Generates a deterministic hash for reasoning parts.
+ * Format: xxxxxx (6 hex chars from SHA256 of content)
  */
-function generateReasoningPartHash(): string {
-    const chars = "abcdefghijklmnopqrstuvwxyz0123456789"
-    let hash = ""
-    for (let i = 0; i < 5; i++) {
-        hash += chars.charAt(Math.floor(Math.random() * chars.length))
-    }
-    return `th_${hash}`
+function generateReasoningPartHash(content: string): string {
+    return generatePartHash(content)
 }
 
 /**
@@ -214,8 +207,8 @@ export const injectHashesIntoReasoningBlocks = (
                 continue
             }
 
-            // Skip if already has hash prefix (format: th_xxxxx)
-            if (/^th_[a-z0-9]{5}/i.test(part.text)) {
+            // Skip if already has hash prefix (format: xxxxxx - 6 hex chars)
+            if (/^[a-f0-9]{6}/i.test(part.text)) {
                 continue
             }
 
@@ -229,8 +222,15 @@ export const injectHashesIntoReasoningBlocks = (
             // Check if we already have a hash for this part
             let hash = state.reasoningPartToHash.get(partId)
             if (!hash) {
-                // Generate new hash
-                hash = generateReasoningPartHash()
+                // Generate new hash from content with collision handling
+                const baseHash = generateReasoningPartHash(part.text)
+                let finalHash = baseHash
+                let seq = 2
+                while (state.hashToReasoningPart.has(finalHash)) {
+                    finalHash = `${baseHash}_${seq}`
+                    seq++
+                }
+                hash = finalHash
                 state.hashToReasoningPart.set(hash, partId)
                 state.reasoningPartToHash.set(partId, hash)
                 logger.debug(`Generated hash ${hash} for reasoning part ${partId}`)

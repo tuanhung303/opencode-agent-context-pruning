@@ -84,13 +84,6 @@ export const DEFAULT_CONFIG: PluginConfig = {
         },
     },
     strategies: {
-        deduplication: {
-            enabled: false,
-            protectedTools: [],
-        },
-        supersedeWrites: {
-            enabled: false,
-        },
         purgeErrors: {
             enabled: false,
             turns: 4,

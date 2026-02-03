@@ -13,7 +13,8 @@ import { sendUnifiedNotification } from "../ui/notification"
 import { formatDiscardNotification } from "../ui/minimal-notifications"
 import { formatPruningStatus, dimText } from "../ui/pruning-status"
 import { calculateTokensSaved, getCurrentParams } from "./utils"
-import { findMessagesByPattern, storePatternMapping } from "../messages/pattern-match"
+import { collectAllToolHashes, collectAllMessageHashes } from "../messages/utils"
+import type { BulkTargetType } from "./_types"
 
 interface DiscardOptions {
     toolName: string
@@ -148,42 +149,27 @@ export async function executeContextToolDiscard(
 }
 
 /**
- * Discard messages by pattern.
+ * Discard message parts by hash.
  */
 export async function executeContextMessageDiscard(
     ctx: PruneToolContext,
     _toolCtx: { sessionID: string },
-    patterns: string[],
-    messages: WithParts[],
+    hashes: string[],
 ): Promise<string> {
     const { state, logger } = ctx
 
-    const allMatches: Array<{
-        messageId: string
-        partIndex: number
-        content: string
-        pattern: string
-    }> = []
-
-    for (const pattern of patterns) {
-        const matches = findMessagesByPattern(messages, pattern)
-        for (const match of matches) {
-            allMatches.push({ ...match, pattern })
-        }
-    }
-
-    if (allMatches.length === 0) {
-        return "No matching messages found"
-    }
-
     let discardedCount = 0
-    for (const match of allMatches) {
-        const partId = `${match.messageId}:${match.partIndex}`
-        if (!state.prune.messagePartIds.includes(partId)) {
-            state.prune.messagePartIds.push(partId)
-            storePatternMapping(match.pattern, match.content, partId, state)
-            logger.info(`Discarded message part ${partId} via pattern`)
-            discardedCount++
+
+    for (const hash of hashes) {
+        const partId = state.hashToMessagePart.get(hash)
+        if (partId) {
+            if (!state.prune.messagePartIds.includes(partId)) {
+                state.prune.messagePartIds.push(partId)
+                logger.info(`Discarded message part ${partId} via hash ${hash}`)
+                discardedCount++
+            }
+        } else {
+            logger.warn(`Unknown message hash: ${hash}`)
         }
     }
 
@@ -246,6 +232,69 @@ export async function executeContextReasoningDiscard(
     )
 
     return `Discarded ${discardedCount} reasoning block(s), saved ~${tokensSaved} tokens`
+}
+
+// ============================================================================
+// Bulk Operations
+// ============================================================================
+
+/**
+ * Execute bulk discard operation for tools, messages, or all eligible items.
+ * Collects all eligible items based on bulkType and routes to appropriate discard functions.
+ *
+ * @param ctx - Prune tool context
+ * @param toolCtx - Tool context with session ID
+ * @param bulkType - Type of bulk operation: "bulk_tools", "bulk_messages", or "bulk_all"
+ * @returns Status message describing what was discarded
+ */
+export async function executeBulkDiscard(
+    ctx: PruneToolContext,
+    toolCtx: { sessionID: string },
+    bulkType: BulkTargetType,
+): Promise<string> {
+    const { state, logger, config } = ctx
+
+    const results: string[] = []
+
+    // Handle tools
+    if (bulkType === "bulk_tools" || bulkType === "bulk_all") {
+        const toolHashes = collectAllToolHashes(state, config)
+        if (toolHashes.length > 0) {
+            logger.info(`Bulk discard: collecting ${toolHashes.length} tool hashes`)
+            const toolResult = await executeContextToolDiscard(ctx, toolCtx, toolHashes)
+            results.push(toolResult)
+        } else {
+            results.push("No eligible tool outputs to discard")
+        }
+    }
+
+    // Handle messages
+    if (bulkType === "bulk_messages" || bulkType === "bulk_all") {
+        const messageHashes = collectAllMessageHashes(state)
+        if (messageHashes.length > 0) {
+            logger.info(`Bulk discard: collecting ${messageHashes.length} message hashes`)
+            // Directly prune message parts using collected hashes
+            let discardedCount = 0
+            for (const hash of messageHashes) {
+                const partId = state.hashToMessagePart.get(hash)
+                if (partId && !state.prune.messagePartIds.includes(partId)) {
+                    state.prune.messagePartIds.push(partId)
+                    logger.info(`Bulk discarded message part ${partId}`)
+                    discardedCount++
+                }
+            }
+            if (discardedCount > 0) {
+                saveSessionState(state, logger).catch((err: Error) =>
+                    logger.error("Failed to persist state", { error: err.message }),
+                )
+                results.push(`Discarded ${discardedCount} message(s)`)
+            }
+        } else {
+            results.push("No eligible message parts to discard")
+        }
+    }
+
+    return results.join("; ")
 }
 
 // ============================================================================
