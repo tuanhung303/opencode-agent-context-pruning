@@ -8,7 +8,11 @@ import type { WithParts } from "../state"
 import { ensureSessionInitialized } from "../state"
 import { loadPrompt } from "../prompts"
 import { detectTargetType } from "../messages/utils"
-import { executeContextToolDiscard, executeContextMessageDiscard } from "./discard"
+import {
+    executeContextToolDiscard,
+    executeContextMessageDiscard,
+    executeContextReasoningDiscard,
+} from "./discard"
 import { executeContextToolDistill, executeContextMessageDistill } from "./distill"
 import { executeContextToolRestore, executeContextMessageRestore } from "./restore"
 
@@ -46,6 +50,8 @@ export async function executeContext(
     // Separate targets by type
     const toolHashes: string[] = []
     const toolSummaries: string[] = []
+    const reasoningHashes: string[] = []
+    const reasoningSummaries: string[] = []
     const messagePatterns: string[] = []
     const messageSummaries: string[] = []
 
@@ -62,6 +68,16 @@ export async function executeContext(
                 }
                 toolSummaries.push(summary)
             }
+        } else if (targetType === "reasoning_hash") {
+            reasoningHashes.push(target)
+            if (action === "distill") {
+                if (!summary) {
+                    throw new Error(
+                        `Summary required for distill action on reasoning target: ${target}`,
+                    )
+                }
+                reasoningSummaries.push(summary)
+            }
         } else {
             messagePatterns.push(target)
             if (action === "distill") {
@@ -75,11 +91,15 @@ export async function executeContext(
 
     // Execute based on action
     let toolResult = ""
+    let reasoningResult = ""
     let messageResult = ""
 
     if (action === "discard") {
         if (toolHashes.length > 0) {
             toolResult = await executeContextToolDiscard(ctx, toolCtx, toolHashes)
+        }
+        if (reasoningHashes.length > 0) {
+            reasoningResult = await executeContextReasoningDiscard(ctx, toolCtx, reasoningHashes)
         }
         if (messagePatterns.length > 0) {
             messageResult = await executeContextMessageDiscard(
@@ -111,7 +131,7 @@ export async function executeContext(
     }
 
     // Combine results
-    const results = [toolResult, messageResult].filter(Boolean)
+    const results = [toolResult, reasoningResult, messageResult].filter(Boolean)
     return results.join("\n") || `${action} completed: 0 items processed`
 }
 

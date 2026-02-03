@@ -194,6 +194,60 @@ export async function executeContextMessageDiscard(
     return `Discarded ${discardedCount} message(s)`
 }
 
+/**
+ * Discard reasoning parts by hash.
+ */
+export async function executeContextReasoningDiscard(
+    ctx: PruneToolContext,
+    _toolCtx: { sessionID: string },
+    hashes: string[],
+): Promise<string> {
+    const { state, logger } = ctx
+
+    let discardedCount = 0
+    let tokensSaved = 0
+    const validHashes: string[] = []
+
+    for (const hash of hashes) {
+        const partId = state.hashToReasoningPart.get(hash)
+        if (partId) {
+            if (!state.prune.reasoningPartIds.includes(partId)) {
+                state.prune.reasoningPartIds.push(partId)
+                validHashes.push(hash)
+                discardedCount++
+                // Estimate tokens saved (rough estimate based on typical reasoning block size)
+                tokensSaved += 2000
+                logger.info(`Discarded reasoning part ${partId} via hash ${hash}`)
+            } else {
+                logger.debug(`Hash ${hash} already pruned, skipping`)
+            }
+        } else {
+            logger.warn(`Unknown reasoning hash: ${hash}`)
+        }
+    }
+
+    if (validHashes.length === 0) {
+        return "No valid reasoning hashes to discard"
+    }
+
+    // Update stats
+    state.stats.pruneTokenCounter += tokensSaved
+    state.stats.pruneMessageCounter += discardedCount
+    state.stats.strategyStats.manualDiscard.count += discardedCount
+    state.stats.strategyStats.manualDiscard.tokens += tokensSaved
+
+    state.lastDiscardStats = {
+        itemCount: discardedCount,
+        tokensSaved: state.stats.pruneTokenCounter,
+    }
+
+    saveSessionState(state, logger).catch((err: Error) =>
+        logger.error("Failed to persist state", { error: err.message }),
+    )
+
+    return `Discarded ${discardedCount} reasoning block(s), saved ~${tokensSaved} tokens`
+}
+
 // ============================================================================
 // Helpers
 // ============================================================================

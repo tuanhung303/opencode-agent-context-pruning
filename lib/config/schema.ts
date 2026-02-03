@@ -23,6 +23,7 @@ export const ToolSettingsSchema = z.object({
     protectedTools: z.array(z.string()).default([]),
     enableAssistantMessagePruning: z.boolean().default(true),
     minAssistantTextLength: z.number().positive().default(100),
+    enableReasoningPruning: z.boolean().default(true),
 })
 
 export const TodoReminderSchema = z.object({

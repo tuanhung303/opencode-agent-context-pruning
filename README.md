@@ -23,6 +23,9 @@ context({
 
 // Restore - bring back pruned content
 context({ action: "restore", targets: [["r_a1b2c"]] })
+
+// Discard old reasoning/thinking blocks
+context({ action: "discard", targets: [["th_abc12"], ["th_def34"]] })
 ```
 
 **Targets:**
@@ -30,6 +33,7 @@ context({ action: "restore", targets: [["r_a1b2c"]] })
 | Type         | Format                  | Example                                              |
 | ------------ | ----------------------- | ---------------------------------------------------- |
 | Tool outputs | Hash `r_a1b2c`          | `r_abc12` (read), `g_def34` (glob), `t_56789` (task) |
+| Reasoning    | Hash `th_xxxxx`         | `th_abc12` (thinking block)                          |
 | Messages     | Pattern `"start...end"` | `"Let me..."` (starts), `"...done"` (ends)           |
 
 **When:**

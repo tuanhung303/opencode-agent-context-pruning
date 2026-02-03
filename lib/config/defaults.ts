@@ -64,6 +64,7 @@ export const DEFAULT_CONFIG: PluginConfig = {
             protectedTools: [...DEFAULT_PROTECTED_TOOLS],
             enableAssistantMessagePruning: true,
             minAssistantTextLength: 100,
+            enableReasoningPruning: true,
         },
         discard: {
             enabled: true,

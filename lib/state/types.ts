@@ -35,6 +35,7 @@ export interface SessionStats {
 export interface Prune {
     toolIds: string[]
     messagePartIds: string[] // "msgId:partIndex" format for assistant text parts
+    reasoningPartIds: string[] // "msgId:partIndex" format for reasoning parts
 }
 
 export interface LastDiscardStats {
@@ -79,9 +80,13 @@ export interface SessionState {
     // Message part hash system
     hashToMessagePart: Map<string, string>
     messagePartToHash: Map<string, string>
+    // Reasoning/thinking block hash system
+    hashToReasoningPart: Map<string, string>
+    reasoningPartToHash: Map<string, string>
     // Soft prune cache for restore capability
     softPrunedTools: Map<string, SoftPrunedEntry>
     softPrunedMessageParts: Map<string, SoftPrunedMessagePart>
+    softPrunedReasoningParts: Map<string, SoftPrunedReasoningPart>
     // New: message pruning cache for pattern-based discard_msg/distill_msg
     softPrunedMessages: Map<string, SoftPrunedMessage>
     // Pattern-based restore system for unified context tool
@@ -115,6 +120,14 @@ export interface SoftPrunedMessagePart {
 
 export interface SoftPrunedMessage {
     content: string
+    messageId: string
+    partIndex: number
+    prunedAt: number
+    hash: string
+}
+
+export interface SoftPrunedReasoningPart {
+    originalText: string
     messageId: string
     partIndex: number
     prunedAt: number

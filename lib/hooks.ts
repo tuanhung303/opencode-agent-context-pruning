@@ -13,6 +13,7 @@ import {
 import {
     prune,
     injectHashesIntoToolOutputs,
+    injectHashesIntoReasoningBlocks,
     injectTodoReminder,
     detectAutomataActivation,
     injectAutomataReflection,
@@ -104,6 +105,13 @@ export function createChatMessageTransformHandler(
             () => injectHashesIntoToolOutputs(state, config, output.messages, logger),
             logger,
             "injectHashesIntoToolOutputs",
+        )
+
+        // Inject hashes into reasoning blocks for hash-based discarding
+        safeExecute(
+            () => injectHashesIntoReasoningBlocks(state, config, output.messages, logger),
+            logger,
+            "injectHashesIntoReasoningBlocks",
         )
 
         // Note: Assistant message hashing disabled - agents use "start...end" patterns for message operations

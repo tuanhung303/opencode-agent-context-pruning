@@ -49,6 +49,7 @@ export function createSessionState(): SessionState {
         prune: {
             toolIds: [],
             messagePartIds: [],
+            reasoningPartIds: [],
         },
         stats: {
             pruneTokenCounter: 0,
@@ -76,8 +77,11 @@ export function createSessionState(): SessionState {
         discardHistory: [],
         hashToMessagePart: new Map(),
         messagePartToHash: new Map(),
+        hashToReasoningPart: new Map(),
+        reasoningPartToHash: new Map(),
         softPrunedTools: new Map(),
         softPrunedMessageParts: new Map(),
+        softPrunedReasoningParts: new Map(),
         softPrunedMessages: new Map(),
         patternToContent: new Map(),
         // Todo reminder tracking
@@ -98,6 +102,7 @@ export function resetSessionState(state: SessionState): void {
     state.prune = {
         toolIds: [],
         messagePartIds: [],
+        reasoningPartIds: [],
     }
     state.stats = {
         pruneTokenCounter: 0,
@@ -173,6 +178,7 @@ export async function ensureSessionInitialized(
     state.prune = {
         toolIds: persisted.prune.toolIds || [],
         messagePartIds: persisted.prune.messagePartIds || [],
+        reasoningPartIds: persisted.prune.reasoningPartIds || [],
     }
     state.stats = {
         pruneTokenCounter: persisted.stats?.pruneTokenCounter || 0,

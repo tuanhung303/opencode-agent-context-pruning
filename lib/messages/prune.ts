@@ -6,6 +6,7 @@ import { isMessageCompacted } from "../shared-utils"
 const PRUNED_TOOL_ERROR_INPUT_REPLACEMENT = "[input removed due to failed tool call]"
 const PRUNED_QUESTION_INPUT_REPLACEMENT = "[questions removed - see output for user's answers]"
 const PRUNED_MESSAGE_PART_REPLACEMENT = "[Assistant message part removed to save context]"
+const PRUNED_REASONING_REPLACEMENT = "[Reasoning redacted to save context]"
 
 /**
  * Generates a short hash for message parts.
@@ -159,6 +160,90 @@ export const injectHashesIntoAssistantMessages = (
 }
 
 /**
+ * Generates a short hash for reasoning parts.
+ * Format: th_xxxxx (th = thinking/reasoning)
+ */
+function generateReasoningPartHash(): string {
+    const chars = "abcdefghijklmnopqrstuvwxyz0123456789"
+    let hash = ""
+    for (let i = 0; i < 5; i++) {
+        hash += chars.charAt(Math.floor(Math.random() * chars.length))
+    }
+    return `th_${hash}`
+}
+
+/**
+ * Injects hash identifiers into reasoning blocks for hash-based discarding.
+ * Format: th_xxxxx\n<original reasoning>
+ *
+ * This allows agents to discard their own thinking/reasoning blocks when they're
+ * no longer needed, saving significant tokens in long conversations.
+ */
+export const injectHashesIntoReasoningBlocks = (
+    state: SessionState,
+    config: PluginConfig,
+    messages: WithParts[],
+    logger: Logger,
+): void => {
+    // Skip if feature is disabled
+    if (!config.tools?.settings?.enableReasoningPruning) {
+        return
+    }
+
+    for (const msg of messages) {
+        if (isMessageCompacted(state, msg)) {
+            continue
+        }
+
+        // Only process assistant messages
+        if (msg.info.role !== "assistant") {
+            continue
+        }
+
+        const messageId = msg.info.id
+        const parts = Array.isArray(msg.parts) ? msg.parts : []
+
+        for (let partIndex = 0; partIndex < parts.length; partIndex++) {
+            const part = parts[partIndex]
+            if (!part) {
+                continue
+            }
+
+            // Only process reasoning parts
+            if (part.type !== "reasoning" || !part.text) {
+                continue
+            }
+
+            // Skip if already has hash prefix (format: th_xxxxx)
+            if (/^th_[a-z0-9]{5}/i.test(part.text)) {
+                continue
+            }
+
+            const partId = `${messageId}:${partIndex}`
+
+            // Skip if already pruned
+            if (state.prune.reasoningPartIds.includes(partId)) {
+                continue
+            }
+
+            // Check if we already have a hash for this part
+            let hash = state.reasoningPartToHash.get(partId)
+            if (!hash) {
+                // Generate new hash
+                hash = generateReasoningPartHash()
+                state.hashToReasoningPart.set(hash, partId)
+                state.reasoningPartToHash.set(partId, hash)
+                logger.debug(`Generated hash ${hash} for reasoning part ${partId}`)
+            }
+
+            // Prepend hash to text
+            part.text = `${hash}\n${part.text}`
+            logger.debug(`Injected hash ${hash} into reasoning part`)
+        }
+    }
+}
+
+/**
  * Creates a compact breadcrumb string for pruned tool outputs.
  * Format: [Output removed...] tool({param: "value"}) → status
  *
@@ -217,9 +302,14 @@ export const prune = (
     // Convert to Set for O(1) lookup instead of O(n) array.includes()
     const prunedToolIds = new Set(state.prune.toolIds)
     const prunedMessagePartIds = new Set(state.prune.messagePartIds)
+    const prunedReasoningPartIds = new Set(state.prune.reasoningPartIds)
 
     // Early exit if nothing to prune
-    if (prunedToolIds.size === 0 && prunedMessagePartIds.size === 0) {
+    if (
+        prunedToolIds.size === 0 &&
+        prunedMessagePartIds.size === 0 &&
+        prunedReasoningPartIds.size === 0
+    ) {
         return
     }
 
@@ -274,6 +364,15 @@ export const prune = (
                 if (prunedMessagePartIds.has(partId)) {
                     part.text = PRUNED_MESSAGE_PART_REPLACEMENT
                     logger.debug(`Pruned assistant message part ${partId}`)
+                }
+            }
+
+            // Handle reasoning parts
+            if (isAssistant && part.type === "reasoning" && prunedReasoningPartIds.size > 0) {
+                const partId = `${messageId}:${partIndex}`
+                if (prunedReasoningPartIds.has(partId)) {
+                    part.text = PRUNED_REASONING_REPLACEMENT
+                    logger.debug(`Pruned reasoning part ${partId}`)
                 }
             }
         }

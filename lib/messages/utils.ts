@@ -302,14 +302,25 @@ export const isIgnoredUserMessage = (message: WithParts): boolean => {
 }
 
 /**
- * Detect whether a target string is a tool hash or a pattern.
+ * Detect whether a target string is a tool hash, reasoning hash, or a pattern.
  * Tool hashes follow the format: x_xxxxx (e.g., r_a1b2c, g_d4e5f)
  * - First char is tool prefix (first letter of tool name)
  * - 5 hex chars from SHA256 hash
+ * Reasoning hashes follow the format: th_xxxxx (th = thinking/reasoning)
+ * - "th" prefix
+ * - 5 alphanumeric chars
  * Everything else is treated as a pattern for message matching.
  */
-export function detectTargetType(target: string): "tool_hash" | "pattern" {
-    // Match format: letter_5hexchars (e.g., r_a1b2c, g_d4e5f, t_12345)
+export function detectTargetType(target: string): "tool_hash" | "reasoning_hash" | "pattern" {
+    // Match format: th_5alphanum (e.g., th_abc12, th_x7y9z) - reasoning hashes
+    const reasoningHashPattern = /^th_[a-z0-9]{5}$/i
+    if (reasoningHashPattern.test(target)) {
+        return "reasoning_hash"
+    }
+    // Match format: letter_5hexchars (e.g., r_a1b2c, g_d4e5f, t_12345) - tool hashes
     const hashPattern = /^[a-z]_[a-f0-9]{5}$/i
-    return hashPattern.test(target) ? "tool_hash" : "pattern"
+    if (hashPattern.test(target)) {
+        return "tool_hash"
+    }
+    return "pattern"
 }

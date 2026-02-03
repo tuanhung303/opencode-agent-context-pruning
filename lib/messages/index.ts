@@ -1,4 +1,4 @@
-export { prune, injectHashesIntoToolOutputs } from "./prune"
+export { prune, injectHashesIntoToolOutputs, injectHashesIntoReasoningBlocks } from "./prune"
 export { insertPruneToolContext } from "./inject"
 export { injectTodoReminder, removeTodoReminder } from "./todo-reminder"
 export {
