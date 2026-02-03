@@ -76,6 +76,7 @@ export function createSessionState(): SessionState {
         softPrunedTools: new Map(),
         softPrunedMessageParts: new Map(),
         softPrunedMessages: new Map(),
+        patternToContent: new Map(),
         // Todo reminder tracking
         lastTodoTurn: 0,
         lastReminderTurn: 0,
@@ -125,6 +126,7 @@ export function resetSessionState(state: SessionState): void {
     state.softPrunedTools.clear()
     state.softPrunedMessageParts.clear()
     state.softPrunedMessages.clear()
+    state.patternToContent.clear()
     // Todo reminder tracking
     state.lastTodoTurn = 0
     state.lastReminderTurn = 0

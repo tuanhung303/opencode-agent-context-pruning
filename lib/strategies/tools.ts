@@ -9,7 +9,13 @@ import { saveSessionState } from "../state/persistence"
 import type { Logger } from "../logger"
 import { loadPrompt } from "../prompts"
 import { calculateTokensSaved, getCurrentParams } from "./utils"
-import { findMessagesByPattern, generateMessageHash } from "../messages/pattern-match"
+import {
+    findMessagesByPattern,
+    generateMessageHash,
+    storePatternMapping,
+    restoreByPattern,
+} from "../messages/pattern-match"
+import { detectTargetType } from "../messages/utils"
 
 const DISCARD_TOOL_SPEC = loadPrompt("discard-tool-spec")
 const DISCARD_MSG_SPEC = loadPrompt("discard-msg-spec")
@@ -564,7 +570,379 @@ export function createDiscardMsgTool(ctx: PruneToolContext): ReturnType<typeof t
                 logger.error("Failed to persist state", { error: err.message }),
             )
 
-            return `Discarded ${restoreHashes.length} message(s). Restore hashes: ${restoreHashes.join(", ")}`
+            return formatRestoreNotification(restoreHashes.length)
+        },
+    })
+}
+
+// ============================================================================
+// UNIFIED CONTEXT TOOL
+// ============================================================================
+
+const CONTEXT_TOOL_SPEC = loadPrompt("context-spec")
+
+/**
+ * Execute context operation (discard, distill, restore) with unified interface.
+ * Supports mixed targets: tool hashes and message patterns in single call.
+ */
+async function executeContext(
+    ctx: PruneToolContext,
+    toolCtx: { sessionID: string },
+    action: "discard" | "distill" | "restore",
+    targets: Array<[string] | [string, string]>,
+): Promise<string> {
+    const { client, state, logger } = ctx
+    const sessionId = toolCtx.sessionID
+
+    logger.info(`Context tool invoked: ${action}`)
+    logger.info(JSON.stringify({ action, targetCount: targets.length }))
+
+    if (!targets || targets.length === 0) {
+        throw new Error(
+            `No targets provided. Provide an array of [target] or [target, summary] tuples.`,
+        )
+    }
+
+    // Fetch messages for message pattern matching
+    const messagesResponse = await client.session.messages({
+        path: { id: sessionId },
+    })
+    const messages: WithParts[] = messagesResponse.data || messagesResponse
+
+    await ensureSessionInitialized(ctx.client, state, sessionId, logger, messages)
+
+    // Separate targets by type
+    const toolHashes: string[] = []
+    const toolSummaries: string[] = []
+    const messagePatterns: string[] = []
+    const messageSummaries: string[] = []
+
+    for (const tuple of targets) {
+        const target = tuple[0]
+        const summary = tuple[1]
+
+        const targetType = detectTargetType(target)
+        if (targetType === "tool_hash") {
+            toolHashes.push(target)
+            if (action === "distill") {
+                if (!summary) {
+                    throw new Error(`Summary required for distill action on target: ${target}`)
+                }
+                toolSummaries.push(summary)
+            }
+        } else {
+            messagePatterns.push(target)
+            if (action === "distill") {
+                if (!summary) {
+                    throw new Error(`Summary required for distill action on pattern: ${target}`)
+                }
+                messageSummaries.push(summary)
+            }
+        }
+    }
+
+    // Execute based on action
+    let toolResult = ""
+    let messageResult = ""
+
+    if (action === "discard") {
+        if (toolHashes.length > 0) {
+            toolResult = await executeContextToolDiscard(ctx, toolCtx, toolHashes)
+        }
+        if (messagePatterns.length > 0) {
+            messageResult = await executeContextMessageDiscard(
+                ctx,
+                toolCtx,
+                messagePatterns,
+                messages,
+            )
+        }
+    } else if (action === "distill") {
+        if (toolHashes.length > 0) {
+            toolResult = await executeContextToolDistill(ctx, toolCtx, toolHashes, toolSummaries)
+        }
+        if (messagePatterns.length > 0) {
+            messageResult = await executeContextMessageDistill(
+                ctx,
+                toolCtx,
+                messagePatterns.map((p, i) => [p, messageSummaries[i]] as [string, string]),
+                messages,
+            )
+        }
+    } else if (action === "restore") {
+        if (toolHashes.length > 0) {
+            toolResult = await executeContextToolRestore(ctx, toolHashes)
+        }
+        if (messagePatterns.length > 0) {
+            messageResult = await executeContextMessageRestore(ctx, messagePatterns)
+        }
+    }
+
+    // Combine results
+    const results = [toolResult, messageResult].filter(Boolean)
+    return results.join("\n") || `${action} completed: 0 items processed`
+}
+
+/**
+ * Discard tool outputs by hash.
+ */
+async function executeContextToolDiscard(
+    ctx: PruneToolContext,
+    toolCtx: { sessionID: string },
+    hashes: string[],
+): Promise<string> {
+    const { state, logger } = ctx
+
+    // Resolve hashes to call IDs
+    const callIds: string[] = []
+    const validHashes: string[] = []
+
+    for (const hash of hashes) {
+        const callId = state.hashToCallId.get(hash)
+        if (callId) {
+            if (!state.prune.toolIds.includes(callId)) {
+                callIds.push(callId)
+                validHashes.push(hash)
+            } else {
+                logger.debug(`Hash ${hash} already pruned, skipping`)
+            }
+        } else {
+            logger.warn(`Unknown hash: ${hash}`)
+        }
+    }
+
+    if (validHashes.length === 0) {
+        return "No valid tool hashes to discard"
+    }
+
+    // Use existing prune logic
+    return executeToolPrune(ctx, toolCtx, callIds, validHashes, "Discard")
+}
+
+/**
+ * Discard messages by pattern.
+ */
+async function executeContextMessageDiscard(
+    ctx: PruneToolContext,
+    toolCtx: { sessionID: string },
+    patterns: string[],
+    messages: WithParts[],
+): Promise<string> {
+    const { state, logger } = ctx
+
+    // Find matching messages
+    const allMatches: Array<{
+        messageId: string
+        partIndex: number
+        content: string
+        pattern: string
+    }> = []
+
+    for (const pattern of patterns) {
+        const matches = findMessagesByPattern(messages, pattern)
+        for (const match of matches) {
+            allMatches.push({ ...match, pattern })
+        }
+    }
+
+    if (allMatches.length === 0) {
+        return "No matching messages found"
+    }
+
+    // Add to prune list and store pattern mapping for symmetric restore
+    let discardedCount = 0
+    for (const match of allMatches) {
+        const partId = `${match.messageId}:${match.partIndex}`
+        if (!state.prune.messagePartIds.includes(partId)) {
+            state.prune.messagePartIds.push(partId)
+
+            // Store pattern mapping for symmetric restore
+            storePatternMapping(match.pattern, match.content, partId, state)
+
+            logger.info(`Discarded message part ${partId} via pattern`)
+            discardedCount++
+        }
+    }
+
+    // Save state
+    saveSessionState(state, logger).catch((err) =>
+        logger.error("Failed to persist state", { error: err.message }),
+    )
+
+    return `Discarded ${discardedCount} message(s)`
+}
+
+/**
+ * Distill tool outputs by hash.
+ */
+async function executeContextToolDistill(
+    ctx: PruneToolContext,
+    toolCtx: { sessionID: string },
+    hashes: string[],
+    distillation: string[],
+): Promise<string> {
+    const { state, logger } = ctx
+
+    // Resolve hashes
+    const callIds: string[] = []
+    const validHashes: string[] = []
+    const validDistillation: string[] = []
+
+    for (let i = 0; i < hashes.length; i++) {
+        const hash = hashes[i]!
+        const summary = distillation[i]
+        if (!summary) {
+            logger.warn(`No summary provided for hash: ${hash}`)
+            continue
+        }
+        const callId = state.hashToCallId.get(hash)
+        if (callId) {
+            if (!state.prune.toolIds.includes(callId)) {
+                callIds.push(callId)
+                validHashes.push(hash)
+                validDistillation.push(summary)
+            } else {
+                logger.debug(`Hash ${hash} already pruned, skipping`)
+            }
+        } else {
+            logger.warn(`Unknown hash: ${hash}`)
+        }
+    }
+
+    if (validHashes.length === 0) {
+        return "No valid tool hashes to distill"
+    }
+
+    return executeToolDistill(ctx, toolCtx, callIds, validHashes, validDistillation)
+}
+
+/**
+ * Distill messages by pattern.
+ */
+async function executeContextMessageDistill(
+    ctx: PruneToolContext,
+    toolCtx: { sessionID: string },
+    entries: Array<[string, string]>,
+    messages: WithParts[],
+): Promise<string> {
+    const { state, logger } = ctx
+
+    let distilledCount = 0
+
+    for (const [pattern, summary] of entries) {
+        const matches = findMessagesByPattern(messages, pattern)
+        for (const match of matches) {
+            const partId = `${match.messageId}:${match.partIndex}`
+            if (!state.prune.messagePartIds.includes(partId)) {
+                state.prune.messagePartIds.push(partId)
+
+                // Store pattern mapping with distilled content
+                storePatternMapping(pattern, summary, partId, state)
+
+                logger.info(`Distilled message part ${partId} via pattern`)
+                distilledCount++
+            }
+        }
+    }
+
+    saveSessionState(state, logger).catch((err) =>
+        logger.error("Failed to persist state", { error: err.message }),
+    )
+
+    return `Distilled ${distilledCount} message(s)`
+}
+
+/**
+ * Restore tool outputs by hash.
+ */
+async function executeContextToolRestore(ctx: PruneToolContext, hashes: string[]): Promise<string> {
+    const { state, logger } = ctx
+
+    const restored: string[] = []
+
+    for (const hash of hashes) {
+        const callId = state.hashToCallId.get(hash)
+        if (callId) {
+            const pruneIndex = state.prune.toolIds.indexOf(callId)
+            if (pruneIndex !== -1) {
+                state.prune.toolIds.splice(pruneIndex, 1)
+                restored.push(hash)
+                logger.info(`Restored tool with hash ${hash}`)
+            }
+        }
+    }
+
+    saveSessionState(state, logger).catch((err) =>
+        logger.error("Failed to persist state", { error: err.message }),
+    )
+
+    return `Restored ${restored.length} tool(s)`
+}
+
+/**
+ * Restore messages by pattern (symmetric restore).
+ */
+async function executeContextMessageRestore(
+    ctx: PruneToolContext,
+    patterns: string[],
+): Promise<string> {
+    const { state, logger } = ctx
+
+    const restored: string[] = []
+
+    for (const pattern of patterns) {
+        const entry = restoreByPattern(pattern, state)
+        if (entry) {
+            const pruneIndex = state.prune.messagePartIds.indexOf(entry.partId)
+            if (pruneIndex !== -1) {
+                state.prune.messagePartIds.splice(pruneIndex, 1)
+                restored.push(pattern)
+                logger.info(`Restored message via pattern: ${pattern}`)
+            }
+        }
+    }
+
+    saveSessionState(state, logger).catch((err) =>
+        logger.error("Failed to persist state", { error: err.message }),
+    )
+
+    return `Restored ${restored.length} message(s)`
+}
+
+/**
+ * Create the unified context tool.
+ */
+export function createContextTool(ctx: PruneToolContext): ReturnType<typeof tool> {
+    return tool({
+        description: CONTEXT_TOOL_SPEC,
+        args: {
+            action: tool.schema
+                .enum(["discard", "distill", "restore"])
+                .describe("The action to perform: discard, distill, or restore"),
+            targets: tool.schema
+                .array(
+                    tool.schema.union([
+                        tool.schema.tuple([
+                            tool.schema.string().describe("Target identifier (hash or pattern)"),
+                        ]),
+                        tool.schema.tuple([
+                            tool.schema.string().describe("Target identifier (hash or pattern)"),
+                            tool.schema.string().describe("Summary for distill action"),
+                        ]),
+                    ]),
+                )
+                .describe(
+                    "Array of [target] or [target, summary] tuples. Use [target] for discard/restore, [target, summary] for distill.",
+                ),
+        },
+        async execute(args, toolCtx) {
+            const { action, targets } = args
+            return executeContext(
+                ctx,
+                toolCtx,
+                action,
+                targets as Array<[string] | [string, string]>,
+            )
         },
     })
 }
@@ -673,7 +1051,7 @@ export function createDistillMsgTool(ctx: PruneToolContext): ReturnType<typeof t
                 logger.error("Failed to persist state", { error: err.message }),
             )
 
-            return `Distilled ${restoreHashes.length} message(s). Restore hash: ${restoreHashes.join(", ")}`
+            return formatDiscardNotification(restoreHashes.length, "distillation")
         },
     })
 }

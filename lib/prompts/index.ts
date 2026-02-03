@@ -5,6 +5,7 @@ import DISTILL_TOOL_SPEC from "./distill-tool-spec"
 import DISTILL_MSG_SPEC from "./distill-msg-spec"
 import RESTORE_TOOL_SPEC from "./restore-tool-spec"
 import RESTORE_MSG_SPEC from "./restore-msg-spec"
+import CONTEXT_SPEC from "./context-spec"
 
 // System prompts
 import { SYSTEM_PROMPT_BOTH } from "./system/both"
@@ -18,6 +19,7 @@ const PROMPTS: Record<string, string> = {
     "distill-msg-spec": DISTILL_MSG_SPEC,
     "restore-tool-spec": RESTORE_TOOL_SPEC,
     "restore-msg-spec": RESTORE_MSG_SPEC,
+    "context-spec": CONTEXT_SPEC,
     "system/system-prompt-both": SYSTEM_PROMPT_BOTH,
     "system/system-prompt-discard": SYSTEM_PROMPT_DISCARD,
     "system/system-prompt-distill": SYSTEM_PROMPT_DISTILL,

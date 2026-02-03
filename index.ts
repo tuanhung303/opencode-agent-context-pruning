@@ -9,6 +9,7 @@ import {
     createDistillMsgTool,
     createRestoreTool,
     createRestoreMsgTool,
+    createContextTool,
 } from "./lib/strategies"
 import {
     createChatMessageTransformHandler,
@@ -114,6 +115,13 @@ const plugin: Plugin = (async (ctx) => {
                 config,
                 workingDirectory: ctx.directory,
             }),
+            context: createContextTool({
+                client: ctx.client,
+                state,
+                logger,
+                config,
+                workingDirectory: ctx.directory,
+            }),
         },
         config: async (opencodeConfig) => {
             if (config.commands.enabled) {
@@ -131,7 +139,7 @@ const plugin: Plugin = (async (ctx) => {
             if (config.tools.distill.enabled) {
                 toolsToAdd.push("distill_tool", "distill_msg")
             }
-            toolsToAdd.push("restore_tool", "restore_msg")
+            toolsToAdd.push("restore_tool", "restore_msg", "context")
 
             if (toolsToAdd.length > 0) {
                 const existingPrimaryTools = opencodeConfig.experimental?.primary_tools ?? []

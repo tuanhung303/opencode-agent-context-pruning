@@ -1,4 +1,4 @@
-import type { WithParts } from "../state"
+import type { SessionState, WithParts } from "../state"
 
 /**
  * Normalizes text for pattern matching:
@@ -101,4 +101,41 @@ export function generateMessageHash(): string {
         hash += chars.charAt(Math.floor(Math.random() * chars.length))
     }
     return `m_${hash}`
+}
+
+/**
+ * Store a pattern-to-content mapping for later restore.
+ * This enables symmetric restore using the same pattern that was used to discard.
+ */
+export function storePatternMapping(
+    pattern: string,
+    content: string,
+    partId: string,
+    state: SessionState,
+): void {
+    const normalizedPattern = normalizeForMatching(pattern)
+    state.patternToContent.set(normalizedPattern, {
+        originalContent: content,
+        partId,
+        normalizedPattern,
+    })
+}
+
+/**
+ * Restore content by pattern lookup.
+ * Returns the stored content and partId if found, null otherwise.
+ */
+export function restoreByPattern(
+    pattern: string,
+    state: SessionState,
+): { partId: string; content: string } | null {
+    const normalizedPattern = normalizeForMatching(pattern)
+    const entry = state.patternToContent.get(normalizedPattern)
+    if (!entry) {
+        return null
+    }
+    return {
+        partId: entry.partId,
+        content: entry.originalContent,
+    }
 }
