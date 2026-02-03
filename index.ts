@@ -2,15 +2,7 @@ import type { Plugin } from "@opencode-ai/plugin"
 import { ConfigService } from "./lib/config"
 import { Logger } from "./lib/logger"
 import { createSessionState } from "./lib/state"
-import {
-    createDiscardTool,
-    createDiscardMsgTool,
-    createDistillTool,
-    createDistillMsgTool,
-    createRestoreTool,
-    createRestoreMsgTool,
-    createContextTool,
-} from "./lib/strategies"
+import { createContextTool } from "./lib/strategies"
 import {
     createChatMessageTransformHandler,
     createCommandExecuteHandler,
@@ -69,52 +61,6 @@ const plugin: Plugin = (async (ctx) => {
             ctx.directory,
         ),
         tool: {
-            ...(config.tools.discard.enabled && {
-                discard_tool: createDiscardTool({
-                    client: ctx.client,
-                    state,
-                    logger,
-                    config,
-                    workingDirectory: ctx.directory,
-                }),
-                discard_msg: createDiscardMsgTool({
-                    client: ctx.client,
-                    state,
-                    logger,
-                    config,
-                    workingDirectory: ctx.directory,
-                }),
-            }),
-            ...(config.tools.distill.enabled && {
-                distill_tool: createDistillTool({
-                    client: ctx.client,
-                    state,
-                    logger,
-                    config,
-                    workingDirectory: ctx.directory,
-                }),
-                distill_msg: createDistillMsgTool({
-                    client: ctx.client,
-                    state,
-                    logger,
-                    config,
-                    workingDirectory: ctx.directory,
-                }),
-            }),
-            restore_tool: createRestoreTool({
-                client: ctx.client,
-                state,
-                logger,
-                config,
-                workingDirectory: ctx.directory,
-            }),
-            restore_msg: createRestoreMsgTool({
-                client: ctx.client,
-                state,
-                logger,
-                config,
-                workingDirectory: ctx.directory,
-            }),
             context: createContextTool({
                 client: ctx.client,
                 state,
@@ -132,25 +78,12 @@ const plugin: Plugin = (async (ctx) => {
                 }
             }
 
-            const toolsToAdd: string[] = []
-            if (config.tools.discard.enabled) {
-                toolsToAdd.push("discard_tool", "discard_msg")
+            const existingPrimaryTools = opencodeConfig.experimental?.primary_tools ?? []
+            opencodeConfig.experimental = {
+                ...opencodeConfig.experimental,
+                primary_tools: [...existingPrimaryTools, "context"],
             }
-            if (config.tools.distill.enabled) {
-                toolsToAdd.push("distill_tool", "distill_msg")
-            }
-            toolsToAdd.push("restore_tool", "restore_msg", "context")
-
-            if (toolsToAdd.length > 0) {
-                const existingPrimaryTools = opencodeConfig.experimental?.primary_tools ?? []
-                opencodeConfig.experimental = {
-                    ...opencodeConfig.experimental,
-                    primary_tools: [...existingPrimaryTools, ...toolsToAdd],
-                }
-                logger.info(
-                    `Added ${toolsToAdd.map((t) => `'${t}'`).join(", ")} to experimental.primary_tools via config mutation`,
-                )
-            }
+            logger.info("Added 'context' to experimental.primary_tools via config mutation")
         },
     }
 }) satisfies Plugin

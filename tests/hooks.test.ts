@@ -167,6 +167,7 @@ const createMockState = (): SessionState => ({
     softPrunedTools: new Map(),
     softPrunedMessageParts: new Map(),
     softPrunedMessages: new Map(),
+    patternToContent: new Map(),
     lastTodoTurn: 0,
     lastReminderTurn: 0,
     lastTodowriteCallId: null,
@@ -218,7 +219,7 @@ describe("createSystemPromptHandler", () => {
         )
     })
 
-    it("should add both prompt when both tools enabled", async () => {
+    it("should add unified prompt when any tool enabled", async () => {
         const handler = createSystemPromptHandler(
             mockState,
             mockLogger as unknown as import("../lib/logger.js").Logger,
@@ -229,37 +230,7 @@ describe("createSystemPromptHandler", () => {
         await handler({}, output)
 
         expect(output.system).toHaveLength(1)
-        expect(output.system[0]).toContain("system/system-prompt-both")
-    })
-
-    it("should add discard-only prompt when only discard enabled", async () => {
-        mockConfig.tools.distill.enabled = false
-        const handler = createSystemPromptHandler(
-            mockState,
-            mockLogger as unknown as import("../lib/logger.js").Logger,
-            mockConfig,
-        )
-        const output = { system: [] }
-
-        await handler({}, output)
-
-        expect(output.system).toHaveLength(1)
-        expect(output.system[0]).toContain("system/system-prompt-discard")
-    })
-
-    it("should add distill-only prompt when only distill enabled", async () => {
-        mockConfig.tools.discard.enabled = false
-        const handler = createSystemPromptHandler(
-            mockState,
-            mockLogger as unknown as import("../lib/logger.js").Logger,
-            mockConfig,
-        )
-        const output = { system: [] }
-
-        await handler({}, output)
-
-        expect(output.system).toHaveLength(1)
-        expect(output.system[0]).toContain("system/system-prompt-distill")
+        expect(output.system[0]).toContain("system/system-prompt-context")
     })
 
     it("should not add prompt when both tools disabled", async () => {

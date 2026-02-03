@@ -68,6 +68,7 @@ const createMockState = (): SessionState =>
         currentTurn: 0,
         hashToCallId: new Map(),
         callIdToHash: new Map(),
+        patternToContent: new Map(),
         todos: [],
     }) as unknown as SessionState
 
@@ -95,10 +96,7 @@ describe("Integration: Opt-in Defaults", () => {
             "/test",
         )
 
-        await handler(
-            { tool: "todowrite", sessionID: "test-session", callID: "call_1" },
-            { title: "Task added", output: "success", metadata: {} },
-        )
+        await handler({ tool: "todowrite", sessionID: "test-session", callID: "call_1" })
 
         // Should NOT fetch messages because autoPruneAfterTool is false
         expect(mockClient.session.messages).not.toHaveBeenCalled()
@@ -111,7 +109,7 @@ describe("Integration: Opt-in Defaults", () => {
         await handler({}, output)
 
         expect(output.system).toHaveLength(1)
-        expect(output.system[0]).toContain("system/system-prompt-both")
+        expect(output.system[0]).toContain("system/system-prompt-context")
         expect(DEFAULT_CONFIG.tools.discard.enabled).toBe(true)
         expect(DEFAULT_CONFIG.tools.distill.enabled).toBe(true)
     })
@@ -134,10 +132,7 @@ describe("Integration: Opt-in Defaults", () => {
             "/test",
         )
 
-        await handler(
-            { tool: "read", sessionID: "test-session", callID: "call_1" },
-            { title: "Read file", output: "file content", metadata: {} },
-        )
+        await handler({ tool: "read", sessionID: "test-session", callID: "call_1" })
 
         // Should fetch messages when autoPruneAfterTool is explicitly enabled
         expect(mockClient.session.messages).toHaveBeenCalledWith({
