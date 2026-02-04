@@ -667,6 +667,150 @@ MIT © [tuanhung303](https://github.com/tuanhung303)
 
 ---
 
+## ⚠️ Known Pitfalls for Agents
+
+> **Read this section before modifying ACP code.** These are hard-won lessons from debugging production issues.
+
+### 1. Always Fetch Messages in All Code Paths
+
+**❌ WRONG:**
+
+```typescript
+async function executeContextToolDiscard(ctx, toolCtx, hashes) {
+    const { state, logger } = ctx
+
+    // Validate hashes...
+
+    if (validHashes.length === 0) {
+        // Early return without fetching messages
+        const currentParams = getCurrentParams(state, [], logger)  // ← BUG: Empty array
+        return "No valid hashes"
+    }
+
+    // Only fetch messages in success path
+    const messages = await client.session.messages(...)
+}
+```
+
+**✅ CORRECT:**
+
+```typescript
+async function executeContextToolDiscard(ctx, toolCtx, hashes) {
+    const { client, state, logger } = ctx
+
+    // ALWAYS fetch messages first - required for thinking mode API compatibility
+    const messagesResponse = await client.session.messages({
+        path: { id: toolCtx.sessionID },
+    })
+    const messages = messagesResponse.data || messagesResponse
+
+    // ALWAYS initialize session - syncs reasoning_content
+    await ensureSessionInitialized(client, state, toolCtx.sessionID, logger, messages)
+
+    // Now validate hashes...
+
+    if (validHashes.length === 0) {
+        const currentParams = getCurrentParams(state, messages, logger) // ← Use actual messages
+        return "No valid hashes"
+    }
+}
+```
+
+**Why?** Anthropic's thinking mode API requires `reasoning_content` on all assistant messages with tool calls. Skipping `ensureSessionInitialized` causes 400 errors.
+
+---
+
+### 2. Never Skip `ensureSessionInitialized`
+
+This function syncs `reasoning_content` from message parts to `msg.info`. Without it:
+
+```
+error, status code: 400, message: thinking is enabled but reasoning_content is missing
+in assistant tool call message at index 2
+```
+
+**Rule:** Call `ensureSessionInitialized` at the START of every context tool function, before any early returns.
+
+---
+
+### 3. Thinking Mode: Distill, Don't Discard Reasoning
+
+**❌ WRONG:**
+
+```typescript
+// Completely removing reasoning_content breaks API
+state.prune.reasoningPartIds.push(partId)
+// No replacement content → field removed → API error
+```
+
+**✅ CORRECT:**
+
+```typescript
+// Convert discard to distill with minimal placeholder
+if (reasoningHashes.length > 0) {
+    const minimalSummaries = reasoningHashes.map(() => "—")
+    await executeContextReasoningDistill(
+        ctx,
+        toolCtx,
+        reasoningHashes.map((h, i) => [h, minimalSummaries[i]]),
+    )
+}
+```
+
+**Why?** The `reasoning_content` field must exist (even if minimal) for thinking mode providers.
+
+---
+
+### 4. Test with Non-Existing Hashes
+
+Always test context tool changes with:
+
+1. Valid existing hashes (success path)
+2. Non-existing hashes like `"zzzzzz"` (no-op path)
+3. Mix of valid and invalid hashes
+
+The no-op path is where most bugs hide because it's less tested.
+
+---
+
+### 5. Provider-Specific Behavior
+
+| Provider  | Thinking Mode     | `reasoning_content` Required | Notes                |
+| --------- | ----------------- | ---------------------------- | -------------------- |
+| Anthropic | Extended thinking | ✅ Yes                       | Strict validation    |
+| DeepSeek  | DeepThink         | ✅ Yes                       | Similar to Anthropic |
+| Kimi      | K1 thinking       | ✅ Yes                       | Similar to Anthropic |
+| OpenAI    | N/A               | ❌ No                        | No thinking mode     |
+| Google    | N/A               | ❌ No                        | No thinking mode     |
+
+**Always test with Anthropic** when modifying context/pruning logic—it has the strictest API validation.
+
+---
+
+### 6. The Transform Hook Timing
+
+```
+User Message → Transform Hook → ensureReasoningContentSync → API Call
+                    ↑
+            Context tool runs HERE
+```
+
+If context tool returns early (no-op), the transform hook may not have synced `reasoning_content` yet. That's why each context tool function must call `ensureSessionInitialized` itself.
+
+---
+
+### 7. Debug Checklist
+
+When you see `reasoning_content is missing` errors:
+
+1. **Check the error index** - "at index 2" means the 3rd message in the array
+2. **Verify message fetch** - Is the function fetching messages before early returns?
+3. **Verify session init** - Is `ensureSessionInitialized` called in ALL code paths?
+4. **Check the no-op path** - Does the early return path have proper initialization?
+5. **Test with invalid hash** - `context({ action: "discard", targets: [["zzzzzz"]] })`
+
+---
+
 ## 🗨️ For LLM Agents
 
 If you're an AI assistant reading this:
