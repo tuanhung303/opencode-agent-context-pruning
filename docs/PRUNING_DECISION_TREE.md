@@ -15,13 +15,13 @@ START: Do you need to prune context?
 │        │   └─ What type of content dominates?
 │        │       │
 │        │       ├─ Old tool outputs
-│        │       │   └─ Run: context({ action: "discard", targets: [["[tools]"]] })
+│        │       │   └─ Run: context({ action: "discard", targets: [[hash1], [hash2]] })
 │        │       │
 │        │       ├─ Old messages
-│        │       │   └─ Run: context({ action: "discard", targets: [["[messages]"]] })
+│        │       │   └─ Run: context({ action: "discard", targets: [[msg_hash]] })
 │        │       │
 │        │       └─ Large thinking blocks
-│        │           └─ Run: context({ action: "distill", targets: [["[thinking]", "Analysis complete"]] })
+│        │           └─ Run: context({ action: "distill", targets: [[thinking_hash, "Analysis complete"]] })
 │        │
 │        ├─ HIGH (75-90% used)
 │        │   └─ Is there critical information to preserve?
@@ -29,25 +29,25 @@ START: Do you need to prune context?
 │        │       ├─ YES → Use ANCHOR strategy first
 │        │       │   ├─ Capture critical info in todos
 │        │       │   ├─ Distill important analysis
-│        │       │   └─ Then: context({ action: "discard", targets: [["[tools]"]] })
+│        │       │   └─ Then: context({ action: "discard", targets: [[old_hashes]] })
 │        │       │
 │        │       └─ NO → Aggressive prune
-│        │           └─ Run: context({ action: "discard", targets: [["[*]"]] })
-│        │               (Nuclear option - removes everything eligible)
+│        │           └─ Run: context({ action: "discard", targets: [[all_disposable_hashes]] })
+│        │               (Manual option - removes everything eligible)
 │        │
 │        └─ CRITICAL (>90% used)
 │            └─ URGENT: Can you complete current task without history?
 │                │
 │                ├─ YES → NUCLEAR + focus mode
-│                │   ├─ context({ action: "discard", targets: [["[*]"]] })
+│                │   ├─ context({ action: "discard", targets: [[all_hashes]] })
 │                │   ├─ todowrite({ todos: [minimal_current_task] })
 │                │   └─ Work with clean slate
 │                │
 │                └─ NO → Surgical prune + anchor
 │                    ├─ Identify 3-5 most important items
 │                    ├─ Anchor them (todowrite or distill)
-│                    ├─ context({ action: "discard", targets: [["[tools]"]] })
-│                    └─ context({ action: "discard", targets: [["[messages]"]] })
+│                    ├─ context({ action: "discard", targets: [[tool_hashes]] })
+│                    └─ context({ action: "discard", targets: [[msg_hashes]] })
 │
 └─ NO → Are you sure?
     ├─ Check context size
@@ -115,10 +115,10 @@ QUICK DIAGNOSTICS
 │   ├─ References to "earlier in conversation" fail
 │   ├─ Forgot user requirements from 10+ turns ago
 │   └─ Tool calls timing out
-│
-├─ Check if prune is working:
-│   ├─ Run: context({ action: "discard", targets: [["[tools]"]] })
-│   ├─ Look for: "pruned: read, glob, bash..."
+│ ├─ Check if prune is working:
+│   ├─ Run: context({ action: "discard", targets: [[hash]] })
+│   ├─ Look for: "pruned: read..."
+
 │   └─ If "No eligible tool outputs" → Already pruned or protected
 │
 └─ Verify critical info preserved:
@@ -159,9 +159,9 @@ METRICS TO TRACK
 │
 ├─ Turns elapsed
 │   └─ Prune every 10-15 turns proactively
-│
-├─ Tool calls generated
-│   └─ After 20+ tools, bulk discard
+│ ├─ Tool calls generated
+│   └─ After 20+ tools, batch discard
+
 │
 ├─ Context "feel"
 │   ├─ Heavy/Slow → Prune now
@@ -192,9 +192,9 @@ RAW CONTEXT (100%)
          ▼
 ┌─────────────────┐
 │ Manual Pruning  │ ← Your control
-│ - [tools]       │   (explicit)
-│ - [messages]    │
-│ - [thinking]    │
+│ - By Hash       │   (explicit)
+│                 │
+│                 │
 └────────┬────────┘
          │ ~40% removed
          ▼
@@ -282,7 +282,7 @@ Symptoms:
 
 Actions:
 1. todowrite({ todos: [absolute_minimum] }) // Keep only 1-2 critical todos
-2. context({ action: "discard", targets: [["[*]"]] }) // Nuclear option
+2. context({ action: "discard", targets: [[all_hashes]] }) // Nuclear option
 3. Work with clean slate, re-read only what's needed
 ```
 

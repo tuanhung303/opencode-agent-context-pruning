@@ -83,13 +83,13 @@ context({
 })
 ```
 
-### Pattern C: Bulk Thinking Prune
+### Pattern C: Batch Thinking Prune
 
 ```typescript
-// Prune ALL thinking blocks at once
+// Prune multiple thinking blocks by hash
 context({
     action: "discard",
-    targets: [["[thinking]"]],
+    targets: [["abc123"], ["def456"]],
 })
 ```
 
@@ -138,12 +138,6 @@ context({
     action: "discard",
     targets: [["msg_abc123"]], // Replace with actual hash
 })
-```
-
-**Alternative**: Use bulk pattern if individual hash not visible:
-
-```typescript
-context({ action: "discard", targets: [["[messages]"]] })
 ```
 
 ---
@@ -227,89 +221,6 @@ context({
 
 ---
 
-#### ✅ Test 7: Bulk Operations - [tools]
-
-**Execution**:
-
-```typescript
-// Generate multiple tools
-read({ filePath: "package.json" })
-glob({ pattern: "*.json" })
-bash({ command: "pwd" })
-read({ filePath: "tsconfig.json" })
-
-// Bulk discard all tools
-context({
-    action: "discard",
-    targets: [["[tools]"]],
-})
-
-// Verify: Should see "pruned: read, glob, bash, read"
-```
-
----
-
-#### ✅ Test 8: Bulk Operations - [messages]
-
-**Execution**:
-
-```typescript
-// Generate multiple operations (creates messages)
-write({ filePath: "a.txt", content: "a" })
-write({ filePath: "b.txt", content: "b" })
-write({ filePath: "c.txt", content: "c" })
-
-// Bulk discard messages
-context({
-    action: "discard",
-    targets: [["[messages]"]],
-})
-
-// Verify: Should see count of pruned messages
-```
-
----
-
-#### ✅ Test 9: Bulk Operations - [*]/[all]
-
-**Execution**:
-
-```typescript
-// Generate mixed content
-glob({ pattern: "*.md" })
-read({ filePath: "README.md" })
-// (thinking block generated automatically)
-
-// NUCLEAR OPTION: Prune everything
-context({
-    action: "discard",
-    targets: [["[*]"]], // or [["[all]"]]
-})
-
-// Verify: Tools, messages, AND thinking blocks all pruned
-```
-
----
-
-#### ✅ Test 10: Bulk Distill with Summary
-
-**Execution**:
-
-```typescript
-// Generate research tools
-read({ filePath: "package.json" })
-read({ filePath: "tsconfig.json" })
-glob({ pattern: "src/**/*.ts" })
-
-// Distill all with shared summary
-context({
-    action: "distill",
-    targets: [["[tools]", "Research phase: Project structure analyzed"]],
-})
-```
-
----
-
 #### ✅ Test 11: Protected Tools Exclusion
 
 **Pre-check** (verify config):
@@ -322,15 +233,13 @@ read({ filePath: "lib/config/defaults.ts" })
 **Execution**:
 
 ```typescript
-// Generate mix of protected and regular tools
-read({ filePath: "package.json" })  // Regular
-todowrite({ todos: [...] })          // Protected (todowrite)
-write({ filePath: "test.txt", content: "x" })  // Protected (write)
+// Generate a protected tool output
+todowrite({ todos: [...] }) // Hash: todo123
 
-// Attempt bulk discard
-context({ action: "discard", targets: [["[tools]"]] })
+// Attempt to discard it directly
+context({ action: "discard", targets: [["todo123"]] })
 
-// Verify: Only 'read' is pruned, todowrite and write remain
+// Verify: todowrite remains (protected tools cannot be discarded)
 ```
 
 ---
@@ -781,15 +690,6 @@ context({
 })
 ```
 
-**Method B** - Bulk prune all thinking:
-
-```typescript
-context({
-    action: "discard",
-    targets: [["[thinking]"]],
-})
-```
-
 **Verify**: Thinking blocks removed from context
 
 ---
@@ -829,27 +729,6 @@ context({
 })
 
 // Verify: Thinking block replaced with summary
-```
-
----
-
-#### ✅ Test 32: Bulk Prune All Content Types
-
-**Execution**:
-
-```typescript
-// Generate all content types
-glob({ pattern: "*.ts" }) // Tool
-write({ filePath: "x.txt", content: "x" }) // Creates message
-// (thinking generated automatically)
-
-// NUCLEAR: Prune everything
-context({
-    action: "discard",
-    targets: [["[*]"]],
-})
-
-// Verify: Tools, messages, AND thinking all pruned
 ```
 
 ---
@@ -1035,9 +914,6 @@ async function smokeTest() {
     // Prune
     await context({ action: "discard", targets: [[hash1], [hash2]] })
 
-    // Bulk prune
-    await context({ action: "discard", targets: [["[tools]"]] })
-
     return "Smoke test complete"
 }
 ```
@@ -1060,26 +936,6 @@ async function supersedeTest() {
     await todowrite({ todos: [{ id: "1", content: "B" }] })
 
     return "Supersede test complete"
-}
-```
-
-### Script 3: Bulk Operations Test
-
-```typescript
-// Test all bulk patterns
-async function bulkTest() {
-    // Generate content
-    await read({ filePath: "package.json" })
-    await glob({ pattern: "*.md" })
-    await bash({ command: "pwd" })
-
-    // Test patterns
-    await context({ action: "discard", targets: [["[tools]"]] })
-    await context({ action: "discard", targets: [["[messages]"]] })
-    await context({ action: "discard", targets: [["[thinking]"]] })
-    await context({ action: "discard", targets: [["[*]"]] })
-
-    return "Bulk test complete"
 }
 ```
 
@@ -1158,38 +1014,8 @@ Copy this ENTIRE JSON array into `todowrite()`:
         "priority": "medium"
     },
     {
-        "id": "t6",
-        "content": "TEST: Mixed Distill - Tool + Message (both with summaries)",
-        "status": "pending",
-        "priority": "medium"
-    },
-    {
-        "id": "t7",
-        "content": "TEST: Bulk Operations - [tools] (generate 3+ tools, bulk discard)",
-        "status": "pending",
-        "priority": "high"
-    },
-    {
-        "id": "t8",
-        "content": "TEST: Bulk Operations - [messages] (generate messages, bulk discard)",
-        "status": "pending",
-        "priority": "medium"
-    },
-    {
-        "id": "t9",
-        "content": "TEST: Bulk Operations - [*] (nuclear option - prune everything)",
-        "status": "pending",
-        "priority": "medium"
-    },
-    {
-        "id": "t10",
-        "content": "TEST: Bulk Distill with Summary ([tools] with shared summary)",
-        "status": "pending",
-        "priority": "medium"
-    },
-    {
         "id": "t11",
-        "content": "TEST: Protected Tools Exclusion (mix protected/regular, verify only regular pruned)",
+        "content": "TEST: Protected Tools Exclusion (try to discard protected tool, verify it remains)",
         "status": "pending",
         "priority": "medium"
     },
@@ -1314,12 +1140,6 @@ Copy this ENTIRE JSON array into `todowrite()`:
         "priority": "medium"
     },
     {
-        "id": "t32",
-        "content": "TEST: Bulk Prune All Content Types ([*] removes tools+messages+thinking)",
-        "status": "pending",
-        "priority": "high"
-    },
-    {
         "id": "t33",
         "content": "TEST: Input Leak Fix (write large file, supersede, verify masked)",
         "status": "pending",
@@ -1418,10 +1238,9 @@ Copy this ENTIRE JSON array into `todowrite()`:
 - [ ] Tool hash format: 6 hex characters (e.g., `44136f`)
 - [ ] Message hash accessible via `hashToMessagePart`
 - [ ] Thinking hash accessible via `hashToReasoningPart`
-- [ ] Bulk patterns work: `[tools]`, `[messages]`, `[thinking]`, `[*]`
 - [ ] Discard adds to `prune.toolIds` and `prune.messagePartIds`
 - [ ] Distill stores summaries in `softPrunedTools`
-- [ ] Protected tools excluded from bulk operations
+- [ ] Protected tools cannot be discarded
 
 ### Supersede Checklist
 
@@ -1505,7 +1324,7 @@ After completing tests, create `docs/test_report_YYYYMMDD.md`:
 ## 🎓 Pro Tips
 
 1. **Hash Capture**: Always note tool hashes immediately after execution
-2. **Bulk First**: Use `[tools]`, `[messages]`, `[*]` for quick cleanup
+2. **Batch Pruning**: Use lists of hashes `[["h1"], ["h2"]]` for quick cleanup
 3. **Protected Awareness**: Remember `task`, `todowrite`, `write`, `edit` are protected
 4. **Simulate Turns**: Use loops to simulate passage of time
 5. **Code Inspection**: When runtime test not possible, read source code

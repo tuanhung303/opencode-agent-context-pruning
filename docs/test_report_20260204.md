@@ -33,7 +33,6 @@
     - Basic discard of message hashes ✓
     - Mixed discard operations ✓
     - Distill with summaries ✓
-    - Bulk operations ([tools], [messages], [*]) ✓
     - Protected tools exclusion ✓
     - Graceful error handling ✓
 
@@ -60,7 +59,6 @@
     - Thinking block pruning ✓
     - Assistant message pruning ✓
     - Distill thinking blocks ✓
-    - Bulk prune all content types ✓
 
 6. **Aggressive Pruning** (t33-t41): All 9 tests passed
     - Input leak fix ✓
@@ -95,10 +93,9 @@ All required config settings verified:
 ### Core Operations Checklist
 
 - [x] Tool hash format: 6 hex characters (e.g., `44136f`)
-- [x] Bulk patterns work: `[tools]`, `[messages]`, `[thinking]`, `[*]`
 - [x] Discard removes tool outputs from context
 - [x] Distill stores summaries replacing original content
-- [x] Protected tools excluded from bulk operations
+- [x] Protected tools cannot be discarded
 
 ### Supersede Checklist
 
@@ -154,7 +151,7 @@ cat lib/config/defaults.ts | grep -A 20 "DEFAULT_CONFIG"
 ### Test Patterns
 
 1. **Basic Discard**: `read()` → capture hash → `context({ action: "discard", targets: [[hash]] })`
-2. **Bulk Discard**: Generate 3+ tools → `context({ action: "discard", targets: [["[tools]"]] })`
+2. **Batch Discard**: Generate 3+ tools → `context({ action: "discard", targets: [[hash1], [hash2], [hash3]] })`
 3. **Supersede**: Same operation twice → verify first auto-superseded
 4. **Distill**: `context({ action: "distill", targets: [[hash, "summary"]] })`
 
@@ -162,7 +159,6 @@ cat lib/config/defaults.ts | grep -A 20 "DEFAULT_CONFIG"
 
 - All core functionality working as expected
 - Auto-supersede mechanisms operating correctly
-- Bulk operations efficient and reliable
 - Protected tools properly excluded from pruning
 - Thinking block distillation saves significant tokens (~2000 per block)
 

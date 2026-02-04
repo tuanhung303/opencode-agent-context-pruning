@@ -40,8 +40,8 @@ This guide documents the complete testing suite performed on the ACP (Agentic Co
 // Discard a specific thinking block
 context({ action: "discard", targets: [["abc123"]] })
 
-// Discard all thinking blocks
-context({ action: "discard", targets: [["[thinking]"]] })
+// Batch discard thinking blocks
+context({ action: "discard", targets: [["hash1"], ["hash2"]] })
 ```
 
 **Expected**: Thinking blocks removed, status shows "🗑️ discard ✓"
@@ -55,8 +55,8 @@ context({ action: "discard", targets: [["[thinking]"]] })
 ```typescript
 context({ action: "discard", targets: [["def456"]] })
 
-// Bulk discard all messages
-context({ action: "discard", targets: [["[messages]"]] })
+// Batch discard messages
+context({ action: "discard", targets: [["msg1"], ["msg2"]] })
 ```
 
 **Note**: Only assistant messages can be discarded, not user messages.
@@ -76,8 +76,8 @@ bash({ command: "echo 'hello'" })
 // Then discard them
 context({ action: "discard", targets: [["717b72"], ["44136f"]] })
 
-// Or discard all tool outputs
-context({ action: "discard", targets: [["[tools]"]] })
+// Or batch discard
+context({ action: "discard", targets: [["hash1"], ["hash2"], ["hash3"]] })
 ```
 
 **Result**: "🗑️ discard ✓ 11 manual" — All specified tools pruned
@@ -222,9 +222,9 @@ todowrite({
 **Verification**:
 
 ```typescript
-context({ action: "discard", targets: [["[tools]"]] })
-// Result: "No eligible tool outputs to discard" (todowrite is protected)
-// But only 1 todowrite section visible in context
+context({ action: "discard", targets: [["a1b2c3", "d4e5f6"]] })
+// Result: Discard specific tool outputs by hash
+// Protected tools (like todowrite) cannot be discarded
 ```
 
 **Result**: ✅ Only latest todo state retained
@@ -419,7 +419,7 @@ After operations, verify context state:
 
 ```typescript
 // Check how many tool outputs exist
-context({ action: "discard", targets: [["[tools]"]] })
+context({ action: "discard", targets: [[hash1]] })
 // Result: "No eligible tool outputs to discard" = all pruned/superseded
 
 // Check how many todowrite sections exist

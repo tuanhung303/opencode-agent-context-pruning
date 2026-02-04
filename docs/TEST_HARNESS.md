@@ -52,8 +52,8 @@ async function canaryTest() {
     }
 
     // 3. Aggressive prune
-    context({ action: "discard", targets: [["[tools]"]] })
-    context({ action: "discard", targets: [["[messages]"]] })
+    // (Simulate by collecting hashes from previous step output)
+    context({ action: "discard", targets: [[hash1], [hash2], [hash3], [hash4]] })
 
     // 4. Verify canaries survived
     todoread()
@@ -124,7 +124,8 @@ async function memoryPressureTest() {
 
     // Phase 4: Manual prune
     const beforePrune = results.toolsGenerated
-    context({ action: "discard", targets: [["[tools]"]] })
+    // Simulate pruning all generated tools
+    context({ action: "discard", targets: [[hash1], [hash2], [hash3] /*...*/] })
     results.toolsPruned = beforePrune // Assume all eligible pruned
 
     // Phase 5: Report
@@ -302,8 +303,8 @@ class ContextBudgetMonitor {
     getRecommendation(percent) {
         if (percent < 50) return "No action needed"
         if (percent < 75) return "Consider pruning old tools"
-        if (percent < 90) return "Run: context({ action: 'discard', targets: [['[tools]']] })"
-        return "URGENT: context({ action: 'discard', targets: [['[*]']] })"
+        if (percent < 90) return "Run: context({ action: 'discard', targets: [[hash]] })"
+        return "URGENT: context({ action: 'discard', targets: [[all_hashes]] })"
     }
 
     // Usage example:
@@ -326,7 +327,7 @@ async function coreTestSuite() {
     // Test 1: Basic discard
     try {
         read({ filePath: "package.json" })
-        context({ action: "discard", targets: [["[tools]"]] })
+        context({ action: "discard", targets: [["44136f"]] })
         results.push({ test: "Basic discard", status: "PASS" })
     } catch (e) {
         results.push({ test: "Basic discard", status: "FAIL", error: e.message })
@@ -335,28 +336,18 @@ async function coreTestSuite() {
     // Test 2: Distill
     try {
         glob({ pattern: "*.ts" })
-        context({ action: "distill", targets: [["[tools]", "TypeScript files found"]] })
+        context({ action: "distill", targets: [["hash123", "TypeScript files found"]] })
         results.push({ test: "Distill", status: "PASS" })
     } catch (e) {
         results.push({ test: "Distill", status: "FAIL", error: e.message })
     }
 
-    // Test 3: Bulk patterns
-    try {
-        read({ filePath: "package.json" })
-        glob({ pattern: "*.json" })
-        bash({ command: "pwd" })
-        context({ action: "discard", targets: [["[tools]"]] })
-        results.push({ test: "Bulk [tools]", status: "PASS" })
-    } catch (e) {
-        results.push({ test: "Bulk [tools]", status: "FAIL", error: e.message })
-    }
-
-    // Test 4: Protected tools
+    // Test 3: Protected tools
     try {
         todowrite({ todos: [{ id: "1", content: "Test", status: "pending" }] })
         read({ filePath: "package.json" })
-        context({ action: "discard", targets: [["[tools]"]] })
+        // Attempt to discard the protected todowrite hash
+        context({ action: "discard", targets: [["todo_hash"]] })
         // todowrite should survive (protected)
         results.push({ test: "Protected tools", status: "PASS" })
     } catch (e) {
@@ -486,21 +477,21 @@ function generatePruneCommand(analysis) {
     const commands = []
 
     if (analysis.oldTools > 10) {
-        commands.push(`context({ action: "discard", targets: [["[tools]"]] })`)
+        commands.push(`context({ action: "discard", targets: [[hash1], [hash2]] })`)
     }
 
     if (analysis.oldMessages > 5) {
-        commands.push(`context({ action: "discard", targets: [["[messages]"]] })`)
+        commands.push(`context({ action: "discard", targets: [[msg_hash]] })`)
     }
 
     if (analysis.thinkingTokens > 5000) {
         commands.push(
-            `context({ action: "distill", targets: [["[thinking]", "Analysis complete"]] })`,
+            `context({ action: "distill", targets: [[thinking_hash, "Analysis complete"]] })`,
         )
     }
 
     if (analysis.totalTokens > 100000) {
-        commands.push(`context({ action: "discard", targets: [["[*]"]] }) // NUCLEAR`)
+        commands.push(`context({ action: "discard", targets: [[all_hashes]] }) // NUCLEAR`)
     }
 
     return commands
@@ -551,20 +542,14 @@ async function runAllTests() {
 ## Cheat Sheet: One-Liners
 
 ```typescript
-// Quick prune: All tools
-context({ action: "discard", targets: [["[tools]"]] })
+// Quick prune: Specific tool
+context({ action: "discard", targets: [["hash"]] })
 
-// Quick prune: All messages
-context({ action: "discard", targets: [["[messages]"]] })
-
-// Quick prune: All thinking
-context({ action: "discard", targets: [["[thinking]"]] })
-
-// Nuclear: Everything
-context({ action: "discard", targets: [["[*]"]] })
+// Batch prune: Multiple items
+context({ action: "discard", targets: [["hash1"], ["hash2"]] })
 
 // Smart: Distill research
-context({ action: "distill", targets: [["[tools]", "Research complete"]] })
+context({ action: "distill", targets: [[hash, "Research complete"]] })
 
 // Test supersede: Same file twice
 read({ filePath: "x.txt" })
@@ -576,7 +561,7 @@ for (let i = 0; i < 12; i++) bash({ command: `echo ${i}` })
 // Check protected: Mix regular + protected tools
 read({ filePath: "package.json" })
 todowrite({ todos: [] })
-context({ action: "discard", targets: [["[tools]"]] })
+context({ action: "discard", targets: [[read_hash]] })
 ```
 
 ---

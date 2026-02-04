@@ -119,8 +119,59 @@ export async function executeContext(
                 reasoningHashes.map((h, i) => [h, minimalSummaries[i]!] as [string, string]),
             )
         }
+        // THINKING MODE SAFETY: Check if message hashes point to assistant messages with tool calls.
+        // If so, auto-convert to distill to preserve reasoning_content required by thinking mode API.
         if (messageHashes.length > 0) {
-            messageResult = await executeContextMessageDiscard(ctx, toolCtx, messageHashes)
+            const messagesToDistill: string[] = []
+            const messagesToDiscard: string[] = []
+
+            for (const hash of messageHashes) {
+                const partId = state.hashRegistry.messages.get(hash)
+                if (partId) {
+                    // Parse messageId:partIndex from partId
+                    const [messageId] = partId.split(":")
+                    // Find the message
+                    const msg = messages.find((m) => m.info.id === messageId)
+                    if (msg && msg.info.role === "assistant") {
+                        // Check if message has tool calls (has tool parts)
+                        const hasToolCalls = msg.parts?.some((p: any) => p.type === "tool")
+                        // Check if message has reasoning_content
+                        const hasReasoning =
+                            (msg.info as any).reasoning_content ||
+                            (msg.info as any).tokens?.reasoning > 0
+
+                        if (hasToolCalls && hasReasoning) {
+                            messagesToDistill.push(hash)
+                            logger.info(
+                                `Auto-converting message discard to distill (thinking mode safety): ${hash}`,
+                            )
+                        } else {
+                            messagesToDiscard.push(hash)
+                        }
+                    } else {
+                        messagesToDiscard.push(hash)
+                    }
+                }
+            }
+
+            if (messagesToDistill.length > 0) {
+                const minimalSummaries = messagesToDistill.map(() => "—")
+                const distillResult = await executeContextMessageDistill(
+                    ctx,
+                    toolCtx,
+                    messagesToDistill.map((h, i) => [h, minimalSummaries[i]!] as [string, string]),
+                )
+                messageResult += (messageResult ? "\n" : "") + distillResult
+            }
+
+            if (messagesToDiscard.length > 0) {
+                const discardResult = await executeContextMessageDiscard(
+                    ctx,
+                    toolCtx,
+                    messagesToDiscard,
+                )
+                messageResult += (messageResult ? "\n" : "") + discardResult
+            }
         }
     } else if (action === "distill") {
         if (toolHashes.length > 0) {

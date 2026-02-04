@@ -105,7 +105,7 @@ export async function executeToolPrune(
     // Build notification
     const tuiStatus = formatPruningStatus(prunedToolNames, [])
     const tuiNotification = tuiStatus ? dimText(tuiStatus) : ""
-    const minimalNotification = formatDiscardNotification(callIds.length, reason, hashes)
+    const minimalNotification = formatDiscardNotification(callIds.length, reason, hashes, "tool")
 
     return tuiNotification ? `${minimalNotification}\n${tuiNotification}` : minimalNotification
 }
@@ -149,7 +149,9 @@ export async function executeContextToolDiscard(
             toolCtx.sessionID,
             currentParams,
         )
-        return "No valid tool hashes to discard"
+        // Return notification in the response too
+        const minimalNotification = formatDiscardNotification(0, "manual", hashes, "tool")
+        return `${minimalNotification}\nNo valid tool hashes to discard`
     }
 
     return executeToolPrune(ctx, toolCtx, callIds, validHashes, {
@@ -228,7 +230,14 @@ export async function executeContextMessageDiscard(
         logger.error("Failed to persist state", { error: err.message }),
     )
 
-    return `Discarded ${discardedCount} message(s)`
+    // Return formatted notification
+    const minimalNotification = formatDiscardNotification(
+        discardedCount,
+        "manual",
+        hashes,
+        "message",
+    )
+    return minimalNotification
 }
 
 /**
@@ -305,7 +314,14 @@ export async function executeContextReasoningDiscard(
         logger.error("Failed to persist state", { error: err.message }),
     )
 
-    return `Discarded ${discardedCount} reasoning block(s), saved ~${tokensSaved} tokens`
+    // Return formatted notification
+    const minimalNotification = formatDiscardNotification(
+        discardedCount,
+        "manual",
+        hashes,
+        "reasoning",
+    )
+    return minimalNotification
 }
 
 // ============================================================================

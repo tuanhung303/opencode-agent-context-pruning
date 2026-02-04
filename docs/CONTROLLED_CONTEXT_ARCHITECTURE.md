@@ -52,8 +52,8 @@ Conclusion: Refactoring recommended for lib/utils.ts
 // Option A: Prune specific thinking
 context({ action: "discard", targets: [["abc123"]] })
 
-// Option B: Bulk prune ALL thinking (nuclear option)
-context({ action: "discard", targets: [["[thinking]"]] })
+// Option B: Batch prune multiple thinking blocks
+context({ action: "discard", targets: [["abc123"], ["def456"]] })
 
 // Option C: Distill to preserve conclusion
 context({
@@ -104,8 +104,8 @@ bash({ command: "echo 'Message 3'" })
 // Keep recent, prune old
 context({ action: "discard", targets: [["msg_old1"], ["msg_old2"]] })
 
-// Or bulk prune
-context({ action: "discard", targets: [["[messages]"]] })
+// Or batch prune multiple
+context({ action: "discard", targets: [["msg1"], ["msg2"], ["msg3"]] })
 ```
 
 ---
@@ -205,9 +205,9 @@ Total Context Budget: ~128k tokens
 
 **Pruning Triggers**:
 
-- Historical context > 80k tokens → Bulk discard `[tools]`
-- Historical context > 100k tokens → Nuclear option `[*]`
-- Thinking blocks > 20k tokens → Distill or discard `[thinking]`
+- Historical context > 80k tokens → Batch discard old tools
+- Historical context > 100k tokens → Aggressive prune of all disposable items
+- Thinking blocks > 20k tokens → Distill or discard
 
 ---
 
@@ -230,8 +230,8 @@ todowrite({
     ],
 })
 
-// Bulk prune all file contents
-context({ action: "discard", targets: [["[tools]"]] })
+// Bulk prune all file contents (by explicitly listing their hashes)
+context({ action: "discard", targets: [[hash1], [hash2], [hash3]] })
 
 // Result: Know WHAT files exist and their PURPOSE
 // But don't waste tokens on full contents
@@ -256,12 +256,11 @@ todowrite({
 })
 
 // Test 1: Aggressive prune
-context({ action: "discard", targets: [["[*]"]] })
+context({ action: "discard", targets: [[all_tool_hashes]] })
 // Check: Did canaries survive?
 
 // Test 2: Nuclear prune
-context({ action: "discard", targets: [["[*]"]] })
-context({ action: "discard", targets: [["[thinking]"]] })
+context({ action: "discard", targets: [[all_hashes]] })
 // Check: Did canaries survive?
 
 // Find the threshold where critical info is lost
@@ -291,7 +290,7 @@ todowrite({
 })
 
 // PHASE 3: Prune discovery data
-context({ action: "discard", targets: [["[tools]"]] })
+context({ action: "discard", targets: [[hash1], [hash2], [hash3]] })
 // Context: Now just 20 summaries in todos, not 20 full files
 
 // PHASE 4: Execute refactoring
@@ -333,7 +332,7 @@ context({ action: "discard", targets: [["[tools]"]] })
 | Todo list                     | Current | Small  | **Keep** (critical state)     |
 | Old todo versions             | Old     | Small  | **Discard** (superseded)      |
 | Message chain                 | Current | Medium | **Keep** (recent context)     |
-| Old messages                  | Old     | Medium | **Discard** via `[messages]`  |
+| Old messages                  | Old     | Medium | **Discard** via hash          |
 
 ---
 

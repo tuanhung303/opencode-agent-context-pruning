@@ -101,7 +101,12 @@ export async function executeToolDistill(
     // Build notification
     const tuiStatus = formatPruningStatus(prunedToolNames, distillation)
     const tuiNotification = tuiStatus ? dimText(tuiStatus) : ""
-    const minimalNotification = formatDiscardNotification(callIds.length, "distillation", hashes)
+    const minimalNotification = formatDiscardNotification(
+        callIds.length,
+        "distillation",
+        hashes,
+        "tool",
+    )
 
     return tuiNotification ? `${minimalNotification}\n${tuiNotification}` : minimalNotification
 }
@@ -154,7 +159,9 @@ export async function executeContextToolDistill(
             toolCtx.sessionID,
             currentParams,
         )
-        return "No valid tool hashes to distill"
+        // Return notification in the response too
+        const minimalNotification = formatDiscardNotification(0, "distillation", hashes, "tool")
+        return `${minimalNotification}\nNo valid tool hashes to distill`
     }
 
     return executeToolDistill(ctx, toolCtx, callIds, validHashes, validDistillation)
@@ -211,7 +218,14 @@ export async function executeContextMessageDistill(
         logger.error("Failed to persist state", { error: err.message }),
     )
 
-    return `Distilled ${distilledCount} message(s)`
+    // Return formatted notification
+    const minimalNotification = formatDiscardNotification(
+        distilledCount,
+        "distillation",
+        hashes,
+        "message",
+    )
+    return minimalNotification
 }
 
 /**
@@ -296,15 +310,14 @@ export async function executeContextReasoningDistill(
         logger.error("Failed to persist state", { error: err.message }),
     )
 
-    // Build minimal notification like tool discards
-    const minimalNotification = formatDiscardNotification(distilledCount, "manual")
-    const hashList =
-        processedHashes.length > 3
-            ? `${processedHashes.slice(0, 3).join(", ")}... (${processedHashes.length} total)`
-            : processedHashes.join(", ")
-    const details = `pruned: ${hashList}`
-
-    return `${minimalNotification}\n${dimText(details)}`
+    // Return formatted notification
+    const minimalNotification = formatDiscardNotification(
+        distilledCount,
+        "manual",
+        processedHashes,
+        "reasoning",
+    )
+    return minimalNotification
 }
 
 // ============================================================================

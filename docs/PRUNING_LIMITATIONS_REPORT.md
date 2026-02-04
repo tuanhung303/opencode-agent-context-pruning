@@ -18,7 +18,7 @@ During the execution of 55 validation tests, I identified several categories of 
 
 ## 1. Protected Tools (Cannot Be Pruned)
 
-The following tools are explicitly protected and cannot be pruned via bulk operations:
+The following tools are explicitly protected and cannot be pruned:
 
 | Tool           | Reason for Protection                                     |
 | -------------- | --------------------------------------------------------- |
@@ -112,12 +112,9 @@ Original Call → Superseded by New Call → Removed from Context
 
 **Test Evidence**:
 
-- Multiple attempts to prune `[messages]` bulk pattern succeeded
 - Individual message hash targeting (e.g., "msg_abc123") returned no eligible targets
 
-**Technical Limitation**: Message parts may not always expose individual hashes accessible to the `context` tool. The bulk `[messages]` pattern works, but granular message pruning requires specific conditions.
-
-**Workaround**: Use bulk patterns `[messages]` or `[*]` for message pruning.
+**Technical Limitation**: Message parts may not always expose individual hashes accessible to the `context` tool. Granular message pruning requires specific conditions where the hash is visible.
 
 ---
 
@@ -179,9 +176,8 @@ Original Call → Superseded by New Call → Removed from Context
 ### For Users
 
 1. **Don't attempt to prune protected tools** - The system will ignore these requests
-2. **Use bulk patterns for messages** - `[messages]` and `[*]` work better than individual targeting
-3. **Check hashes are valid** before attempting to prune
-4. **Let supersede handle duplicates** - Don't manually prune if supersede is working
+2. **Check hashes are valid** before attempting to prune
+3. **Let supersede handle duplicates** - Don't manually prune if supersede is working
 
 ### For Developers
 
@@ -204,7 +200,6 @@ Original Call → Superseded by New Call → Removed from Context
 - ✅ Error output pruning restrictions confirmed
 - ✅ Superseded content inaccessibility documented
 - ✅ Invalid hash handling tested
-- ✅ Bulk operations effectiveness confirmed
 
 ---
 

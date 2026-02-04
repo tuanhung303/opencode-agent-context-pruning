@@ -35,10 +35,8 @@ context({
     targets: [["01cb91", "Found 8 TypeScript files"]],
 })
 
-// Bulk operations
-context({ action: "discard", targets: [["[tools]"]] })
-context({ action: "discard", targets: [["[messages]"]] })
-context({ action: "discard", targets: [["[*]"]] })
+// Discard multiple by hash
+context({ action: "discard", targets: [["a1b2c3"], ["d4e5f6"], ["789abc"]] })
 ```
 
 ### Configuration
@@ -62,7 +60,6 @@ Create `.opencode/acp.jsonc`:
 
 - **Auto-Supersede**: Automatic deduplication of tool calls, file operations, and todo updates
 - **Manual Pruning**: Explicit `discard` and `distill` tools for agent control
-- **Bulk Operations**: Prune all tools, messages, or thinking blocks at once
 - **Protected Tools**: Critical tools exempt from pruning
 - **Token Savings**: Up to 50% reduction in context size
 
@@ -82,7 +79,7 @@ Main pruning interface.
 - Tool outputs: 6 hex chars (e.g., `44136f`)
 - Thinking blocks: 6 hex chars
 - Messages: 6 hex chars
-- Bulk patterns: `[tools]`, `[messages]`, `[thinking]`, `[*]`
+- Multiple targets: Array of `[hash]` or `[hash, summary]` tuples
 
 ### Commands
 

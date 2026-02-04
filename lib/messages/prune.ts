@@ -338,7 +338,7 @@ export const injectHashesIntoAssistantMessages = (
             }
 
             // Hash registered in registry - no injection into visible text
-            // Bulk [messages] pattern works via registry lookup
+            // Individual hash lookup works via registry
             logger.debug(`Registered hash ${hash} for assistant text part (no injection)`)
         }
     }

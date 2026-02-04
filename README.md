@@ -106,10 +106,11 @@ context({
     targets: [["d4e5f6", "Found 15 TypeScript files"]],
 })
 
-// Bulk operations
-context({ action: "discard", targets: [["[tools]"]] })
-context({ action: "discard", targets: [["[thinking]"]] })
-context({ action: "discard", targets: [["[*]"]] }) // Nuclear option
+// Batch operations
+context({
+    action: "discard",
+    targets: [["hash1"], ["hash2"], ["hash3"]],
+})
 ```
 
 ---
@@ -142,32 +143,32 @@ context({
 
 ### Target Types
 
-| Type                | Format         | Example                                      |
-| ------------------- | -------------- | -------------------------------------------- |
-| **Tool outputs**    | 6 hex chars    | `44136f`, `01cb91`                           |
-| **Thinking blocks** | 6 hex chars    | `abc123`                                     |
-| **Messages**        | 6 hex chars    | `def456`                                     |
-| **Bulk patterns**   | Special syntax | `[tools]`, `[messages]`, `[thinking]`, `[*]` |
+| Type                | Format      | Example            |
+| ------------------- | ----------- | ------------------ |
+| **Tool outputs**    | 6 hex chars | `44136f`, `01cb91` |
+| **Thinking blocks** | 6 hex chars | `abc123`           |
+| **Messages**        | 6 hex chars | `def456`           |
 
-### Bulk Operations
+### Batch Operations
 
 ```typescript
-// Prune all tools (except protected)
-context({ action: "discard", targets: [["[tools]"]] })
-
-// Prune all messages
-context({ action: "discard", targets: [["[messages]"]] })
-
-// Prune all thinking blocks
-context({ action: "discard", targets: [["[thinking]"]] })
-
-// Nuclear: Prune everything eligible
-context({ action: "discard", targets: [["[*]"]] })
+// Prune multiple items at once
+context({
+    action: "discard",
+    targets: [
+        ["44136f"], // Tool output
+        ["abc123"], // Thinking block
+        ["def456"], // Message
+    ],
+})
 
 // Distill with shared summary
 context({
     action: "distill",
-    targets: [["[tools]", "Research phase complete"]],
+    targets: [
+        ["44136f", "Research phase complete"],
+        ["01cb91", "Research phase complete"],
+    ],
 })
 ```
 
@@ -525,9 +526,9 @@ If you're an AI assistant reading this:
 > **Quick Pruning Reference:**
 >
 > - Light pressure (<50%): No action
-> - Moderate (50-75%): `context({ action: "discard", targets: [["[tools]"]] })`
-> - High (75-90%): Anchor critical info, then bulk prune
-> - Critical (>90%): `context({ action: "discard", targets: [["[*]"]] })`
+> - Moderate (50-75%): Prune old tool outputs using `context({ action: "discard", targets: [[hash]] })`
+> - High (75-90%): Anchor critical info, then batch prune non-essential items
+> - Critical (>90%): Aggressively discard all disposable context
 >
 > **Always Protect:** Active todos, current file edits, user requirements
 

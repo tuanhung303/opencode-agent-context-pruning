@@ -47,9 +47,24 @@ function buildMinimalMessage(
     state: SessionState,
     distillation: string[] | undefined,
     showDistillation: boolean,
+    attemptedTargets?: string[],
+    reason?: PruneReason,
 ): string {
-    const message = formatStatsHeader(state.stats.strategyStats)
-    return message + formatDistilled(showDistillation ? distillation : undefined)
+    const statsMessage = formatStatsHeader(state.stats.strategyStats)
+
+    // Build the action notification with attempted targets
+    if (attemptedTargets && attemptedTargets.length > 0) {
+        const isDistill = reason === "distillation"
+        const actionMessage = formatNoOpNotification(
+            isDistill ? "distill" : "discard",
+            attemptedTargets,
+        )
+        // Extract just the details part after the box
+        const details = actionMessage.replace(/^「 .*? 」- /, "").trim()
+        return `${statsMessage}- ${details}`
+    }
+
+    return statsMessage + formatDistilled(showDistillation ? distillation : undefined)
 }
 
 function buildDetailedMessage(ctx: NotificationContext, showDistillation: boolean): string {
@@ -134,7 +149,13 @@ export async function sendUnifiedNotification(
 
     const message =
         config.pruneNotification === "minimal"
-            ? buildMinimalMessage(state, distillation, showDistillation)
+            ? buildMinimalMessage(
+                  state,
+                  distillation,
+                  showDistillation,
+                  ctx.attemptedTargets,
+                  reason,
+              )
             : buildDetailedMessage(ctx, showDistillation)
 
     await sendIgnoredMessage(client, sessionId, message, params, logger)

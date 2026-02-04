@@ -199,76 +199,90 @@ export function formatNpmOutput(output: string, version?: string): string {
 
 /**
  * Format distill notification
- * 「 💧 distill ✓ 3 items 」
+ * 「 ✨ distill ✓ 」- 3 items
+ * 「 ✨ distill ✓ 」- ⚙️ abc123... (+2)
  */
 export function formatDistillNotification(
     operations: PruneOperation[],
     attemptedTargets?: string[],
+    targetType?: "tool" | "message" | "reasoning",
 ): string {
-    if (operations.length === 0 && attemptedTargets && attemptedTargets.length > 0) {
+    const baseNotification = formatMinimalNotification({
+        type: "distill",
+        status: "success",
+        message: "",
+    })
+
+    // Type icons for the summary
+    const typeIcons: Record<string, string> = {
+        tool: "⚙️",
+        message: "💬",
+        reasoning: "🧠",
+    }
+    const icon = targetType ? typeIcons[targetType] + " " : ""
+
+    if (attemptedTargets && attemptedTargets.length > 0) {
         const firstTarget = attemptedTargets[0]!
         const truncated = firstTarget.length > 15 ? firstTarget.slice(0, 12) + "..." : firstTarget
         const suffix = attemptedTargets.length > 1 ? ` (+${attemptedTargets.length - 1})` : ""
-        return formatMinimalNotification({
-            type: "distill",
-            status: "success",
-            message: truncated + suffix,
-        })
+        return `${baseNotification}- ${icon}${truncated}${suffix}`
     }
 
-    return formatMinimalNotification({
-        type: "distill",
-        status: "success",
-        message: "items",
-        count: operations.length,
-    })
+    return `${baseNotification}- ${icon}${operations.length} items`
 }
 
 /**
  * Format discard notification
- * 「 🗑️ discard ✓ 7 items 」
+ * 「 🗑️ discard ✓ 」- 7 items
+ * 「 🗑️ discard ✓ 」- ⚙️ abc123... (+2)
  */
 export function formatDiscardNotification(
     count: number,
     reason: PruneReason,
     attemptedTargets?: string[],
+    targetType?: "tool" | "message" | "reasoning",
 ): string {
-    if (count === 0 && attemptedTargets && attemptedTargets.length > 0) {
-        // Show attempted targets even when nothing was pruned
+    const baseNotification = formatMinimalNotification({
+        type: "discard",
+        status: "success",
+        message: "",
+    })
+
+    // Type icons for the summary
+    const typeIcons: Record<string, string> = {
+        tool: "⚙️",
+        message: "💬",
+        reasoning: "🧠",
+    }
+    const icon = targetType ? typeIcons[targetType] + " " : ""
+
+    if (attemptedTargets && attemptedTargets.length > 0) {
         const firstTarget = attemptedTargets[0]!
         const truncated = firstTarget.length > 15 ? firstTarget.slice(0, 12) + "..." : firstTarget
         const suffix = attemptedTargets.length > 1 ? ` (+${attemptedTargets.length - 1})` : ""
-        return formatMinimalNotification({
-            type: "discard",
-            status: "success",
-            message: truncated + suffix,
-        })
+        return `${baseNotification}- ${icon}${truncated}${suffix}`
     }
 
-    return formatMinimalNotification({
-        type: "discard",
-        status: "success",
-        message: reason,
-        count,
-    })
+    return `${baseNotification}- ${icon}${count} ${reason}`
 }
 
 /**
  * Format no-op notification showing attempted targets with 15-char truncation
- * 「 🗑️ discard ✓ tool_name... 」
- * 「 ✨ distill ✓ a quick bro... 」
+ * 「 🗑️ discard ✓ 」 tool_name...
+ * 「 ✨ distill ✓ 」 a quick bro...
  */
 export function formatNoOpNotification(
     type: "discard" | "distill",
     attemptedTargets: string[],
 ): string {
+    const baseNotification = formatMinimalNotification({
+        type,
+        status: "success",
+        message: "",
+    })
+
     if (attemptedTargets.length === 0) {
-        return formatMinimalNotification({
-            type,
-            status: "success",
-            message: "0 items",
-            count: 0,
-        })
+        return `${baseNotification}- 0 items`
     }
 
     // Show first target truncated to 15 chars
@@ -276,9 +290,5 @@ export function formatNoOpNotification(
     const truncated = truncate(firstTarget, 15)
     const suffix = attemptedTargets.length > 1 ? ` (+${attemptedTargets.length - 1})` : ""
 
-    return formatMinimalNotification({
-        type,
-        status: "success",
-        message: truncated + suffix,
-    })
+    return `${baseNotification}- ${truncated}${suffix}`
 }

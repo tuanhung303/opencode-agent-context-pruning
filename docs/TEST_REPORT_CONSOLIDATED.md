@@ -47,9 +47,7 @@ The Agentic Context Pruning (ACP) plugin validation suite has been executed acro
 
 - ✅ **Core Operations**: 7/7 executable tests passed
 - ✅ **Auto-Supersede**: 8/8 tests passed (100%)
-- ✅ **Bulk Operations**: All patterns working ([tools], [messages], [thinking], [*])
 - ✅ **Protected Tools**: Correctly excluded from pruning
-- ✅ **Nuclear Option**: Successfully pruned ~22K tokens in single operation
 
 ---
 
@@ -111,20 +109,16 @@ The Agentic Context Pruning (ACP) plugin validation suite has been executed acro
 
 ### 1. Core Context Operations (t1-t12)
 
-| Test | Description                    | Status  | Evidence                                                         |
-| ---- | ------------------------------ | ------- | ---------------------------------------------------------------- |
-| t1   | Basic Discard - Tool Hash      | ✅ PASS | Hash 825138 discarded successfully                               |
-| t2   | Basic Discard - Message Hash   | ⏭️ SKIP | Message hashes not accessible                                    |
-| t3   | Mixed Discard - Tool + Message | ⏭️ SKIP | Requires message hash visibility                                 |
-| t4   | Distill Tool Output            | ✅ PASS | README analysis distilled                                        |
-| t5   | Distill Message Hash           | ⏭️ SKIP | Requires message hash registry                                   |
-| t6   | Mixed Distill - Tool + Message | ⏭️ SKIP | Requires message hash visibility                                 |
-| t7   | Bulk Operations - [tools]      | ✅ PASS | 5 tools pruned                                                   |
-| t8   | Bulk Operations - [messages]   | ⏭️ SKIP | Requires message hash visibility                                 |
-| t9   | Bulk Operations - [*]          | ✅ PASS | Nuclear option: 2 tools + 3 messages + 11 thinking (~22K tokens) |
-| t10  | Bulk Distill with Summary      | ✅ PASS | Shared summary applied                                           |
-| t11  | Protected Tools Exclusion      | ✅ PASS | Only regular tools pruned                                        |
-| t12  | Graceful Error Handling        | ✅ PASS | Invalid hash handled gracefully                                  |
+| Test | Description                    | Status  | Evidence                           |
+| ---- | ------------------------------ | ------- | ---------------------------------- |
+| t1   | Basic Discard - Tool Hash      | ✅ PASS | Hash 825138 discarded successfully |
+| t2   | Basic Discard - Message Hash   | ⏭️ SKIP | Message hashes not accessible      |
+| t3   | Mixed Discard - Tool + Message | ⏭️ SKIP | Requires message hash visibility   |
+| t4   | Distill Tool Output            | ✅ PASS | README analysis distilled          |
+| t5   | Distill Message Hash           | ⏭️ SKIP | Requires message hash registry     |
+| t6   | Mixed Distill - Tool + Message | ⏭️ SKIP | Requires message hash visibility   |
+| t11  | Protected Tools Exclusion      | ✅ PASS | Only regular tools pruned          |
+| t12  | Graceful Error Handling        | ✅ PASS | Invalid hash handled gracefully    |
 
 **Category Result**: 7/12 passed (5 skipped)
 
@@ -195,12 +189,11 @@ const stuckTasks = state.todos.filter(
 
 ### 5. Thinking Block & Message Pruning (t29-t32)
 
-| Test | Description                  | Status  | Evidence                        |
-| ---- | ---------------------------- | ------- | ------------------------------- |
-| t29  | Pruning Thinking Blocks      | ⏭️ SKIP | Requires extended thinking mode |
-| t30  | Pruning Assistant Messages   | ⏭️ SKIP | Requires extended thinking mode |
-| t31  | Distill Thinking Block       | ⏭️ SKIP | Requires extended thinking mode |
-| t32  | Bulk Prune All Content Types | ✅ PASS | [*] pruned all content types    |
+| Test | Description                | Status  | Evidence                        |
+| ---- | -------------------------- | ------- | ------------------------------- |
+| t29  | Pruning Thinking Blocks    | ⏭️ SKIP | Requires extended thinking mode |
+| t30  | Pruning Assistant Messages | ⏭️ SKIP | Requires extended thinking mode |
+| t31  | Distill Thinking Block     | ⏭️ SKIP | Requires extended thinking mode |
 
 **Category Result**: 1/4 passed (3 skipped)
 
@@ -230,31 +223,20 @@ const stuckTasks = state.todos.filter(
 
 All captured hashes from test execution:
 
-| Test | Tool  | Params         | Hash   | Turn | Action       |
-| ---- | ----- | -------------- | ------ | ---- | ------------ |
-| t1   | read  | package.json   | 825138 | 1    | discard      |
-| t4   | read  | README.md      | 7031e5 | 4    | distill      |
-| t7   | read  | test-file.txt  | 8a3c97 | 6    | restore      |
-| t9   | bulk  | [tools]        | -      | 9    | discard 5    |
-| t11  | bulk  | [*]            | -      | 11   | discard 5    |
-| t15  | read  | package.json   | 44136f | 15   | supersede    |
-| t16  | write | test-file.txt  | -      | 16   | supersede    |
-| t17  | edit  | test-file.txt  | -      | 17   | supersede    |
-| t20  | read  | other-file.txt | cf9d90 | 20   | no-supersede |
-| t10  | bulk  | [messages]     | -      | 22   | discard 5    |
+| Test | Tool    | Params         | Hash   | Turn | Action       |
+| ---- | ------- | -------------- | ------ | ---- | ------------ |
+| t1   | read    | package.json   | 825138 | 1    | discard      |
+| t4   | read    | README.md      | 7031e5 | 4    | distill      |
+| t7   | read    | test-file.txt  | 8a3c97 | 6    | restore      |
+| t11  | discard | protected      | -      | 11   | no-prune     |
+| t15  | read    | package.json   | 44136f | 15   | supersede    |
+| t16  | write   | test-file.txt  | -      | 16   | supersede    |
+| t17  | edit    | test-file.txt  | -      | 17   | supersede    |
+| t20  | read    | other-file.txt | cf9d90 | 20   | no-supersede |
 
 ---
 
 ## Evidence Log
-
-### Nuclear Option Success (t9)
-
-```
-「 🗑️ discard ✓ 2 manual 」
-pruned: read, glob
-Discarded 3 message(s)
-Discarded 11 thinking block(s), saved ~22000 tokens
-```
 
 ### Protected Tools Working (t11)
 
@@ -343,7 +325,6 @@ No valid tool hashes to discard
 The Agentic Context Pruning plugin is **fully operational** for all core use cases:
 
 ✅ Manual discard/distill operations  
-✅ Bulk operations ([tools], [messages], [thinking], [*])  
 ✅ All auto-supersede strategies (hash, file, todo, URL, state)  
 ✅ Protected tool exclusion  
 ✅ Input leak prevention  
