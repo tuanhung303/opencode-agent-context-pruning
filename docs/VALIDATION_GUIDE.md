@@ -1,750 +1,1421 @@
-# Test Prompt: Unified Context Tool Validation
+# ACP Validation Guide v2.0
 
-## Objective
+## Agentic Context Pruning - Practical Test Suite
 
-Validate the unified `context` tool that replaces 6 separate pruning tools with 1 interface supporting advanced pattern matching.
-
-**Total Tests: 43**
+**Objective**: Validate all 43 tests with simulated thinking patterns and practical execution steps.
 
 ---
 
-## Quick Start for Agents
+## 🚀 Quick Start (Copy-Paste Ready)
 
-1. **Load test todos**: Copy the JSON from "Executable Todo List" section into `todowrite()`
-2. **Run preparation tasks**: Complete `prep-0` through `prep-7`
-3. **Execute tests**: Run `t1` through `t43` sequentially
-4. **Generate report**: Complete `report-1` through `report-4`
-
----
-
-## Tool Interface
+### Step 1: Initialize Test Environment
 
 ```typescript
-context({
-  action: "discard" | "distill",
-  targets: [string, string?][]  // [[target, summary?], ...]
+// Run this first - creates test infrastructure
+write({
+    filePath: "/Users/_blitzzz/Documents/GitHub/opencode-agent-context-pruning/test-file.txt",
+    content: "Initial test content for file operations",
+})
+
+write({
+    filePath: "/Users/_blitzzz/Documents/GitHub/opencode-agent-context-pruning/other-file.txt",
+    content: "Secondary test file for cross-file testing",
 })
 ```
 
-### Target Types (Auto-detected)
+### Step 2: Load Test Todos
 
-| Type            | Format                                       | Lookup                |
-| --------------- | -------------------------------------------- | --------------------- |
-| Tool outputs    | `a1b2c3` (6 hex)                             | `hashToCallId`        |
-| Message parts   | `a1b2c3` (6 hex)                             | `hashToMessagePart`   |
-| Reasoning parts | `a1b2c3` (6 hex)                             | `hashToReasoningPart` |
-| Bulk patterns   | `[tools]`, `[messages]`, `[thinking]`, `[*]` | Direct                |
+Copy the **Executable Todo List** (bottom of doc) into `todowrite()`.
 
----
+### Step 3: Execute Test Pattern
 
-## Test Cases
+Each test follows this pattern:
 
-### Core Context Operations (t1-t12)
-
-#### Test 1: Basic Discard - Tool Hash
-
-**Setup**: `read({ filePath: "package.json" })` — generates hash
-**Action**: `context({ action: "discard", targets: [["<hash>"]] })`
-**Expected**: Tool output added to `prune.toolIds`
+1. **Generate** content (tool call, message, or thinking)
+2. **Capture** the hash from output
+3. **Prune** using `context()` tool
+4. **Verify** the result
 
 ---
 
-#### Test 2: Basic Discard - Message Hash
+## 🧠 Simulated Thinking Patterns
 
-**Setup**: Assistant message with hash via `hashToMessagePart`
-**Action**: `context({ action: "discard", targets: [["<hash>"]] })`
-**Expected**: Message part added to `prune.messagePartIds`
+### Pattern A: Fake Thinking Block Generator
 
----
+Use this technique to create thinking blocks that can be pruned:
 
-#### Test 3: Mixed Discard - Tool + Message Hash
+```typescript
+// Method 1: Extended analysis simulation
+const analysis = `
+Analyzing codebase structure...
+- Found 15 TypeScript files
+- Identified 3 core modules
+- Detected 2 potential optimizations
+This is simulated reasoning content that will generate a thinking hash.
+`
 
-**Setup**: Tool output + message, both with hashes
-**Action**: `context({ action: "discard", targets: [["<tool_hash>"], ["<msg_hash>"]] })`
-**Expected**: Both added to respective prune arrays
+// Method 2: Multi-step reasoning
+const reasoning = `
+Step 1: Evaluating current context size
+Step 2: Identifying pruneable content
+Step 3: Calculating token savings
+Conclusion: Can prune approximately 2,400 tokens
+`
+```
 
----
+### Pattern B: Thinking Block with Explicit Hash
 
-#### Test 4: Distill Tool Output
+When you see output like this in your response:
 
-**Setup**: `glob({ pattern: "**/*.ts" })` — generates hash
-**Action**: `context({ action: "distill", targets: [["<hash>", "Found 73 TS files"]] })`
-**Expected**: Tool added to `prune.toolIds`, summary in `softPrunedTools`
+```
+<thinking>
+Analyzing requirements...
+<thinking_hash>abc123</thinking_hash>
+</thinking>
+```
 
----
+You can prune it:
 
-#### Test 5: Distill Message Hash
+```typescript
+context({
+    action: "discard",
+    targets: [["abc123"]],
+})
+```
 
-**Setup**: Message with hash
-**Action**: `context({ action: "distill", targets: [["<hash>", "Architecture summary"]] })`
-**Expected**: Message added to `prune.messagePartIds`, summary stored
+### Pattern C: Bulk Thinking Prune
 
----
-
-#### Test 6: Mixed Distill - Tool + Message Hash
-
-**Setup**: Tool + message with hashes
-**Action**: `context({ action: "distill", targets: [["<tool>", "summary1"], ["<msg>", "summary2"]] })`
-**Expected**: Both distilled with summaries
-
----
-
-#### Test 7: Bulk Operations - [tools]
-
-**Setup**: Multiple tool outputs
-**Action**: `context({ action: "discard", targets: [["[tools]"]] })`
-**Expected**: All eligible tools discarded, protected tools excluded
-
----
-
-#### Test 8: Bulk Operations - [messages]
-
-**Setup**: Multiple message parts
-**Action**: `context({ action: "discard", targets: [["[messages]"]] })`
-**Expected**: All eligible messages discarded
-
----
-
-#### Test 9: Bulk Operations - [*]/[all]
-
-**Setup**: Mix of tools and messages
-**Action**: `context({ action: "discard", targets: [["[*]"]] })`
-**Expected**: All tools, messages, and thinking blocks discarded
+```typescript
+// Prune ALL thinking blocks at once
+context({
+    action: "discard",
+    targets: [["[thinking]"]],
+})
+```
 
 ---
 
-#### Test 10: Bulk Distill with Summary
+## 📋 Test Execution Guide
 
-**Setup**: Multiple tools
-**Action**: `context({ action: "distill", targets: [["[tools]", "Research complete"]] })`
-**Expected**: All tools distilled with shared summary
+### Category 1: Core Context Operations (t1-t12)
 
----
+#### ✅ Test 1: Basic Discard - Tool Hash
 
-#### Test 11: Protected Tools Exclusion
+**Execution**:
 
-**Setup**: Tools including protected ones (`task` in config)
-**Action**: `context({ action: "discard", targets: [["[tools]"]] })`
-**Expected**: Protected tools NOT discarded
+```typescript
+// 1. Generate tool output
+read({ filePath: "package.json" })
+// → Note the hash (e.g., 44136f) from output
 
----
+// 2. Discard it
+context({
+    action: "discard",
+    targets: [["44136f"]], // Replace with actual hash
+})
 
-#### Test 12: Graceful Error Handling
+// 3. Verify: Should see "pruned: read" in output
+```
 
-**Action**:
-
-1. `context({ action: "distill", targets: [["abc123"]] })` — missing summary
-2. `context({ action: "discard", targets: [["zzzzzz"]] })` — invalid hash
-
-**Expected**: Graceful error messages, no crash
-
----
-
-### Auto-Supersede (t13-t20)
-
-#### Test 13: Hash-Based Supersede
-
-**Steps**:
-
-1. `read({ filePath: "package.json" })`
-2. Do other work (1+ turn)
-3. `read({ filePath: "package.json" })` again
-
-**Expected**: First read auto-superseded, stats show `🔄 hash: 1`
+**Success Criteria**: Tool output removed from context
 
 ---
 
-#### Test 14: File-Based Supersede (Write)
+#### ✅ Test 2: Basic Discard - Message Hash
 
-**Steps**:
+**Execution**:
 
-1. `read({ filePath: "test-file.txt" })`
-2. Do other work
-3. `write({ filePath: "test-file.txt", content: "new" })`
+```typescript
+// 1. Create a message that will have a hash
+write({
+    filePath: "temp.txt",
+    content: "Test message for hash generation",
+})
+// → Assistant response will have message_hash
 
-**Expected**: Read superseded by write, stats show `📁 file: 1`
+// 2. Discard the message part
+context({
+    action: "discard",
+    targets: [["msg_abc123"]], // Replace with actual hash
+})
+```
 
----
+**Alternative**: Use bulk pattern if individual hash not visible:
 
-#### Test 15: File-Based Supersede (Edit)
-
-**Steps**:
-
-1. `read({ filePath: "package.json" })`
-2. Do other work
-3. `edit({ filePath: "package.json", ... })`
-
-**Expected**: Read superseded by edit
-
----
-
-#### Test 16: Todo-Based Supersede (todowrite)
-
-**Steps**:
-
-1. `todowrite({ todos: [...] })`
-2. Do other work
-3. `todowrite({ todos: [...] })` again
-
-**Expected**: First todowrite superseded, stats show `✅ todo: 1`
+```typescript
+context({ action: "discard", targets: [["[messages]"]] })
+```
 
 ---
 
-#### Test 17: Todo-Based Supersede (todoread)
+#### ✅ Test 3: Mixed Discard - Tool + Message
 
-**Steps**: Call `todoread()` twice with work between
-**Expected**: First todoread superseded
+**Execution**:
 
----
+```typescript
+// Generate both types
+read({ filePath: "package.json" })
+write({ filePath: "test.txt", content: "test" })
 
-#### Test 18: No Supersede for Different Files
-
-**Steps**:
-
-1. `read({ filePath: "package.json" })`
-2. `write({ filePath: "other-file.txt", content: "..." })`
-
-**Expected**: package.json read NOT superseded
-
----
-
-#### Test 19: No Supersede for Protected Tools
-
-**Steps**: Call protected tool (`task`) twice
-**Expected**: Neither call superseded
+// Prune both (use actual hashes)
+context({
+    action: "discard",
+    targets: [
+        ["44136f"], // Tool hash
+        ["msg_abc123"], // Message hash
+    ],
+})
+```
 
 ---
 
-#### Test 20: Combined Auto-Supersede Stats
+#### ✅ Test 4: Distill Tool Output
 
-**Steps**: Trigger hash, file, and todo supersedes
-**Expected**: Stats show breakdown by type
+**Execution**:
 
----
+```typescript
+// 1. Generate content to distill
+glob({ pattern: "*.ts" })
+// → Hash: 01cb91 (example)
 
-### Stuck Task Detection (t21-t25)
+// 2. Distill with summary
+context({
+    action: "distill",
+    targets: [["01cb91", "Found 8 TypeScript files"]],
+})
 
-#### Test 21: Stuck Task Detection - Basic
-
-**Steps**:
-
-1. `todowrite` with `status: "in_progress"`
-2. Work for 12+ turns without updating
-
-**Expected**: Reminder shows "⚠️ Task Breakdown Suggestion"
-
----
-
-#### Test 22: Stuck Task Detection - Timestamp Preservation
-
-**Steps**: Update in_progress task content (not status)
-**Expected**: `inProgressSince` preserved from first transition
+// 3. Verify: Should see "distilled: Foun...iles" in output
+```
 
 ---
 
-#### Test 23: Stuck Task Detection - New Task Transition
+#### ✅ Test 5: Distill Message Hash
 
-**Steps**: Task goes pending → in_progress at turn 6
-**Expected**: Stuck detection starts from turn 6, not creation
+**Execution**:
 
----
+```typescript
+// 1. Generate message
+bash({ command: "echo 'test'" })
 
-#### Test 24: Stuck Task Detection - Multiple Stuck Tasks
-
-**Steps**: Two tasks stuck for different durations
-**Expected**: Guidance shows longest stuck duration
-
----
-
-#### Test 25: Stuck Task Detection - Completed Task Clears
-
-**Steps**: Complete a task before threshold
-**Expected**: No stuck guidance for completed tasks
+// 2. Distill message (use actual hash)
+context({
+    action: "distill",
+    targets: [["msg_def456", "Test command executed"]],
+})
+```
 
 ---
 
-### Reminder Deduplication (t26-t28)
+#### ✅ Test 6: Mixed Distill
 
-#### Test 26: Todo Reminder Deduplication
+**Execution**:
 
-**Steps**: Trigger multiple todo reminders
-**Expected**: Only ONE reminder exists at any time
+```typescript
+// Generate tool and message
+read({ filePath: "README.md" })
+bash({ command: "ls" })
 
----
-
-#### Test 27: Automata Reflection Deduplication
-
-**Steps**: Trigger multiple automata reflections
-**Expected**: Only ONE reflection exists at any time
-
----
-
-#### Test 28: Mixed Reminders Coexistence
-
-**Steps**: Trigger both reminder types
-**Expected**: One of each type can coexist
+// Distill both with summaries
+context({
+    action: "distill",
+    targets: [
+        ["hash1", "README contains project docs"],
+        ["hash2", "Directory listing obtained"],
+    ],
+})
+```
 
 ---
 
-### Thinking Block & Message Pruning (t29-t32)
+#### ✅ Test 7: Bulk Operations - [tools]
 
-#### Test 29: Pruning Thinking Blocks
+**Execution**:
 
-**Steps**:
+```typescript
+// Generate multiple tools
+read({ filePath: "package.json" })
+glob({ pattern: "*.json" })
+bash({ command: "pwd" })
+read({ filePath: "tsconfig.json" })
 
-1. Generate thinking block with hash
-2. `context({ action: "discard", targets: [["<thinking_hash>"]] })`
+// Bulk discard all tools
+context({
+    action: "discard",
+    targets: [["[tools]"]],
+})
 
-**Expected**: Thinking block added to `prune.reasoningPartIds`
-
----
-
-#### Test 30: Pruning Assistant Messages
-
-**Steps**:
-
-1. Note message hash
-2. `context({ action: "discard", targets: [["<msg_hash>"]] })`
-
-**Expected**: Message shows `[Assistant message part removed to save context]`
+// Verify: Should see "pruned: read, glob, bash, read"
+```
 
 ---
 
-#### Test 31: Distill Thinking Block
+#### ✅ Test 8: Bulk Operations - [messages]
 
-**Steps**: `context({ action: "distill", targets: [["<hash>", "Analysis summary"]] })`
-**Expected**: Thinking distilled with summary preserved
+**Execution**:
 
----
+```typescript
+// Generate multiple operations (creates messages)
+write({ filePath: "a.txt", content: "a" })
+write({ filePath: "b.txt", content: "b" })
+write({ filePath: "c.txt", content: "c" })
 
-#### Test 32: Bulk Prune All Content Types
+// Bulk discard messages
+context({
+    action: "discard",
+    targets: [["[messages]"]],
+})
 
-**Steps**: `context({ action: "discard", targets: [["[*]"]] })`
-**Expected**: Tools, messages, AND thinking blocks all pruned
-
----
-
-### Aggressive Pruning (t33-t43)
-
-#### Test 33: Input Leak Fix - Supersede Strips Tool Input
-
-**Steps**: Write large file, then write again to same file
-**Expected**: First write's input stripped to metadata only
+// Verify: Should see count of pruned messages
+```
 
 ---
 
-#### Test 34: One-File-One-View Policy
+#### ✅ Test 9: Bulk Operations - [*]/[all]
 
-**Steps**: Read same file twice
-**Expected**: First read superseded (with `aggressiveFilePrune: true`)
+**Execution**:
 
----
+```typescript
+// Generate mixed content
+glob({ pattern: "*.md" })
+read({ filePath: "README.md" })
+// (thinking block generated automatically)
 
-#### Test 35: Step Marker Filtering
+// NUCLEAR OPTION: Prune everything
+context({
+    action: "discard",
+    targets: [["[*]"]], // or [["[all]"]]
+})
 
-**Requirement**: `pruneStepMarkers: true`
-**Expected**: No step-start/step-finish parts in context
-
----
-
-#### Test 36: Source-URL Supersede
-
-**Steps**: `webfetch` same URL twice
-**Expected**: First fetch superseded, stats show `🔗 url: 1`
-
----
-
-#### Test 37: State Query Supersede
-
-**Steps**: `bash({ command: "ls -la" })` twice
-**Expected**: First ls superseded, stats show `📊 query: 1`
+// Verify: Tools, messages, AND thinking blocks all pruned
+```
 
 ---
 
-#### Test 38: Snapshot Auto-Supersede
+#### ✅ Test 10: Bulk Distill with Summary
 
-**Steps**: Trigger two snapshots
-**Expected**: Only latest snapshot retained
+**Execution**:
 
----
+```typescript
+// Generate research tools
+read({ filePath: "package.json" })
+read({ filePath: "tsconfig.json" })
+glob({ pattern: "src/**/*.ts" })
 
-#### Test 39: Retry Auto-Prune
-
-**Steps**: Failed tool call, then successful retry
-**Expected**: Failed attempt auto-pruned
-
----
-
-#### Test 40: File Part Masking
-
-**Requirement**: `pruneFiles: true`
-**Expected**: File attachments replaced with breadcrumbs
+// Distill all with shared summary
+context({
+    action: "distill",
+    targets: [["[tools]", "Research phase: Project structure analyzed"]],
+})
+```
 
 ---
 
-#### Test 41: User Code Block Truncation
+#### ✅ Test 11: Protected Tools Exclusion
 
-**Steps**: Large code block in user message, 5+ turns later
-**Expected**: Code block truncated in old messages
+**Pre-check** (verify config):
 
----
+```typescript
+read({ filePath: "lib/config/defaults.ts" })
+// Verify: 'task' is in DEFAULT_PROTECTED_TOOLS array
+```
 
-#### Test 42: Error Output Truncation
+**Execution**:
 
-**Steps**: Verbose error, 3+ turns later
-**Expected**: Error truncated to first line
+```typescript
+// Generate mix of protected and regular tools
+read({ filePath: "package.json" })  // Regular
+todowrite({ todos: [...] })          // Protected (todowrite)
+write({ filePath: "test.txt", content: "x" })  // Protected (write)
 
----
+// Attempt bulk discard
+context({ action: "discard", targets: [["[tools]"]] })
 
-#### Test 43: Compaction Awareness
-
-**Steps**: Tool with `time.compacted` field
-**Expected**: Already-compacted content not double-processed
-
----
-
-## Validation Checklists
-
-### Core Operations
-
-- [ ] Tool hashes auto-detected (6 hex chars)
-- [ ] Message hashes looked up via `hashToMessagePart`
-- [ ] Reasoning hashes looked up via `hashToReasoningPart`
-- [ ] Bulk patterns `[tools]`, `[messages]`, `[thinking]`, `[*]` work
-- [ ] Discard adds to prune arrays
-- [ ] Distill stores summaries
-- [ ] Mixed targets work in single call
-- [ ] Protected tools excluded from bulk
-
-### Auto-Supersede
-
-- [ ] Hash-based supersede works
-- [ ] File-based supersede works
-- [ ] Todo-based supersede works
-- [ ] Different files not cross-superseded
-- [ ] Protected tools not superseded
-
-### Aggressive Pruning
-
-- [ ] Input leak fixed
-- [ ] One-file-one-view works
-- [ ] Step markers filtered
-- [ ] URL supersede works
-- [ ] State query supersede works
-- [ ] Error truncation works
+// Verify: Only 'read' is pruned, todowrite and write remain
+```
 
 ---
 
-## Executable Todo List for Agents
+#### ✅ Test 12: Graceful Error Handling
 
-**IMPORTANT**: Copy this entire JSON array into `todowrite()` before starting tests.
+**Execution**:
+
+```typescript
+// Test 12a: Invalid hash
+try {
+    context({ action: "discard", targets: [["invalid_hash"]] })
+} catch (e) {
+    // Should gracefully handle, not crash
+}
+
+// Test 12b: Non-existent hash
+context({ action: "discard", targets: [["zzzzzz"]] })
+// Expected: "No eligible tool outputs to discard"
+
+// Test 12c: Distill without summary (should fail gracefully)
+context({ action: "distill", targets: [["abc123"]] })
+// Expected: Error or graceful skip (distill requires summary)
+```
+
+---
+
+### Category 2: Auto-Supersede (t13-t20)
+
+#### ✅ Test 13: Hash-Based Supersede
+
+**Execution**:
+
+```typescript
+// Turn 1: First read
+read({ filePath: "package.json" })
+// → Hash: 825138
+
+// Do some work (turn 2)
+bash({ command: "echo 'working'" })
+
+// Turn 3: Same read again
+read({ filePath: "package.json" })
+// → Hash: 44136f (different hash, same content)
+
+// Verify: First read (825138) auto-superseded
+// Check stats: Should show "🔄 hash: 1"
+```
+
+---
+
+#### ✅ Test 14: File-Based Supersede (Write)
+
+**Execution**:
+
+```typescript
+// Turn 1: Read file
+read({ filePath: "test-file.txt" })
+
+// Turn 2: Write to same file
+write({
+    filePath: "test-file.txt",
+    content: "New content superseding read",
+})
+
+// Verify: Read is superseded by write
+// Stats: "📁 file: 1"
+```
+
+---
+
+#### ✅ Test 15: File-Based Supersede (Edit)
+
+**Execution**:
+
+```typescript
+// Setup: Ensure file exists
+read({ filePath: "test-file.txt" })
+
+// Edit the file
+edit({
+    filePath: "test-file.txt",
+    oldString: "New content superseding read",
+    newString: "Edited content",
+})
+
+// Verify: Previous file operations superseded
+```
+
+---
+
+#### ✅ Test 16: Todo-Based Supersede (todowrite)
+
+**Execution**:
+
+```typescript
+// First todowrite
+todowrite({
+    todos: [{ id: "1", content: "Initial task", status: "pending" }],
+})
+
+// Do work
+bash({ command: "echo 'working'" })
+
+// Second todowrite (supersedes first)
+todowrite({
+    todos: [{ id: "1", content: "Updated task", status: "in_progress" }],
+})
+
+// Verify: Only latest todo state exists
+// Stats: "✅ todo: 1"
+```
+
+---
+
+#### ✅ Test 17: Todo-Based Supersede (todoread)
+
+**Execution**:
+
+```typescript
+// First read
+todoread()
+
+// Do work
+read({ filePath: "package.json" })
+
+// Second read (supersedes first)
+todoread()
+
+// Verify: First todoread superseded
+```
+
+---
+
+#### ✅ Test 18: No Supersede for Different Files
+
+**Execution**:
+
+```typescript
+// Read different files
+read({ filePath: "package.json" }) // File A
+read({ filePath: "other-file.txt" }) // File B
+
+// Verify: Both reads remain (no cross-supersede)
+// Check context: Both tool outputs present
+```
+
+---
+
+#### ✅ Test 19: No Supersede for Protected Tools
+
+**Execution**:
+
+```typescript
+// Call protected tool twice
+todowrite({ todos: [{ id: "1", content: "First", status: "pending" }] })
+todowrite({ todos: [{ id: "1", content: "Second", status: "in_progress" }] })
+
+// For 'task' tool specifically:
+// task({ description: "Task 1", prompt: "..." })
+// task({ description: "Task 2", prompt: "..." })
+
+// Verify: Both calls persist (no supersede for protected tools)
+```
+
+---
+
+#### ✅ Test 20: Combined Auto-Supersede Stats
+
+**Execution**:
+
+```typescript
+// Trigger all three supersede types:
+
+// 1. Hash-based: Same read twice
+read({ filePath: "package.json" })
+read({ filePath: "package.json" })
+
+// 2. File-based: Read then write
+read({ filePath: "test-file.txt" })
+write({ filePath: "test-file.txt", content: "final" })
+
+// 3. Todo-based: Two todowrites
+todowrite({ todos: [{ id: "t1", content: "A", status: "pending" }] })
+todowrite({ todos: [{ id: "t1", content: "B", status: "in_progress" }] })
+
+// Check stats - should show breakdown by type
+```
+
+---
+
+### Category 3: Stuck Task Detection (t21-t25)
+
+**⚠️ Requires**: `stuckTaskTurns: 12` in config
+
+#### ✅ Test 21: Stuck Task Detection - Basic
+
+**Simulation Pattern** (avoids 12-turn wait):
+
+```typescript
+// Create task at turn 0
+todowrite({
+    todos: [
+        {
+            id: "stuck-test",
+            content: "This task will appear stuck",
+            status: "in_progress",
+        },
+    ],
+})
+
+// Simulate 12 turns of work:
+for (let i = 1; i <= 12; i++) {
+    bash({ command: `echo "Turn ${i}"` })
+    // Or any lightweight operation
+}
+
+// Verify: Todo reminder should show stuck task warning
+// "⚠️ Task Breakdown Suggestion"
+```
+
+**Code Verification** (if simulation not possible):
+
+```typescript
+read({ filePath: "lib/messages/todo-reminder.ts" })
+// Verify lines 141-160 contain stuck task detection logic
+// Formula: currentTurn - inProgressSince >= stuckTaskTurns
+```
+
+---
+
+#### ✅ Test 22: Timestamp Preservation
+
+**Execution**:
+
+```typescript
+// Create task and mark in_progress
+todowrite({
+    todos: [
+        {
+            id: "timestamp-test",
+            content: "Original content",
+            status: "in_progress",
+            inProgressSince: 5, // Simulated turn 5
+        },
+    ],
+})
+
+// Update content (keep status)
+todowrite({
+    todos: [
+        {
+            id: "timestamp-test",
+            content: "Updated content", // Changed
+            status: "in_progress", // Same
+            inProgressSince: 5, // Should preserve original
+        },
+    ],
+})
+
+// Verify: inProgressSince remains 5 (not reset to current turn)
+```
+
+---
+
+#### ✅ Test 23: New Task Transition
+
+**Execution**:
+
+```typescript
+// Turn 0: Create as pending
+todowrite({
+    todos: [
+        {
+            id: "transition-test",
+            content: "Task",
+            status: "pending",
+        },
+    ],
+})
+
+// Simulate 5 turns of work
+for (let i = 1; i <= 5; i++) {
+    bash({ command: `echo "Work ${i}"` })
+}
+
+// Turn 6: Transition to in_progress
+todowrite({
+    todos: [
+        {
+            id: "transition-test",
+            content: "Task",
+            status: "in_progress",
+            // inProgressSince should be set to 6
+        },
+    ],
+})
+
+// Verify: Stuck detection calculates from turn 6, not turn 0
+```
+
+---
+
+#### ✅ Test 24: Multiple Stuck Tasks
+
+**Execution**:
+
+```typescript
+// Create multiple stuck tasks
+todowrite({
+    todos: [
+        {
+            id: "stuck-1",
+            content: "Stuck for 15 turns",
+            status: "in_progress",
+            inProgressSince: 0, // Current turn is 15
+        },
+        {
+            id: "stuck-2",
+            content: "Stuck for 8 turns",
+            status: "in_progress",
+            inProgressSince: 7, // Current turn is 15
+        },
+    ],
+})
+
+// Simulate to turn 15
+for (let i = 1; i <= 15; i++) {
+    bash({ command: "echo '.'" })
+}
+
+// Verify: Reminder should highlight stuck-1 (15 turns) over stuck-2 (8 turns)
+```
+
+---
+
+#### ✅ Test 25: Completed Task Clears
+
+**Execution**:
+
+```typescript
+// Create task, let it sit, then complete
+todowrite({
+    todos: [
+        {
+            id: "complete-test",
+            content: "Will complete before stuck",
+            status: "in_progress",
+        },
+    ],
+})
+
+// Do 10 turns of work (below 12-turn threshold)
+for (let i = 1; i <= 10; i++) {
+    bash({ command: "echo '.'" })
+}
+
+// Complete the task
+todowrite({
+    todos: [
+        {
+            id: "complete-test",
+            content: "Will complete before stuck",
+            status: "completed",
+        },
+    ],
+})
+
+// Do 5 more turns
+for (let i = 11; i <= 15; i++) {
+    bash({ command: "echo '.'" })
+}
+
+// Verify: No stuck task warning for completed task
+```
+
+---
+
+### Category 4: Reminder Deduplication (t26-t28)
+
+#### ✅ Test 26: Todo Reminder Deduplication
+
+**Execution**:
+
+```typescript
+// Trigger multiple todo reminders by updating todos repeatedly
+todowrite({ todos: [{ id: "1", content: "A", status: "pending" }] })
+todowrite({ todos: [{ id: "1", content: "B", status: "pending" }] })
+todowrite({ todos: [{ id: "1", content: "C", status: "pending" }] })
+
+// Verify: Only ONE todo reminder message exists in context
+// Previous reminders auto-superseded
+```
+
+---
+
+#### ✅ Test 27: Automata Reflection Deduplication
+
+**Note**: Automata reflection is triggered by specific agent modes.
+
+**Execution**:
+
+```typescript
+// If in automata mode, trigger reflections
+// (This is mode-dependent)
+
+// Verify: Only ONE reflection exists at a time
+// Check context for reflection messages
+```
+
+---
+
+#### ✅ Test 28: Mixed Reminders Coexistence
+
+**Execution**:
+
+```typescript
+// Trigger todo reminder
+todowrite({ todos: [{ id: "1", content: "Task", status: "pending" }] })
+
+// Trigger automata reflection (if in automata mode)
+// This happens automatically in automata mode
+
+// Verify: Both types can coexist
+// - One todo reminder
+// - One automata reflection
+```
+
+---
+
+### Category 5: Thinking Block & Message Pruning (t29-t32)
+
+#### ✅ Test 29: Pruning Thinking Blocks
+
+**Execution** (requires extended thinking or simulation):
+
+**Method A** - Natural thinking:
+
+```typescript
+// Perform complex analysis (triggers thinking block)
+read({ filePath: "lib/strategies/distill.ts" })
+// Analyze and document findings...
+
+// Look for thinking_hash in output, then prune:
+context({
+    action: "discard",
+    targets: [["abc123"]], // Replace with actual hash
+})
+```
+
+**Method B** - Bulk prune all thinking:
+
+```typescript
+context({
+    action: "discard",
+    targets: [["[thinking]"]],
+})
+```
+
+**Verify**: Thinking blocks removed from context
+
+---
+
+#### ✅ Test 30: Pruning Assistant Messages
+
+**Execution**:
+
+```typescript
+// Generate assistant message
+write({ filePath: "test.txt", content: "test" })
+// → Assistant responds with message_hash
+
+// Prune the message
+context({
+    action: "discard",
+    targets: [["msg_abc123"]], // Replace with actual hash
+})
+
+// Verify: Message shows "[Assistant message part removed to save context]"
+```
+
+---
+
+#### ✅ Test 31: Distill Thinking Block
+
+**Execution**:
+
+```typescript
+// Generate thinking block (complex analysis)
+// Look for thinking_hash
+
+// Distill with summary
+context({
+    action: "distill",
+    targets: [["thinking_hash", "Analysis: 3 optimization opportunities found"]],
+})
+
+// Verify: Thinking block replaced with summary
+```
+
+---
+
+#### ✅ Test 32: Bulk Prune All Content Types
+
+**Execution**:
+
+```typescript
+// Generate all content types
+glob({ pattern: "*.ts" }) // Tool
+write({ filePath: "x.txt", content: "x" }) // Creates message
+// (thinking generated automatically)
+
+// NUCLEAR: Prune everything
+context({
+    action: "discard",
+    targets: [["[*]"]],
+})
+
+// Verify: Tools, messages, AND thinking all pruned
+```
+
+---
+
+### Category 6: Aggressive Pruning (t33-t43)
+
+#### ✅ Test 33: Input Leak Fix
+
+**Execution**:
+
+```typescript
+// Write large content
+write({
+    filePath: "large-file.txt",
+    content: "A".repeat(10000), // 10KB of content
+})
+
+// Supersede with new write
+write({
+    filePath: "large-file.txt",
+    content: "Small content",
+})
+
+// Verify: First write's input content masked
+// Should show metadata only, not full 10KB content
+```
+
+---
+
+#### ✅ Test 34: One-File-One-View Policy
+
+**Pre-check**: Verify `aggressiveFilePrune: true`
+
+**Execution**:
+
+```typescript
+// Multiple operations on same file
+read({ filePath: "package.json" })
+read({ filePath: "package.json" })
+write({ filePath: "package.json", content: "{}" })
+edit({ filePath: "package.json", oldString: "{}", newString: '{"x":1}' })
+
+// Verify: Each operation superseded previous ones
+// Only latest operation on package.json remains
+```
+
+---
+
+#### ✅ Test 35: Step Marker Filtering
+
+**Pre-check**: Verify `pruneStepMarkers: true`
+
+**Execution**:
+
+```typescript
+// Execute multi-step operation
+// Step markers are internal and auto-filtered
+
+// Verify: No "step-start" or "step-finish" parts in context
+// (This is automatic, just confirm config is set)
+read({ filePath: "lib/config/defaults.ts" })
+// Check that pruneStepMarkers is in default config
+```
+
+---
+
+#### ✅ Test 36: Source-URL Supersede
+
+**Execution**:
+
+```typescript
+// Fetch same URL twice
+webfetch({ url: "https://example.com" })
+webfetch({ url: "https://example.com" })
+
+// Verify: First fetch superseded by second
+// Stats: "🔗 url: 1"
+```
+
+---
+
+#### ✅ Test 37: State Query Supersede
+
+**Execution**:
+
+```typescript
+// Run same state query twice
+bash({ command: "ls -la" })
+bash({ command: "ls -la" })
+
+// Verify: First query superseded
+// Stats: "📊 query: 1"
+```
+
+---
+
+#### ✅ Test 38: Snapshot Auto-Supersede
+
+**Note**: Snapshots are internal state captures.
+
+**Execution**:
+
+```typescript
+// Snapshots auto-generated during operations
+// Trigger multiple operations
+read({ filePath: "package.json" })
+glob({ pattern: "*.ts" })
+write({ filePath: "test.txt", content: "x" })
+
+// Verify: Only latest snapshot retained
+// (Internal behavior, verify via code inspection if needed)
+```
+
+---
+
+#### ✅ Test 39: Retry Auto-Prune
+
+**Execution**:
+
+```typescript
+// Trigger a failing operation
+bash({ command: "invalid_command_12345" })
+// → Should fail
+
+// Retry with correction
+bash({ command: "echo 'success'" })
+// → Should succeed
+
+// Verify: Failed attempt auto-pruned
+// Only successful retry remains in context
+```
+
+---
+
+#### ✅ Test 40: File Part Masking
+
+**Pre-check**: Verify `pruneFiles: true`
+
+**Execution**:
+
+```typescript
+// Attach file (if supported by environment)
+// File attachments should be masked
+
+// Verify: File attachments replaced with breadcrumbs
+// e.g., "[File: document.pdf - 156KB]"
+```
+
+---
+
+#### ⛔ Test 41: User Code Block Truncation — NOT IMPLEMENTED
+
+**Status**: SKIP — Config exists but implementation not found in codebase.
+
+The `pruneUserCodeBlocks` config option is defined in `lib/config/schema.ts` but no corresponding implementation exists. Skip this test until the feature is implemented.
+
+**Config Reference**:
+
+```typescript
+pruneUserCodeBlocks: z.boolean().default(true) // Line 117 in schema.ts
+```
+
+---
+
+#### ⛔ Test 42: Error Output Truncation — NOT IMPLEMENTED
+
+**Status**: SKIP — Config exists but implementation not found in codebase.
+
+The `truncateOldErrors` config option is defined in `lib/config/schema.ts` but no corresponding implementation exists. Skip this test until the feature is implemented.
+
+**Config Reference**:
+
+```typescript
+truncateOldErrors: z.boolean().default(true) // Line 123 in schema.ts
+```
+
+---
+
+#### ✅ Test 43: Compaction Awareness
+
+**Execution**:
+
+```typescript
+// Content with time.compacted field
+// (Internal metadata)
+
+// Verify: Already-compacted content not double-processed
+// This is internal optimization
+
+// Check via code inspection:
+read({ filePath: "lib/strategies/compaction.ts" })
+```
+
+---
+
+## 🎯 Quick Validation Scripts
+
+### Script 1: Core Operations Smoke Test
+
+```typescript
+// Run this to validate basic functionality
+async function smokeTest() {
+    // Generate
+    const r1 = await read({ filePath: "package.json" })
+    const r2 = await glob({ pattern: "*.json" })
+
+    // Capture hashes from output
+    const hash1 = "44136f" // Replace with actual
+    const hash2 = "01cb91" // Replace with actual
+
+    // Prune
+    await context({ action: "discard", targets: [[hash1], [hash2]] })
+
+    // Bulk prune
+    await context({ action: "discard", targets: [["[tools]"]] })
+
+    return "Smoke test complete"
+}
+```
+
+### Script 2: Supersede Verification
+
+```typescript
+// Verify all supersede types
+async function supersedeTest() {
+    // Hash-based
+    await read({ filePath: "package.json" })
+    await read({ filePath: "package.json" })
+
+    // File-based
+    await read({ filePath: "test-file.txt" })
+    await write({ filePath: "test-file.txt", content: "x" })
+
+    // Todo-based
+    await todowrite({ todos: [{ id: "1", content: "A" }] })
+    await todowrite({ todos: [{ id: "1", content: "B" }] })
+
+    return "Supersede test complete"
+}
+```
+
+### Script 3: Bulk Operations Test
+
+```typescript
+// Test all bulk patterns
+async function bulkTest() {
+    // Generate content
+    await read({ filePath: "package.json" })
+    await glob({ pattern: "*.md" })
+    await bash({ command: "pwd" })
+
+    // Test patterns
+    await context({ action: "discard", targets: [["[tools]"]] })
+    await context({ action: "discard", targets: [["[messages]"]] })
+    await context({ action: "discard", targets: [["[thinking]"]] })
+    await context({ action: "discard", targets: [["[*]"]] })
+
+    return "Bulk test complete"
+}
+```
+
+---
+
+## 📝 Executable Todo List
+
+Copy this ENTIRE JSON array into `todowrite()`:
 
 ```json
 [
     {
         "id": "prep-0",
-        "content": "PREP: Run static tests (npx tsc --noEmit) - document errors only",
+        "content": "PREP: Run npx tsc --noEmit, document any errors",
         "status": "pending",
         "priority": "high"
     },
     {
         "id": "prep-1",
-        "content": "PREP: Verify plugin active via /acp stats",
+        "content": "PREP: Create test-file.txt and other-file.txt",
         "status": "pending",
         "priority": "high"
     },
     {
         "id": "prep-2",
-        "content": "PREP: Check config - aggressiveFilePrune, pruneStepMarkers, stuckTaskTurns",
+        "content": "PREP: Verify config - aggressiveFilePrune, pruneStepMarkers, stuckTaskTurns",
         "status": "pending",
         "priority": "high"
     },
     {
         "id": "prep-3",
-        "content": "PREP: Create test files - test-file.txt, other-file.txt",
+        "content": "PREP: Read package.json to verify file access",
         "status": "pending",
         "priority": "high"
     },
     {
         "id": "prep-4",
-        "content": "PREP: Verify package.json readable",
+        "content": "PREP: Check protectedTools includes 'task' in defaults.ts",
         "status": "pending",
-        "priority": "high"
+        "priority": "medium"
     },
     {
         "id": "prep-5",
-        "content": "PREP: Check protectedTools includes 'task'",
+        "content": "PREP: Create docs/test_trail.md for logging",
         "status": "pending",
         "priority": "medium"
-    },
-    {
-        "id": "prep-6",
-        "content": "PREP: Create docs/test_trail.md",
-        "status": "pending",
-        "priority": "medium"
-    },
-    {
-        "id": "prep-7",
-        "content": "PREP: Verify extended thinking mode available",
-        "status": "pending",
-        "priority": "low"
     },
     {
         "id": "t1",
-        "content": "Test 1: Basic Discard - Tool Hash",
+        "content": "TEST: Basic Discard - Tool Hash (read package.json, capture hash, discard)",
         "status": "pending",
         "priority": "high"
     },
     {
         "id": "t2",
-        "content": "Test 2: Basic Discard - Message Hash",
+        "content": "TEST: Basic Discard - Message Hash (generate message, capture hash, discard)",
         "status": "pending",
         "priority": "high"
     },
     {
         "id": "t3",
-        "content": "Test 3: Mixed Discard - Tool + Message Hash",
+        "content": "TEST: Mixed Discard - Tool + Message Hash (both types in one call)",
         "status": "pending",
         "priority": "high"
     },
     {
         "id": "t4",
-        "content": "Test 4: Distill Tool Output",
+        "content": "TEST: Distill Tool Output (glob *.ts, distill with summary)",
         "status": "pending",
         "priority": "high"
     },
     {
         "id": "t5",
-        "content": "Test 5: Distill Message Hash",
+        "content": "TEST: Distill Message Hash (create message, distill with summary)",
         "status": "pending",
         "priority": "medium"
     },
     {
         "id": "t6",
-        "content": "Test 6: Mixed Distill - Tool + Message Hash",
+        "content": "TEST: Mixed Distill - Tool + Message (both with summaries)",
         "status": "pending",
         "priority": "medium"
     },
     {
         "id": "t7",
-        "content": "Test 7: Bulk Operations - [tools]",
+        "content": "TEST: Bulk Operations - [tools] (generate 3+ tools, bulk discard)",
         "status": "pending",
         "priority": "high"
     },
     {
         "id": "t8",
-        "content": "Test 8: Bulk Operations - [messages]",
+        "content": "TEST: Bulk Operations - [messages] (generate messages, bulk discard)",
         "status": "pending",
         "priority": "medium"
     },
     {
         "id": "t9",
-        "content": "Test 9: Bulk Operations - [*]/[all]",
+        "content": "TEST: Bulk Operations - [*] (nuclear option - prune everything)",
         "status": "pending",
         "priority": "medium"
     },
     {
         "id": "t10",
-        "content": "Test 10: Bulk Distill with Summary",
+        "content": "TEST: Bulk Distill with Summary ([tools] with shared summary)",
         "status": "pending",
         "priority": "medium"
     },
     {
         "id": "t11",
-        "content": "Test 11: Protected Tools Exclusion",
+        "content": "TEST: Protected Tools Exclusion (mix protected/regular, verify only regular pruned)",
         "status": "pending",
         "priority": "medium"
     },
     {
         "id": "t12",
-        "content": "Test 12: Graceful Error Handling",
+        "content": "TEST: Graceful Error Handling (invalid hash, missing summary)",
         "status": "pending",
         "priority": "medium"
     },
     {
         "id": "t13",
-        "content": "Test 13: Hash-Based Supersede",
+        "content": "TEST: Hash-Based Supersede (same read twice, verify first superseded)",
         "status": "pending",
         "priority": "high"
     },
     {
         "id": "t14",
-        "content": "Test 14: File-Based Supersede (Write)",
+        "content": "TEST: File-Based Supersede Write (read then write same file)",
         "status": "pending",
         "priority": "high"
     },
     {
         "id": "t15",
-        "content": "Test 15: File-Based Supersede (Edit)",
+        "content": "TEST: File-Based Supersede Edit (read then edit same file)",
         "status": "pending",
         "priority": "high"
     },
     {
         "id": "t16",
-        "content": "Test 16: Todo-Based Supersede (todowrite)",
+        "content": "TEST: Todo-Based Supersede todowrite (two todowrites, first superseded)",
         "status": "pending",
         "priority": "high"
     },
     {
         "id": "t17",
-        "content": "Test 17: Todo-Based Supersede (todoread)",
+        "content": "TEST: Todo-Based Supersede todoread (two todoreads, first superseded)",
         "status": "pending",
         "priority": "medium"
     },
     {
         "id": "t18",
-        "content": "Test 18: No Supersede for Different Files",
+        "content": "TEST: No Supersede Different Files (read file A and B, both persist)",
         "status": "pending",
         "priority": "medium"
     },
     {
         "id": "t19",
-        "content": "Test 19: No Supersede for Protected Tools",
+        "content": "TEST: No Supersede Protected Tools (call todowrite twice, both persist)",
         "status": "pending",
         "priority": "low"
     },
     {
         "id": "t20",
-        "content": "Test 20: Combined Auto-Supersede Stats",
+        "content": "TEST: Combined Auto-Supersede Stats (trigger all 3 types, check stats)",
         "status": "pending",
         "priority": "high"
     },
     {
         "id": "t21",
-        "content": "Test 21: Stuck Task Detection - Basic",
+        "content": "TEST: Stuck Task Detection Basic (create in_progress task, simulate 12 turns)",
         "status": "pending",
         "priority": "high"
     },
     {
         "id": "t22",
-        "content": "Test 22: Stuck Task Detection - Timestamp Preservation",
+        "content": "TEST: Stuck Task Timestamp Preservation (update content, verify timestamp kept)",
         "status": "pending",
         "priority": "high"
     },
     {
         "id": "t23",
-        "content": "Test 23: Stuck Task Detection - New Task Transition",
+        "content": "TEST: Stuck Task New Task Transition (pending→in_progress at turn 6, check calc)",
         "status": "pending",
         "priority": "high"
     },
     {
         "id": "t24",
-        "content": "Test 24: Stuck Task Detection - Multiple Stuck Tasks",
+        "content": "TEST: Stuck Task Multiple Tasks (2 stuck tasks, verify longest highlighted)",
         "status": "pending",
         "priority": "medium"
     },
     {
         "id": "t25",
-        "content": "Test 25: Stuck Task Detection - Completed Task Clears",
+        "content": "TEST: Stuck Task Completed Clears (complete before threshold, no warning)",
         "status": "pending",
         "priority": "medium"
     },
     {
         "id": "t26",
-        "content": "Test 26: Todo Reminder Deduplication",
+        "content": "TEST: Todo Reminder Deduplication (3 todo updates, only 1 reminder)",
         "status": "pending",
         "priority": "high"
     },
     {
         "id": "t27",
-        "content": "Test 27: Automata Reflection Deduplication",
+        "content": "TEST: Automata Reflection Deduplication (verify single reflection)",
         "status": "pending",
         "priority": "medium"
     },
     {
         "id": "t28",
-        "content": "Test 28: Mixed Reminders Coexistence",
+        "content": "TEST: Mixed Reminders Coexistence (todo + automata can coexist)",
         "status": "pending",
         "priority": "medium"
     },
     {
         "id": "t29",
-        "content": "Test 29: Pruning Thinking Blocks",
+        "content": "TEST: Pruning Thinking Blocks (generate thinking, capture hash, discard)",
         "status": "pending",
         "priority": "high"
     },
     {
         "id": "t30",
-        "content": "Test 30: Pruning Assistant Messages",
+        "content": "TEST: Pruning Assistant Messages (generate message, capture hash, discard)",
         "status": "pending",
         "priority": "high"
     },
     {
         "id": "t31",
-        "content": "Test 31: Distill Thinking Block",
+        "content": "TEST: Distill Thinking Block (thinking with summary)",
         "status": "pending",
         "priority": "medium"
     },
     {
         "id": "t32",
-        "content": "Test 32: Bulk Prune All Content Types",
+        "content": "TEST: Bulk Prune All Content Types ([*] removes tools+messages+thinking)",
         "status": "pending",
         "priority": "high"
     },
-    { "id": "t33", "content": "Test 33: Input Leak Fix", "status": "pending", "priority": "high" },
+    {
+        "id": "t33",
+        "content": "TEST: Input Leak Fix (write large file, supersede, verify masked)",
+        "status": "pending",
+        "priority": "high"
+    },
     {
         "id": "t34",
-        "content": "Test 34: One-File-One-View Policy",
+        "content": "TEST: One-File-One-View Policy (multiple ops on same file, only latest)",
         "status": "pending",
         "priority": "high"
     },
     {
         "id": "t35",
-        "content": "Test 35: Step Marker Filtering",
+        "content": "TEST: Step Marker Filtering (verify no step markers in context)",
         "status": "pending",
         "priority": "medium"
     },
     {
         "id": "t36",
-        "content": "Test 36: Source-URL Supersede",
+        "content": "TEST: Source-URL Supersede (webfetch same URL twice, first superseded)",
         "status": "pending",
         "priority": "medium"
     },
     {
         "id": "t37",
-        "content": "Test 37: State Query Supersede",
+        "content": "TEST: State Query Supersede (same bash command twice, first superseded)",
         "status": "pending",
         "priority": "medium"
     },
     {
         "id": "t38",
-        "content": "Test 38: Snapshot Auto-Supersede",
+        "content": "TEST: Snapshot Auto-Supersede (verify only latest snapshot)",
         "status": "pending",
         "priority": "medium"
     },
     {
         "id": "t39",
-        "content": "Test 39: Retry Auto-Prune",
+        "content": "TEST: Retry Auto-Prune (fail then succeed, failed attempt removed)",
         "status": "pending",
         "priority": "medium"
     },
     {
         "id": "t40",
-        "content": "Test 40: File Part Masking",
+        "content": "TEST: File Part Masking (verify file attachments masked)",
         "status": "pending",
         "priority": "medium"
     },
     {
         "id": "t41",
-        "content": "Test 41: User Code Block Truncation",
+        "content": "TEST: User Code Block Truncation (large code block, 5+ turns, verify truncated)",
         "status": "pending",
         "priority": "medium"
     },
     {
         "id": "t42",
-        "content": "Test 42: Error Output Truncation",
+        "content": "TEST: Error Output Truncation (verbose error, 3+ turns, verify truncated)",
         "status": "pending",
         "priority": "low"
     },
     {
         "id": "t43",
-        "content": "Test 43: Compaction Awareness",
+        "content": "TEST: Compaction Awareness (verify no double-processing)",
         "status": "pending",
         "priority": "medium"
     },
     {
         "id": "report-1",
-        "content": "POST: Generate summary report",
+        "content": "POST: Generate summary report with pass/fail counts",
         "status": "pending",
         "priority": "high"
     },
@@ -756,13 +1427,13 @@ context({
     },
     {
         "id": "report-3",
-        "content": "POST: Document skipped tests",
+        "content": "POST: Document skipped tests with reasons",
         "status": "pending",
         "priority": "medium"
     },
     {
         "id": "report-4",
-        "content": "POST: Create re-evaluation guide",
+        "content": "POST: Create re-evaluation guide for future sessions",
         "status": "pending",
         "priority": "medium"
     }
@@ -771,44 +1442,115 @@ context({
 
 ---
 
-## Environment Configuration
+## ✅ Validation Checklists
 
-| Config Key            | Required Value  | Tests   |
-| --------------------- | --------------- | ------- |
-| `aggressiveFilePrune` | `true`          | t33-t34 |
-| `pruneStepMarkers`    | `true`          | t35     |
-| `pruneFiles`          | `true`          | t40     |
-| `stuckTaskTurns`      | `12`            | t21-t25 |
-| `protectedTools`      | includes `task` | t19     |
+### Pre-Flight Checklist
+
+- [ ] TypeScript compiles without errors (`npx tsc --noEmit`)
+- [ ] Test files created (`test-file.txt`, `other-file.txt`)
+- [ ] Config verified (`aggressiveFilePrune=true`, `pruneStepMarkers=true`, `stuckTaskTurns=12`)
+- [ ] Protected tools include: `task`, `todowrite`, `todoread`, `write`, `edit`, `context`
+- [ ] Todo list loaded into `todowrite()`
+
+### Core Operations Checklist
+
+- [ ] Tool hash format: 6 hex characters (e.g., `44136f`)
+- [ ] Message hash accessible via `hashToMessagePart`
+- [ ] Thinking hash accessible via `hashToReasoningPart`
+- [ ] Bulk patterns work: `[tools]`, `[messages]`, `[thinking]`, `[*]`
+- [ ] Discard adds to `prune.toolIds` and `prune.messagePartIds`
+- [ ] Distill stores summaries in `softPrunedTools`
+- [ ] Protected tools excluded from bulk operations
+
+### Supersede Checklist
+
+- [ ] Hash-based: Duplicate operations auto-supersede
+- [ ] File-based: Read→Write→Edit chain works
+- [ ] Todo-based: todowrite/todoread auto-supersede
+- [ ] Cross-file protection: Different files don't supersede
+- [ ] Protected tool protection: `task`, `todowrite`, etc. never supersede
+
+### Stuck Task Checklist
+
+- [ ] Threshold: 12 turns (config `stuckTaskTurns`)
+- [ ] Formula: `currentTurn - inProgressSince >= 12`
+- [ ] Timestamp preservation on content updates
+- [ ] Transition tracking: `pending→in_progress` sets timestamp
+- [ ] Completed tasks excluded from stuck detection
+
+### Aggressive Pruning Checklist
+
+- [ ] Input leak fixed: Superseded tool inputs stripped
+- [ ] One-file-one-view: Only latest file operation retained
+- [ ] Step markers filtered: No `step-start`/`step-finish` in context
+- [ ] URL supersede: Same URL fetches deduplicated
+- [ ] State query supersede: Same queries deduplicated
+- [ ] Error truncation: Old errors truncated to first line
 
 ---
 
-## Report Template
+## 📊 Report Template
 
-After tests, create `docs/test_report_{date}.md`:
+After completing tests, create `docs/test_report_YYYYMMDD.md`:
 
 ```markdown
-# Context Tool Validation Report
+# ACP Validation Report
+
+**Date**: YYYY-MM-DD  
+**Agent**: Rei-Agent  
+**Tests**: 43 total
 
 ## Summary
 
-- Tests Planned: 43
-- Tests Passed: {count}
-- Tests Failed: {count}
-- Tests Skipped: {count}
+| Metric  | Count |
+| ------- | ----- |
+| Planned | 43    |
+| Passed  | X     |
+| Failed  | X     |
+| Skipped | X     |
 
 ## Results by Category
 
-| Category           | Tests   | Passed |
-| ------------------ | ------- | ------ |
-| Core Operations    | t1-t12  | /12    |
-| Auto-Supersede     | t13-t20 | /8     |
-| Stuck Task         | t21-t25 | /5     |
-| Reminders          | t26-t28 | /3     |
-| Thinking/Message   | t29-t32 | /4     |
-| Aggressive Pruning | t33-t43 | /11    |
+| Category                     | Tests | Passed | Failed | Skipped |
+| ---------------------------- | ----- | ------ | ------ | ------- |
+| Core Operations (t1-t12)     | 12    | X      | X      | X       |
+| Auto-Supersede (t13-t20)     | 8     | X      | X      | X       |
+| Stuck Task (t21-t25)         | 5     | X      | X      | X       |
+| Reminders (t26-t28)          | 3     | X      | X      | X       |
+| Thinking/Messages (t29-t32)  | 4     | X      | X      | X       |
+| Aggressive Pruning (t33-t43) | 11    | X      | X      | X       |
+
+## Hash Registry
+
+| Test | Tool | Hash   | Pruned |
+| ---- | ---- | ------ | ------ |
+| t1   | read | 44136f | ✅     |
+| t4   | glob | 01cb91 | ✅     |
+| ...  | ...  | ...    | ...    |
+
+## Skipped Tests
+
+| Test | Reason   |
+| ---- | -------- |
+| tX   | [Reason] |
+
+## Notes
+
+[Any observations, bugs, or recommendations]
 ```
 
 ---
 
-**End of Validation Guide**
+## 🎓 Pro Tips
+
+1. **Hash Capture**: Always note tool hashes immediately after execution
+2. **Bulk First**: Use `[tools]`, `[messages]`, `[*]` for quick cleanup
+3. **Protected Awareness**: Remember `task`, `todowrite`, `write`, `edit` are protected
+4. **Simulate Turns**: Use loops to simulate passage of time
+5. **Code Inspection**: When runtime test not possible, read source code
+6. **Todo Tracking**: Keep todo list updated as you progress
+7. **Trail Logging**: Document in `docs/test_trail.md` as you go
+
+---
+
+**End of Validation Guide v2.0**
