@@ -1,6 +1,6 @@
 # Agent Guide
 
-> **Critical**: Read [Known Pitfalls](#-known-pitfalls-for-agents) in README before modifying code.
+> **Critical**: Read [Known Pitfalls](README.md#-known-pitfalls-for-agents) in README before modifying code.
 
 ## Quick Reference
 
@@ -16,3 +16,9 @@
 ```bash
 npm run build && npm link && opencode
 ```
+
+---
+
+## 📝 Maintaining This File
+
+**For agents updating AGENTS.md:** Keep entries as one-liners with links. Put detailed content in README.md or dedicated docs, then link here.
