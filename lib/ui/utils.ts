@@ -28,7 +28,7 @@ export function formatDistilled(distillation?: string[]): string {
 
 export function formatStatsHeader(strategyStats: SessionState["stats"]["strategyStats"]): string {
     // Build the categorized status format:
-    // 「 💬 2(1.2K) ▼ ₊ 🧠 1(3.5K) ▼ ₊ 🔧 5(8.1K) ▼ ₊ ✨ 3(500) 」
+    // 「 💬 2(1.2K) ▼ + 🧠 1(3.5K) ▼ + 🔧 5(8.1K) ▼ + ✨ 3(500) 」
     const parts: string[] = []
 
     const { manualDiscard, autoSupersede, distillation } = strategyStats
@@ -76,8 +76,8 @@ export function formatStatsHeader(strategyStats: SessionState["stats"]["strategy
         return "「 acp 」"
     }
 
-    // Join with ₊ separator
-    return `「 ${parts.join(" ₊ ")} 」`
+    // Join with + separator
+    return `「 ${parts.join(" + ")} 」`
 }
 
 export function formatPrunedItemsList(
