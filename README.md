@@ -21,9 +21,6 @@ context({
     ],
 })
 
-// Restore - bring back pruned content
-context({ action: "restore", targets: [["a1b2c3"]] })
-
 // Discard old reasoning/thinking blocks
 context({ action: "discard", targets: [["abc123"], ["def456"]] })
 ```
@@ -40,7 +37,6 @@ context({ action: "discard", targets: [["abc123"], ["def456"]] })
 
 - `discard` — Completed tasks, noise, redundant outputs
 - `distill` — Large outputs to preserve as summaries
-- `restore` — Bring back previously pruned content
 
 ## 🏗️ CI/CD Pipeline
 
@@ -70,7 +66,7 @@ ACP provides two modes of operation: **Agentic Pruning** (enabled by default) an
 
 | Mode        | Enabled by Default | Control                | Strategies                                                          |
 | :---------- | :----------------- | :--------------------- | :------------------------------------------------------------------ |
-| **Agentic** | ✅ Yes             | Explicit Agent Control | `context` (discard/distill/restore)                                 |
+| **Agentic** | ✅ Yes             | Explicit Agent Control | `context` (discard/distill)                                         |
 | **Auto**    | ❌ No              | Implicit/Automatic     | `deduplication`, `purgeErrors`, `truncation`, `thinkingCompression` |
 
 #### 1. Agentic Pruning (LLM-Driven)

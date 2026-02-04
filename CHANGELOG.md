@@ -25,12 +25,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Migration
 
 Users with custom configs should remove these settings from `settings.json`:
+
 ```json
 {
-  "contextPruning.strategies.truncation": null,
-  "contextPruning.strategies.thinkingCompression": null,
-  "contextPruning.turnProtection": null,
-  "contextPruning.autoPruneAfterTool": null
+    "contextPruning.strategies.truncation": null,
+    "contextPruning.strategies.thinkingCompression": null,
+    "contextPruning.turnProtection": null,
+    "contextPruning.autoPruneAfterTool": null
 }
 ```
 
@@ -47,9 +48,7 @@ Users with custom configs should remove these settings from `settings.json`:
 
 - **Corrected tool parameter formats in README**: Fixed examples to match actual API:
     - `discard_tool(["r_abc12", "r_def34"])` (was `{hashes: [...]}`)
-    - `restore_tool(["r_abc12"])` (was `{hashes: [...]}`)
     - `discard_msg(["pattern"])` (was `{patterns: [...]}`)
-    - `restore_msg(["m_abc123"])` (was `{hashes: [...]}`)
 
 ## [2.9.0] - 2026-02-02
 

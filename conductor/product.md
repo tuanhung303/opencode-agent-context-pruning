@@ -2,7 +2,7 @@
 
 Agentic Context Pruning (ACP) - An OpenCode plugin that optimizes token usage by intelligently managing conversation context through automated pruning strategies, agent-driven context management tools, and autonomous reflection mechanisms.
 
-The plugin provides automatic pruning strategies (deduplication, truncation, error purging), agentic pruning tools (discard, distill, restore), and autonomous mechanisms like Automata Mode that empower AI agents to maintain strategic focus.
+The plugin provides automatic pruning strategies (deduplication, truncation, error purging), agentic pruning tools (discard, distill), and autonomous mechanisms like Automata Mode that empower AI agents to maintain strategic focus.
 
 # Product Guide
 
@@ -14,7 +14,7 @@ Agentic Context Pruning (ACP) is an OpenCode plugin designed to optimize token u
 
 1. **Reduce Token Costs**: Automatically prune obsolete context from conversations to minimize token usage and associated costs
 2. **Improve AI Performance**: Keep only relevant context in conversations, helping AI agents maintain focus and performance
-3. **Explicit Agent Control**: Provide agents with tools to explicitly manage their own context (discard, distill, restore)
+3. **Explicit Agent Control**: Provide agents with tools to explicitly manage their own context (discard, distill)
 4. **Safe Defaults**: Ensure no context is lost automatically unless the user explicitly opts into heuristic-driven pruning strategies.
 
 ## Target Users
@@ -27,7 +27,7 @@ Agentic Context Pruning (ACP) is an OpenCode plugin designed to optimize token u
 
 ACP prioritizes an agentic-first approach:
 
-- **Agentic Tools (Enabled by Default)**: Explicit `discard_tool`, `distill_tool`, and `restore_tool` that agents can call to manage context.
+- **Agentic Tools (Enabled by Default)**: Explicit `discard_tool` and `distill_tool` that agents can call to manage context.
 - **Automatic Strategies (Opt-In)**: Deduplication, truncation, error purging, and thinking compression that can be enabled via configuration.
 
 ### 2. Configurable Pruning Strategies
@@ -42,7 +42,6 @@ ACP prioritizes an agentic-first approach:
 
 - **discard_tool**: Remove tool outputs the agent is "done" with
 - **distill_tool**: Replace large chunks with concise summaries
-- **restore_tool**: Bring back previously pruned content if needed
 - **discard_msg**: Remove assistant message parts by pattern matching
 - **distill_msg**: Summarize assistant message parts
 

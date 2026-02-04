@@ -8,15 +8,15 @@
 
 ## Executive Summary
 
-All 45 validation tests for the unified `context` tool completed successfully. The pruning system demonstrates full functionality across core operations, auto-supersede mechanisms, and aggressive pruning features.
+All 43 validation tests for the unified `context` tool completed successfully. The pruning system demonstrates full functionality across core operations, auto-supersede mechanisms, and aggressive pruning features.
 
-**Result: 45/45 PASS (100%)**
+**Result: 43/43 PASS (100%)**
 
 ---
 
 ## Test Results by Category
 
-### 1. Core Context Operations (t1-t14)
+### 1. Core Context Operations (t1-t12)
 
 | Test | Description                         | Result |
 | ---- | ----------------------------------- | ------ |
@@ -26,74 +26,70 @@ All 45 validation tests for the unified `context` tool completed successfully. T
 | t4   | Distill Tool Output                 | PASS   |
 | t5   | Distill Message Hash                | PASS   |
 | t6   | Mixed Distill - Tool + Message Hash | PASS   |
-| t7   | Symmetric Restore - Tool Hash       | PASS\* |
-| t8   | Symmetric Restore - Message Hash    | PASS   |
-| t9   | Bulk Operations - [tools]           | PASS   |
-| t10  | Bulk Operations - [messages]        | PASS   |
-| t11  | Bulk Operations - [*]/[all]         | PASS   |
-| t12  | Bulk Distill with Summary           | PASS   |
-| t13  | Protected Tools Exclusion           | PASS   |
-| t14  | Graceful Error Handling             | PASS   |
+| t7   | Bulk Operations - [tools]           | PASS   |
+| t8   | Bulk Operations - [messages]        | PASS   |
+| t9   | Bulk Operations - [*]/[all]         | PASS   |
+| t10  | Bulk Distill with Summary           | PASS   |
+| t11  | Protected Tools Exclusion           | PASS   |
+| t12  | Graceful Error Handling             | PASS   |
 
-\*Note: t7 - Tool restore blocked by `fullyForget=true` (expected behavior)
-
-### 2. Auto-Supersede Functionality (t15-t22)
+### 2. Auto-Supersede Functionality (t13-t20)
 
 | Test | Description                      | Result |
 | ---- | -------------------------------- | ------ |
-| t15  | Hash-Based Supersede             | PASS   |
-| t16  | File-Based Supersede (Write)     | PASS   |
-| t17  | File-Based Supersede (Edit)      | PASS   |
-| t18  | Todo-Based Supersede (todowrite) | PASS   |
-| t19  | Todo-Based Supersede (todoread)  | PASS   |
-| t20  | No Supersede for Different Files | PASS   |
-| t21  | No Supersede for Protected Tools | PASS   |
-| t22  | Combined Auto-Supersede Stats    | PASS   |
+| t13  | Hash-Based Supersede             | PASS   |
+| t14  | File-Based Supersede (Write)     | PASS   |
+| t15  | File-Based Supersede (Edit)      | PASS   |
+| t16  | Todo-Based Supersede (todowrite) | PASS   |
+| t17  | Todo-Based Supersede (todoread)  | PASS   |
+| t18  | No Supersede for Different Files | PASS   |
+| t19  | No Supersede for Protected Tools | PASS   |
+| t20  | Combined Auto-Supersede Stats    | PASS   |
 
-### 3. Stuck Task Detection (t23-t27)
+### 3. Stuck Task Detection (t21-t25)
 
 | Test | Description                                   | Result |
 | ---- | --------------------------------------------- | ------ |
-| t23  | Stuck Task Detection - Basic                  | PASS   |
-| t24  | Stuck Task Detection - Timestamp Preservation | PASS   |
-| t25  | Stuck Task Detection - New Task Transition    | PASS   |
-| t26  | Stuck Task Detection - Multiple Stuck Tasks   | PASS   |
-| t27  | Stuck Task Detection - Completed Task Clears  | PASS   |
+| t21  | Stuck Task Detection - Basic                  | PASS   |
+| t22  | Stuck Task Detection - Timestamp Preservation | PASS   |
+| t23  | Stuck Task Detection - New Task Transition    | PASS   |
+| t24  | Stuck Task Detection - Multiple Stuck Tasks   | PASS   |
+| t25  | Stuck Task Detection - Completed Task Clears  | PASS   |
 
 _Note: No stuck warnings triggered due to prompt task completion (stuckTaskTurns=12)_
 
-### 4. Reminder Deduplication (t28-t30)
+### 4. Reminder Deduplication (t26-t28)
 
 | Test | Description                       | Result |
 | ---- | --------------------------------- | ------ |
-| t28  | Todo Reminder Deduplication       | PASS   |
-| t29  | Automata Reflection Deduplication | PASS   |
-| t30  | Mixed Reminders Coexistence       | PASS   |
+| t26  | Todo Reminder Deduplication       | PASS   |
+| t27  | Automata Reflection Deduplication | PASS   |
+| t28  | Mixed Reminders Coexistence       | PASS   |
 
-### 5. Thinking Block & Message Pruning (t31-t34)
+### 5. Thinking Block & Message Pruning (t29-t32)
 
 | Test | Description                  | Result |
 | ---- | ---------------------------- | ------ |
-| t31  | Pruning Thinking Blocks      | PASS   |
-| t32  | Pruning Assistant Messages   | PASS   |
-| t33  | Distill Thinking Block       | PASS   |
-| t34  | Bulk Prune All Content Types | PASS   |
+| t29  | Pruning Thinking Blocks      | PASS   |
+| t30  | Pruning Assistant Messages   | PASS   |
+| t31  | Distill Thinking Block       | PASS   |
+| t32  | Bulk Prune All Content Types | PASS   |
 
-### 6. Aggressive Pruning Features (t35-t45)
+### 6. Aggressive Pruning Features (t33-t43)
 
 | Test | Description                                  | Result |
 | ---- | -------------------------------------------- | ------ |
-| t35  | Input Leak Fix - Supersede Strips Tool Input | PASS   |
-| t36  | One-File-One-View Policy                     | PASS   |
-| t37  | Step Marker Filtering                        | PASS   |
-| t38  | Source-URL Supersede                         | PASS   |
-| t39  | State Query Supersede                        | PASS   |
-| t40  | Snapshot Auto-Supersede                      | PASS   |
-| t41  | Retry Auto-Prune                             | PASS   |
-| t42  | File Part Masking                            | PASS   |
-| t43  | User Code Block Truncation                   | PASS   |
-| t44  | Error Output Truncation                      | PASS   |
-| t45  | Compaction Awareness                         | PASS   |
+| t33  | Input Leak Fix - Supersede Strips Tool Input | PASS   |
+| t34  | One-File-One-View Policy                     | PASS   |
+| t35  | Step Marker Filtering                        | PASS   |
+| t36  | Source-URL Supersede                         | PASS   |
+| t37  | State Query Supersede                        | PASS   |
+| t38  | Snapshot Auto-Supersede                      | PASS   |
+| t39  | Retry Auto-Prune                             | PASS   |
+| t40  | File Part Masking                            | PASS   |
+| t41  | User Code Block Truncation                   | PASS   |
+| t42  | Error Output Truncation                      | PASS   |
+| t43  | Compaction Awareness                         | PASS   |
 
 ---
 
@@ -105,7 +101,6 @@ _Note: No stuck warnings triggered due to prompt task completion (stuckTaskTurns
     "pruneStepMarkers": true,
     "stuckTaskTurns": 12,
     "protectedTools": ["task"],
-    "fullyForget": true,
     "pruneToolInputs": true,
     "pruneSourceUrls": true,
     "stateQuerySupersede": true
@@ -118,18 +113,16 @@ _Note: No stuck warnings triggered due to prompt task completion (stuckTaskTurns
 
 ### Successful Behaviors
 
-1. **Unified Context Tool**: Single tool handles discard, distill, and restore operations
-2. **Bulk Patterns**: `[tools]`, `[messages]`, `[*]` patterns work correctly
+1. **Unified Context Tool**: Single tool handles discard and distill operations
+2. **Bulk Patterns**: `[tools]`, `[messages]`, `[thinking]`, `[*]` patterns work correctly
 3. **Protected Tools**: `task` tool excluded from bulk operations and auto-supersede
 4. **Auto-Supersede**: Multiple strategies working (hash, file, todo, URL, state query)
 5. **One-File-One-View**: Latest file operation supersedes all previous for same file
 6. **Input Leak Prevention**: Superseded tools have inputs stripped to metadata
 
-### Expected Limitations
+### Notes
 
-1. **fullyForget Mode**: Tool restore blocked when enabled (by design)
-2. **Message Restore**: Works independently of fullyForget setting
-3. **Config-Based Features**: Some features (t37, t41-t44) are passive/config-driven
+1. **Config-Based Features**: Some features (t35, t39-t42) are passive/config-driven
 
 ---
 
