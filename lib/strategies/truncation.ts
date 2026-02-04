@@ -204,3 +204,108 @@ export function estimateTruncationSavings(
     const estimatedSavings = Math.floor(tokenCount * 0.6)
     return { wouldTruncate: true, estimatedSavings }
 }
+
+/**
+ * Truncate old user code blocks in messages.
+ * Replaces large code blocks (>5 turns old) with breadcrumbs.
+ */
+export const truncateUserCodeBlocks = (
+    messages: WithParts[],
+    state: SessionState,
+    aggressiveConfig: { pruneUserCodeBlocks?: boolean },
+    logger: Logger,
+): void => {
+    if (!aggressiveConfig.pruneUserCodeBlocks) {
+        return
+    }
+
+    const CODE_BLOCK_REGEX = /```(\w+)?\n([\s\S]*?)```/g
+    const MAX_AGE_TURNS = 5
+    let totalTruncated = 0
+
+    for (const msg of messages) {
+        const msgTurn = (msg as any).turn ?? state.currentTurn
+        const age = state.currentTurn - msgTurn
+
+        if (age < MAX_AGE_TURNS) continue
+
+        // Check text parts for code blocks
+        const parts = Array.isArray(msg.parts) ? msg.parts : []
+        for (let i = 0; i < parts.length; i++) {
+            const part = parts[i]
+            if (part?.type === "text" && "text" in part) {
+                const text = part.text
+                if (!text.includes("```")) continue
+
+                let newText = text
+                let match: RegExpExecArray | null
+                let blocksTruncated = 0
+
+                while ((match = CODE_BLOCK_REGEX.exec(text)) !== null) {
+                    const lang = match[1] || "text"
+                    const code = match[2] || ""
+                    const lines = code.split("\n").length
+
+                    if (lines > 3) {
+                        const breadcrumb = `[Code block: ${lang}, ${lines} lines - truncated to save context]`
+                        newText = newText.replace(match[0], breadcrumb)
+                        blocksTruncated++
+                    }
+                }
+
+                if (blocksTruncated > 0) {
+                    parts[i] = { ...part, text: newText }
+                    totalTruncated += blocksTruncated
+                }
+            }
+        }
+    }
+
+    if (totalTruncated > 0) {
+        logger.info(`Truncated ${totalTruncated} code blocks in old user messages`)
+    }
+}
+
+/**
+ * Truncate old error outputs aggressively.
+ * Keeps only the first line + marker.
+ */
+export const truncateErrorOutputs = (
+    messages: WithParts[],
+    state: SessionState,
+    aggressiveConfig: { truncateOldErrors?: boolean },
+    logger: Logger,
+): void => {
+    if (!aggressiveConfig.truncateOldErrors) {
+        return
+    }
+
+    const MAX_AGE_TURNS = 3
+    let totalTruncated = 0
+
+    for (const msg of messages) {
+        const msgTurn = (msg as any).turn ?? state.currentTurn
+        const age = state.currentTurn - msgTurn
+
+        if (age < MAX_AGE_TURNS) continue
+
+        const parts = Array.isArray(msg.parts) ? msg.parts : []
+        for (const part of parts) {
+            if (
+                part?.type === "tool" &&
+                part.state?.status === "error" &&
+                (part.state as any).output
+            ) {
+                const output = (part.state as any).output
+                const firstLine = output.split("\n")[0]
+                const truncated = `${firstLine}\n[Error output truncated - ${output.length} chars total]`
+                ;(part.state as any).output = truncated
+                totalTruncated++
+            }
+        }
+    }
+
+    if (totalTruncated > 0) {
+        logger.info(`Truncated ${totalTruncated} old error outputs`)
+    }
+}

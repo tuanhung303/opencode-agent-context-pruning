@@ -3,13 +3,9 @@
  */
 
 import type { PruneToolContext } from "./_types"
-import type { SessionState, ToolParameterEntry, WithParts } from "../state"
-import type { Logger } from "../logger"
-import type { PluginConfig } from "../config"
-import type { PruneReason } from "../ui/notification"
-import { ensureSessionInitialized } from "../state"
+import { SessionState, ToolParameterEntry, WithParts, ensureSessionInitialized } from "../state"
 import { saveSessionState } from "../state/persistence"
-import { sendUnifiedNotification } from "../ui/notification"
+import { sendUnifiedNotification, PruneReason } from "../ui/notification"
 import { formatDiscardNotification } from "../ui/minimal-notifications"
 import { formatPruningStatus, dimText } from "../ui/pruning-status"
 import { calculateTokensSaved, getCurrentParams } from "./utils"
@@ -19,6 +15,8 @@ import {
     collectAllReasoningHashes,
 } from "../messages/utils"
 import type { BulkTargetType } from "./_types"
+import type { Logger } from "../logger"
+import type { PluginConfig } from "../config"
 
 interface DiscardOptions {
     toolName: string
@@ -91,16 +89,16 @@ export async function executeToolPrune(
         client,
         logger,
         config,
-        state,
+        {
+            state,
+            pruneToolIds: callIds,
+            toolMetadata,
+            reason,
+            workingDirectory,
+            options: { simplified: true },
+        },
         sessionId,
-        callIds,
-        toolMetadata,
-        reason,
         currentParams,
-        workingDirectory,
-        undefined,
-        { simplified: true },
-        [],
     )
 
     commitStats(state)
@@ -131,7 +129,7 @@ export async function executeContextToolDiscard(
     const validHashes: string[] = []
 
     for (const hash of hashes) {
-        const callId = state.hashToCallId.get(hash)
+        const callId = state.hashRegistry.calls.get(hash)
         if (callId) {
             if (!state.prune.toolIds.includes(callId)) {
                 callIds.push(callId)
@@ -168,7 +166,7 @@ export async function executeContextMessageDiscard(
     let tokensSaved = 0
 
     for (const hash of hashes) {
-        const partId = state.hashToMessagePart.get(hash)
+        const partId = state.hashRegistry.messages.get(hash)
         if (partId) {
             if (!state.prune.messagePartIds.includes(partId)) {
                 state.prune.messagePartIds.push(partId)
@@ -217,7 +215,7 @@ export async function executeContextReasoningDiscard(
     const validHashes: string[] = []
 
     for (const hash of hashes) {
-        const partId = state.hashToReasoningPart.get(hash)
+        const partId = state.hashRegistry.reasoning.get(hash)
         if (partId) {
             if (!state.prune.reasoningPartIds.includes(partId)) {
                 state.prune.reasoningPartIds.push(partId)
@@ -299,7 +297,7 @@ export async function executeBulkDiscard(
             let discardedCount = 0
             let tokensSaved = 0
             for (const hash of messageHashes) {
-                const partId = state.hashToMessagePart.get(hash)
+                const partId = state.hashRegistry.messages.get(hash)
                 if (partId && !state.prune.messagePartIds.includes(partId)) {
                     state.prune.messagePartIds.push(partId)
                     logger.info(`Bulk discarded message part ${partId}`)
@@ -337,7 +335,7 @@ export async function executeBulkDiscard(
             let discardedCount = 0
             let tokensSaved = 0
             for (const hash of reasoningHashes) {
-                const partId = state.hashToReasoningPart.get(hash)
+                const partId = state.hashRegistry.reasoning.get(hash)
                 if (partId && !state.prune.reasoningPartIds.includes(partId)) {
                     state.prune.reasoningPartIds.push(partId)
                     logger.info(`Bulk discarded reasoning part ${partId}`)
@@ -381,14 +379,14 @@ function validateCallIds(
     for (const callId of callIds) {
         const metadata = state.toolParameters.get(callId)
         if (!metadata) {
-            const hash = state.callIdToHash.get(callId) || "unknown"
+            const hash = state.hashRegistry.callIds.get(callId) || "unknown"
             logger.debug("Rejecting prune request - call ID not in cache", { callId, hash })
             throw new Error(`Invalid hash provided. The tool may have already been discarded.`)
         }
 
         const allProtectedTools = config.tools.settings.protectedTools
         if (allProtectedTools.includes(metadata.tool)) {
-            const hash = state.callIdToHash.get(callId) || "unknown"
+            const hash = state.hashRegistry.callIds.get(callId) || "unknown"
             logger.debug("Rejecting prune request - protected tool", {
                 callId,
                 hash,

@@ -3,8 +3,7 @@
  */
 
 import type { PruneToolContext } from "./_types"
-import type { SessionState, ToolParameterEntry, WithParts } from "../state"
-import { ensureSessionInitialized } from "../state"
+import { SessionState, ToolParameterEntry, WithParts, ensureSessionInitialized } from "../state"
 import { saveSessionState } from "../state/persistence"
 import { sendUnifiedNotification } from "../ui/notification"
 import { formatDiscardNotification } from "../ui/minimal-notifications"
@@ -12,6 +11,7 @@ import { formatPruningStatus, dimText } from "../ui/pruning-status"
 import { calculateTokensSaved, getCurrentParams } from "./utils"
 import { collectAllToolHashes, collectAllMessageHashes } from "../messages/utils"
 import type { BulkTargetType } from "./_types"
+import type { Logger } from "../logger"
 
 /**
  * Core distill operation for tool outputs.
@@ -80,16 +80,17 @@ export async function executeToolDistill(
         client,
         logger,
         config,
-        state,
+        {
+            state,
+            pruneToolIds: callIds,
+            toolMetadata,
+            reason: "distillation",
+            workingDirectory,
+            distillation,
+            options: { simplified: true },
+        },
         sessionId,
-        callIds,
-        toolMetadata,
-        "distillation",
         currentParams,
-        workingDirectory,
-        distillation,
-        { simplified: true },
-        [],
     )
 
     commitStats(state)
@@ -128,7 +129,7 @@ export async function executeContextToolDistill(
             logger.warn(`No summary provided for hash: ${hash}`)
             continue
         }
-        const callId = state.hashToCallId.get(hash)
+        const callId = state.hashRegistry.calls.get(hash)
         if (callId) {
             if (!state.prune.toolIds.includes(callId)) {
                 callIds.push(callId)
@@ -162,7 +163,7 @@ export async function executeContextMessageDistill(
     let distilledCount = 0
 
     for (const [hash, summary] of entries) {
-        const partId = state.hashToMessagePart.get(hash)
+        const partId = state.hashRegistry.messages.get(hash)
         if (partId) {
             if (!state.prune.messagePartIds.includes(partId)) {
                 state.prune.messagePartIds.push(partId)
@@ -170,7 +171,8 @@ export async function executeContextMessageDistill(
                 const [messageId, partIndexStr] = partId.split(":")
                 const partIndex = parseInt(partIndexStr!, 10)
                 // Store the summary as soft-pruned content for restore capability
-                state.softPrunedMessages.set(partId, {
+                state.softPrunedItems.set(partId, {
+                    type: "message",
                     content: summary,
                     messageId: messageId!,
                     partIndex: partIndex,
@@ -210,13 +212,13 @@ function validateCallIds(
     for (const callId of callIds) {
         const metadata = state.toolParameters.get(callId)
         if (!metadata) {
-            const hash = state.callIdToHash.get(callId) || "unknown"
+            const hash = state.hashRegistry.callIds.get(callId) || "unknown"
             logger.debug("Rejecting distill request - call ID not in cache", { callId, hash })
             throw new Error(`Invalid hash provided. The tool may have already been discarded.`)
         }
 
         if (allProtectedTools.includes(metadata.tool)) {
-            const hash = state.callIdToHash.get(callId) || "unknown"
+            const hash = state.hashRegistry.callIds.get(callId) || "unknown"
             logger.debug("Rejecting distill request - protected tool", {
                 callId,
                 hash,
@@ -285,7 +287,7 @@ export async function executeBulkDistill(
             // Directly distill message parts using collected hashes
             let distilledCount = 0
             for (const hash of messageHashes) {
-                const partId = state.hashToMessagePart.get(hash)
+                const partId = state.hashRegistry.messages.get(hash)
                 if (partId && !state.prune.messagePartIds.includes(partId)) {
                     state.prune.messagePartIds.push(partId)
                     logger.info(`Bulk distilled message part ${partId}`)

@@ -84,11 +84,30 @@ The AI identifies content it's "done" with and explicitly removes or summarizes 
 
 ACP automatically spots patterns and applies pruning rules without agent intervention. **These are disabled by default to prevent unexpected context loss.**
 
+**Classic Strategies:**
+
 - **Deduplication** — Automatically spots repeated calls (like reading the same file twice) and keeps only the most recent version.
 - **Supersede Writes** — If a file is `write` and then `read`, the original write input is pruned because the read output is the current "truth."
 - **Purge Errors** — Keeps the error message but removes the massive stack traces or large inputs that caused the crash after a few turns.
 - **Truncation** — Automatically truncates very large tool outputs (e.g. from `read` or `bash`) if they exceed token limits.
 - **Thinking Compression** — Compresses or removes large `<thinking>` blocks from older assistant messages.
+
+**Aggressive Pruning Strategies (New):**
+
+Enable with `strategies.aggressivePruning.*` settings for up to **~50% token savings**.
+
+| Strategy              | Description                                             | Default |
+| --------------------- | ------------------------------------------------------- | ------- |
+| `pruneToolInputs`     | Strip verbose tool inputs to metadata-only on supersede | ✅      |
+| `pruneStepMarkers`    | Filter out `step-start`/`step-finish` markers entirely  | ✅      |
+| `pruneSourceUrls`     | Supersede older webfetch/websearch calls for same URL   | ✅      |
+| `pruneFiles`          | Mask file attachments with breadcrumbs                  | ✅      |
+| `pruneSnapshots`      | Keep only the latest snapshot (opt-out)                 | ✅      |
+| `pruneRetryParts`     | Auto-prune failed attempts when retry succeeds          | ✅      |
+| `pruneUserCodeBlocks` | Truncate large code blocks in old user messages         | ✅      |
+| `truncateOldErrors`   | Truncate old error outputs to first line only           | ✅      |
+| `aggressiveFilePrune` | One-file-one-view: any file op supersedes ALL previous  | ✅      |
+| `stateQuerySupersede` | Keep only latest state queries (ls, find, git status)   | ✅      |
 
 ### Safety Features
 
@@ -251,9 +270,35 @@ To enable all automatic pruning strategies, use the following configuration:
         "purgeErrors": { "enabled": true, "turns": 4 },
         "truncation": { "enabled": true, "maxTokens": 2000 },
         "thinkingCompression": { "enabled": true, "minTurnsOld": 3 },
+        // Aggressive pruning (all enabled by default, opt-out)
+        "aggressivePruning": {
+            "pruneToolInputs": true,
+            "pruneStepMarkers": true,
+            "pruneSourceUrls": true,
+            "pruneFiles": true,
+            "pruneSnapshots": true,
+            "pruneRetryParts": true,
+            "pruneUserCodeBlocks": true,
+            "truncateOldErrors": true,
+            "aggressiveFilePrune": true,
+            "stateQuerySupersede": true,
+        },
     },
 }
 ```
+
+**Aggressive Pruning Explained:**
+
+- **`pruneToolInputs`** — When a tool is superseded, its verbose input (e.g., file contents in a `write` call) is stripped to metadata only (`{filePath}`). This fixes the "input leak" where superseded tools retained large input payloads.
+- **`pruneStepMarkers`** — Removes `step-start` and `step-finish` structural markers from context entirely. These consume tokens but provide no semantic value.
+- **`pruneSourceUrls`** — Supersedes older `webfetch`/`websearch` calls for the same URL/query. Only the latest fetch result is retained.
+- **`pruneFiles`** — Masks file attachment parts (images, documents) with breadcrumbs like `[File: image.png, 12KB]` instead of sending binary data.
+- **`pruneSnapshots`** — Automatically supersedes old snapshots, keeping only the latest. Snapshots can be very large; this ensures minimal context overhead.
+- **`pruneRetryParts`** — Detects error→retry sequences and automatically prunes failed attempts when a retry succeeds.
+- **`pruneUserCodeBlocks`** — Truncates large code blocks in user messages older than 5 turns, replacing them with `[Code block: typescript, 15 lines - truncated]`.
+- **`truncateOldErrors`** — Truncates old error outputs (older than 3 turns) to first line only, e.g., `Error: Something failed\n[Error output truncated - 500 chars total]`.
+- **`aggressiveFilePrune`** — **One-File-One-View policy**: Any file operation (read/write/edit/glob/grep) supersedes ALL previous operations on the same file, not just write→read.
+- **`stateQuerySupersede`** — Supersedes identical state queries (`ls`, `find`, `pwd`, `git status`), keeping only the latest directory/file state.
 
 ### Commands
 

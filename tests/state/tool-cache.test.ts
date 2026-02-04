@@ -41,14 +41,34 @@ const createMockState = (): SessionState =>
     ({
         currentTurn: 10,
         toolParameters: new Map(),
-        hashToCallId: new Map(),
-        callIdToHash: new Map(),
-        softPrunedTools: new Map(),
-        filePathToCallIds: new Map(),
-        lastTodowriteCallId: null,
-        lastTodoreadCallId: null,
-        lastTodoTurn: 0,
-        lastReminderTurn: 0,
+        hashRegistry: {
+            calls: new Map(),
+            callIds: new Map(),
+            messages: new Map(),
+            messagePartIds: new Map(),
+            reasoning: new Map(),
+            reasoningPartIds: new Map(),
+        },
+        softPrunedItems: new Map(),
+        cursors: {
+            todo: {
+                lastWriteCallId: null,
+                lastReadCallId: null,
+                lastTurn: 0,
+                lastReminderTurn: 0,
+            },
+            context: {
+                lastCallId: null,
+            },
+            automata: {
+                enabled: false,
+                lastTurn: 0,
+                lastReflectionTurn: 0,
+            },
+            files: {
+                pathToCallIds: new Map(),
+            },
+        },
         todos: [],
         stats: {
             strategyStats: {
@@ -56,16 +76,19 @@ const createMockState = (): SessionState =>
                     hash: { count: 0, tokens: 0 },
                     file: { count: 0, tokens: 0 },
                     todo: { count: 0, tokens: 0 },
+                    context: { count: 0, tokens: 0 },
                 },
                 purgeErrors: { count: 0, tokens: 0 },
-                manualDiscard: { count: 0, tokens: 0 },
+                manualDiscard: {
+                    message: { count: 0, tokens: 0 },
+                    thinking: { count: 0, tokens: 0 },
+                    tool: { count: 0, tokens: 0 },
+                },
                 distillation: { count: 0, tokens: 0 },
                 truncation: { count: 0, tokens: 0 },
                 thinkingCompression: { count: 0, tokens: 0 },
             },
         },
-        softPrunedMessageParts: new Map(),
-        softPrunedMessages: new Map(),
         lastToolPrune: false,
     }) as unknown as SessionState
 
@@ -126,9 +149,9 @@ describe("tool-cache auto-supersede", () => {
             await syncToolCache(state, config, logger, messages)
 
             // Old call should be soft pruned
-            expect(state.softPrunedTools.has("call_001")).toBe(true)
+            expect(state.softPrunedItems.has("call_001")).toBe(true)
             // New call should have the hash
-            expect(state.callIdToHash.get("call_002")).toBeDefined()
+            expect(state.hashRegistry.callIds.get("call_002")).toBeDefined()
             // Stats should be updated
             expect(state.stats.strategyStats.autoSupersede.hash.count).toBe(1)
         })
@@ -145,8 +168,8 @@ describe("tool-cache auto-supersede", () => {
             await syncToolCache(state, config, logger, messages)
 
             // Neither should be pruned (same turn)
-            expect(state.softPrunedTools.has("call_001")).toBe(false)
-            expect(state.softPrunedTools.has("call_002")).toBe(false)
+            expect(state.softPrunedItems.has("call_001")).toBe(false)
+            expect(state.softPrunedItems.has("call_002")).toBe(false)
         })
     })
 
@@ -171,7 +194,7 @@ describe("tool-cache auto-supersede", () => {
             await syncToolCache(state, config, logger, messages)
 
             // Old read should be superseded
-            expect(state.softPrunedTools.has("call_001")).toBe(true)
+            expect(state.softPrunedItems.has("call_001")).toBe(true)
             // Stats should be updated
             expect(state.stats.strategyStats.autoSupersede.file.count).toBe(1)
         })
@@ -195,7 +218,7 @@ describe("tool-cache auto-supersede", () => {
 
             await syncToolCache(state, config, logger, messages)
 
-            expect(state.softPrunedTools.has("call_001")).toBe(true)
+            expect(state.softPrunedItems.has("call_001")).toBe(true)
             expect(state.stats.strategyStats.autoSupersede.file.count).toBe(1)
         })
 
@@ -218,7 +241,7 @@ describe("tool-cache auto-supersede", () => {
             await syncToolCache(state, config, logger, messages)
 
             // Should NOT be superseded (different file)
-            expect(state.softPrunedTools.has("call_001")).toBe(false)
+            expect(state.softPrunedItems.has("call_001")).toBe(false)
             expect(state.stats.strategyStats.autoSupersede.file.count).toBe(0)
         })
 
@@ -238,7 +261,7 @@ describe("tool-cache auto-supersede", () => {
             await syncToolCache(state, config, logger, messages)
 
             // Hash-based supersede should trigger for identical glob
-            expect(state.softPrunedTools.has("call_001")).toBe(true)
+            expect(state.softPrunedItems.has("call_001")).toBe(true)
             expect(state.stats.strategyStats.autoSupersede.hash.count).toBe(1)
         })
     })
@@ -276,9 +299,9 @@ describe("tool-cache auto-supersede", () => {
             await syncToolCache(state, config, logger, messages)
 
             // Old todowrite should be superseded
-            expect(state.softPrunedTools.has("call_001")).toBe(true)
+            expect(state.softPrunedItems.has("call_001")).toBe(true)
             // Latest todowrite should be tracked
-            expect(state.lastTodowriteCallId).toBe("call_002")
+            expect(state.cursors.todo.lastWriteCallId).toBe("call_002")
         })
 
         it("should supersede old todoread calls when new one appears", async () => {
@@ -297,9 +320,9 @@ describe("tool-cache auto-supersede", () => {
             await syncToolCache(state, config, logger, messages)
 
             // Old todoread should be superseded
-            expect(state.softPrunedTools.has("call_001")).toBe(true)
+            expect(state.softPrunedItems.has("call_001")).toBe(true)
             // Latest todoread should be tracked
-            expect(state.lastTodoreadCallId).toBe("call_002")
+            expect(state.cursors.todo.lastReadCallId).toBe("call_002")
         })
 
         it("should update todo state from latest todowrite", async () => {
@@ -324,7 +347,7 @@ describe("tool-cache auto-supersede", () => {
             await syncToolCache(state, config, logger, messages)
 
             expect(state.todos).toEqual(todos)
-            expect(state.lastTodoTurn).toBe(1)
+            expect(state.cursors.todo.lastTurn).toBe(1)
         })
 
         it("should set inProgressSince when task transitions to in_progress", async () => {
@@ -421,6 +444,113 @@ describe("tool-cache auto-supersede", () => {
         })
     })
 
+    describe("context-based supersede", () => {
+        it("should supersede old context calls when new one appears", async () => {
+            const messages: WithParts[] = [
+                createMessage("msg1", "assistant", [
+                    createStepPart(), // Turn 1
+                    createToolPart(
+                        "call_001",
+                        "context",
+                        { action: "discard", targets: [["abc123"]] },
+                        "completed",
+                        "Discarded 1 item",
+                    ),
+                ]),
+                createMessage("msg2", "assistant", [
+                    createStepPart(),
+                    createStepPart(), // Turn 3
+                    createToolPart(
+                        "call_002",
+                        "context",
+                        { action: "distill", targets: [["def456", "summary"]] },
+                        "completed",
+                        "Distilled 1 item",
+                    ),
+                ]),
+            ]
+
+            await syncToolCache(state, config, logger, messages)
+
+            // Old context should be superseded
+            expect(state.softPrunedItems.has("call_001")).toBe(true)
+            // Latest context should be tracked
+            expect(state.cursors.context.lastCallId).toBe("call_002")
+            // Stats should be updated
+            expect(state.stats.strategyStats.autoSupersede.context.count).toBe(1)
+        })
+
+        it("should not supersede if only one context call exists", async () => {
+            const messages: WithParts[] = [
+                createMessage("msg1", "assistant", [
+                    createStepPart(), // Turn 1
+                    createToolPart(
+                        "call_001",
+                        "context",
+                        { action: "discard", targets: [["abc123"]] },
+                        "completed",
+                        "Discarded 1 item",
+                    ),
+                ]),
+            ]
+
+            await syncToolCache(state, config, logger, messages)
+
+            // Should not be pruned (only one call)
+            expect(state.softPrunedItems.has("call_001")).toBe(false)
+            // Should still track the latest
+            expect(state.cursors.context.lastCallId).toBe("call_001")
+            expect(state.stats.strategyStats.autoSupersede.context.count).toBe(0)
+        })
+
+        it("should supersede multiple old context calls", async () => {
+            const messages: WithParts[] = [
+                createMessage("msg1", "assistant", [
+                    createStepPart(), // Turn 1
+                    createToolPart(
+                        "call_001",
+                        "context",
+                        { action: "discard", targets: [["abc123"]] },
+                        "completed",
+                        "Discarded 1 item",
+                    ),
+                ]),
+                createMessage("msg2", "assistant", [
+                    createStepPart(), // Turn 2
+                    createToolPart(
+                        "call_002",
+                        "context",
+                        { action: "distill", targets: [["def456", "summary"]] },
+                        "completed",
+                        "Distilled 1 item",
+                    ),
+                ]),
+                createMessage("msg3", "assistant", [
+                    createStepPart(), // Turn 3
+                    createToolPart(
+                        "call_003",
+                        "context",
+                        { action: "discard", targets: [["ghi789"]] },
+                        "completed",
+                        "Discarded 1 item",
+                    ),
+                ]),
+            ]
+
+            await syncToolCache(state, config, logger, messages)
+
+            // Both old context calls should be superseded
+            expect(state.softPrunedItems.has("call_001")).toBe(true)
+            expect(state.softPrunedItems.has("call_002")).toBe(true)
+            // Latest should not be pruned
+            expect(state.softPrunedItems.has("call_003")).toBe(false)
+            // Latest context should be tracked
+            expect(state.cursors.context.lastCallId).toBe("call_003")
+            // Stats should reflect both supersedes
+            expect(state.stats.strategyStats.autoSupersede.context.count).toBe(2)
+        })
+    })
+
     describe("protection rules", () => {
         it("should not supersede protected tools", async () => {
             config.tools.settings.protectedTools = ["read"]
@@ -440,7 +570,7 @@ describe("tool-cache auto-supersede", () => {
             await syncToolCache(state, config, logger, messages)
 
             // Protected tools should not be superseded
-            expect(state.softPrunedTools.has("call_001")).toBe(false)
+            expect(state.softPrunedItems.has("call_001")).toBe(false)
             expect(state.stats.strategyStats.autoSupersede.hash.count).toBe(0)
         })
 

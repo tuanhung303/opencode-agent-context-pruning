@@ -31,6 +31,7 @@ vi.mock("../lib/messages", () => ({
 vi.mock("../lib/state", () => ({
     checkSession: vi.fn(),
     ensureSessionInitialized: vi.fn(),
+    syncSessionState: vi.fn(),
 }))
 
 vi.mock("../lib/state/tool-cache", () => ({
@@ -89,6 +90,7 @@ const createMockConfig = (): PluginConfig => ({
         },
         discard: {
             enabled: true,
+            fullyForget: false,
         },
         distill: {
             enabled: true,
@@ -145,9 +147,14 @@ const createMockState = (): SessionState => ({
                 hash: { count: 0, tokens: 0 },
                 file: { count: 0, tokens: 0 },
                 todo: { count: 0, tokens: 0 },
+                context: { count: 0, tokens: 0 },
             },
             purgeErrors: { count: 0, tokens: 0 },
-            manualDiscard: { count: 0, tokens: 0 },
+            manualDiscard: {
+                message: { count: 0, tokens: 0 },
+                thinking: { count: 0, tokens: 0 },
+                tool: { count: 0, tokens: 0 },
+            },
             distillation: { count: 0, tokens: 0 },
             truncation: { count: 0, tokens: 0 },
             thinkingCompression: { count: 0, tokens: 0 },
@@ -159,26 +166,36 @@ const createMockState = (): SessionState => ({
     currentTurn: 0,
     lastDiscardStats: null,
     lastUserMessageId: null,
-    hashToCallId: new Map(),
-    callIdToHash: new Map(),
+    hashRegistry: {
+        calls: new Map(),
+        callIds: new Map(),
+        messages: new Map(),
+        messagePartIds: new Map(),
+        reasoning: new Map(),
+        reasoningPartIds: new Map(),
+    },
     discardHistory: [],
-    hashToMessagePart: new Map(),
-    messagePartToHash: new Map(),
-    hashToReasoningPart: new Map(),
-    reasoningPartToHash: new Map(),
-    softPrunedTools: new Map(),
-    softPrunedMessageParts: new Map(),
-    softPrunedMessages: new Map(),
-    softPrunedReasoningParts: new Map(),
-    lastTodoTurn: 0,
-    lastReminderTurn: 0,
-    lastTodowriteCallId: null,
-    lastTodoreadCallId: null,
+    softPrunedItems: new Map(),
+    cursors: {
+        todo: {
+            lastTurn: 0,
+            lastReminderTurn: 0,
+            lastWriteCallId: null,
+            lastReadCallId: null,
+        },
+        context: {
+            lastCallId: null,
+        },
+        automata: {
+            enabled: false,
+            lastTurn: 0,
+            lastReflectionTurn: 0,
+        },
+        files: {
+            pathToCallIds: new Map(),
+        },
+    },
     todos: [],
-    filePathToCallIds: new Map(),
-    automataEnabled: false,
-    lastAutomataTurn: 0,
-    lastReflectionTurn: 0,
 })
 
 describe("createSystemPromptHandler", () => {
@@ -268,7 +285,7 @@ describe("createChatMessageTransformHandler", () => {
     })
 
     it("should check session on message transform", async () => {
-        const { checkSession } = await import("../lib/state/index.js")
+        const { syncSessionState } = await import("../lib/state/index.js")
         const handler = createChatMessageTransformHandler(
             mockClient,
             mockState,
@@ -279,9 +296,10 @@ describe("createChatMessageTransformHandler", () => {
 
         await handler({}, output)
 
-        expect(checkSession).toHaveBeenCalledWith(
+        expect(syncSessionState).toHaveBeenCalledWith(
             mockClient,
             mockState,
+            mockConfig,
             mockLogger as unknown as import("../lib/logger.js").Logger,
             output.messages,
         )
@@ -289,7 +307,7 @@ describe("createChatMessageTransformHandler", () => {
 
     it("should skip processing for sub-agents", async () => {
         mockState.isSubAgent = true
-        const { checkSession } = await import("../lib/state/index.js")
+        const { syncSessionState } = await import("../lib/state/index.js")
         const handler = createChatMessageTransformHandler(
             mockClient,
             mockState,
@@ -300,7 +318,7 @@ describe("createChatMessageTransformHandler", () => {
 
         await handler({}, output)
 
-        expect(checkSession).toHaveBeenCalled()
+        expect(syncSessionState).toHaveBeenCalled()
         // Should not process further for sub-agents
     })
 

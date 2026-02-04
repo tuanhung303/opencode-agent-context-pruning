@@ -33,8 +33,14 @@ const createMockState = (
         },
         compactedMessageIds: new Set<string>(),
         lastCompaction: 0, // No compaction, so all messages are processed
-        callIdToHash: hashMappings,
-        hashToCallId: new Map([...hashMappings].map(([k, v]) => [v, k])),
+        hashRegistry: {
+            calls: new Map([...hashMappings].map(([k, v]) => [v, k])),
+            callIds: hashMappings,
+            messages: new Map(),
+            messagePartIds: new Map(),
+            reasoning: new Map(),
+            reasoningPartIds: new Map(),
+        },
     }) as any
 
 const createToolPart = (

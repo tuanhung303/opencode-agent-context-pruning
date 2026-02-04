@@ -2,7 +2,7 @@ import type { SessionState, WithParts, ToolParameterEntry } from "./state"
 import type { Logger } from "./logger"
 import type { PluginConfig } from "./config"
 import type { OpenCodeClient } from "./client"
-import { syncToolCache } from "./state/tool-cache"
+import { syncSessionState } from "./state/index"
 import { purgeErrors, truncateLargeOutputs, compressThinkingBlocks } from "./strategies"
 import {
     prune,
@@ -13,7 +13,6 @@ import {
     detectAutomataActivation,
     injectAutomataReflection,
 } from "./messages"
-import { checkSession, ensureSessionInitialized } from "./state"
 import { loadPrompt } from "./prompts"
 import { handleStatsCommand } from "./commands/stats"
 import { handleContextCommand } from "./commands/context"
@@ -25,6 +24,20 @@ import { safeExecute } from "./safe-execute"
 import { sendUnifiedNotification } from "./ui/notification"
 import { getCurrentParams } from "./strategies/utils"
 import { saveSessionState } from "./state/persistence"
+
+type Strategy = (
+    state: SessionState,
+    logger: Logger,
+    config: PluginConfig,
+    messages: WithParts[],
+) => void | Promise<void>
+
+const PRUNE_STRATEGIES: Record<string, Strategy> = {
+    purgeErrors,
+    truncateLargeOutputs,
+    compressThinkingBlocks,
+    prune,
+}
 
 const INTERNAL_AGENT_SIGNATURES = [
     "You are a title generator",
@@ -67,7 +80,7 @@ export function createChatMessageTransformHandler(
         _input: Record<string, unknown>,
         output: { messages: WithParts[] },
     ): Promise<void> => {
-        await checkSession(client, state, logger, output.messages)
+        await syncSessionState(client, state, config, logger, output.messages)
 
         if (state.isSubAgent) {
             return
@@ -93,8 +106,6 @@ export function createChatMessageTransformHandler(
             )
         }
 
-        syncToolCache(state, config, logger, output.messages)
-
         // Inject hashes into tool outputs (before any pruning)
         safeExecute(
             () => injectHashesIntoToolOutputs(state, config, output.messages, logger),
@@ -116,40 +127,24 @@ export function createChatMessageTransformHandler(
             "injectHashesIntoAssistantMessages",
         )
 
-        // Run pruning strategies with error boundaries to prevent crashes
-        safeExecute(
-            () => purgeErrors(state, logger, config, output.messages),
-            logger,
-            "purgeErrors",
-        )
-        safeExecute(
-            () => truncateLargeOutputs(state, logger, config, output.messages),
-            logger,
-            "truncateLargeOutputs",
-        )
-        safeExecute(
-            () => compressThinkingBlocks(state, logger, config, output.messages),
-            logger,
-            "compressThinkingBlocks",
-        )
-
-        safeExecute(() => prune(state, logger, config, output.messages), logger, "prune")
+        // Run pruning strategies in pipeline
+        for (const [name, strategy] of Object.entries(PRUNE_STRATEGIES)) {
+            safeExecute(() => strategy(state, logger, config, output.messages), logger, name)
+        }
 
         // Inject todo reminder if needed (after all other strategies)
         safeExecute(
-            () => injectTodoReminder(state, config, output.messages, logger),
+            () => injectTodoReminder(state, logger, config, output.messages),
             logger,
             "injectTodoReminder",
         )
 
         // Inject automata reflection if needed (after todo reminder)
         safeExecute(
-            () => injectAutomataReflection(state, config, output.messages, logger),
+            () => injectAutomataReflection(state, logger, config, output.messages),
             logger,
             "injectAutomataReflection",
         )
-
-        // NOTE: insertPruneToolContext removed - hashes are now embedded in tool outputs
 
         logger.debug("Transform complete", {
             initialMessageCount,
@@ -261,11 +256,6 @@ export function createCommandExecuteHandler(
     }
 }
 
-/**
- * Handler for tool.execute.after hook.
- * Runs lightweight pruning strategies immediately after each tool execution
- * to keep context clean throughout the conversation.
- */
 export function createToolExecuteAfterHandler(
     client: OpenCodeClient,
     state: SessionState,
@@ -295,32 +285,16 @@ export function createToolExecuteAfterHandler(
             })
             const messages: WithParts[] = (messagesResponse.data || messagesResponse) as WithParts[]
 
-            // Ensure session is initialized
-            await ensureSessionInitialized(client, state, sessionId, logger, messages)
-
-            // Sync tool cache to pick up the just-executed tool
-            syncToolCache(state, config, logger, messages)
-
-            // Note: Assistant message hashing disabled - agents use "start...end" patterns
+            // Sync session and tool cache
+            await syncSessionState(client, state, config, logger, messages)
 
             // Store initial prune count to detect changes
             const initialPruneCount = state.prune.toolIds.length + state.prune.messagePartIds.length
 
-            // Run lightweight strategies
-            safeExecute(() => purgeErrors(state, logger, config, messages), logger, "purgeErrors")
-            safeExecute(
-                () => truncateLargeOutputs(state, logger, config, messages),
-                logger,
-                "truncateLargeOutputs",
-            )
-            safeExecute(
-                () => compressThinkingBlocks(state, logger, config, messages),
-                logger,
-                "compressThinkingBlocks",
-            )
-
-            // Apply pruning
-            safeExecute(() => prune(state, logger, config, messages), logger, "prune")
+            // Run strategies in pipeline
+            for (const [name, strategy] of Object.entries(PRUNE_STRATEGIES)) {
+                safeExecute(() => strategy(state, logger, config, messages), logger, name)
+            }
 
             // Check if anything was pruned
             const newPruneCount = state.prune.toolIds.length + state.prune.messagePartIds.length
@@ -346,15 +320,15 @@ export function createToolExecuteAfterHandler(
                     client,
                     logger,
                     config,
-                    state,
+                    {
+                        state,
+                        pruneToolIds: newlyPrunedIds,
+                        toolMetadata,
+                        workingDirectory,
+                        options: { simplified: true },
+                    },
                     sessionId,
-                    newlyPrunedIds,
-                    toolMetadata,
-                    undefined,
                     currentParams,
-                    workingDirectory,
-                    undefined,
-                    { simplified: true },
                 )
 
                 // Save state

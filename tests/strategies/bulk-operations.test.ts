@@ -41,22 +41,32 @@ const createMockState = (currentTurn: number = 5): SessionState =>
             reasoningPartIds: [],
         },
         toolParameters: new Map<string, ToolParameterEntry>(),
-        hashToCallId: new Map<string, string>(),
-        callIdToHash: new Map<string, string>(),
-        hashToMessagePart: new Map<string, string>(),
-        messagePartToHash: new Map<string, string>(),
-        hashToReasoningPart: new Map<string, string>(),
-        reasoningPartToHash: new Map<string, string>(),
+        hashRegistry: {
+            calls: new Map<string, string>(),
+            callIds: new Map<string, string>(),
+            messages: new Map<string, string>(),
+            messagePartIds: new Map<string, string>(),
+            reasoning: new Map<string, string>(),
+            reasoningPartIds: new Map<string, string>(),
+        },
         stats: {
             pruneTokenCounter: 0,
             totalPruneTokens: 0,
             pruneMessageCounter: 0,
             totalPruneMessages: 0,
             strategyStats: {
-                deduplication: { count: 0, tokens: 0 },
-                supersedeWrites: { count: 0, tokens: 0 },
+                autoSupersede: {
+                    hash: { count: 0, tokens: 0 },
+                    file: { count: 0, tokens: 0 },
+                    todo: { count: 0, tokens: 0 },
+                    context: { count: 0, tokens: 0 },
+                },
                 purgeErrors: { count: 0, tokens: 0 },
-                manualDiscard: { count: 0, tokens: 0 },
+                manualDiscard: {
+                    message: { count: 0, tokens: 0 },
+                    thinking: { count: 0, tokens: 0 },
+                    tool: { count: 0, tokens: 0 },
+                },
                 distillation: { count: 0, tokens: 0 },
                 truncation: { count: 0, tokens: 0 },
                 thinkingCompression: { count: 0, tokens: 0 },
@@ -67,40 +77,50 @@ const createMockState = (currentTurn: number = 5): SessionState =>
         lastCompaction: 0,
         lastUserMessageId: null,
         discardHistory: [],
-        softPrunedTools: new Map(),
-        softPrunedMessageParts: new Map(),
-        softPrunedReasoningParts: new Map(),
-        softPrunedMessages: new Map(),
-        lastTodoTurn: 0,
-        lastReminderTurn: 0,
-        lastTodowriteCallId: null,
+        softPrunedItems: new Map(),
+        cursors: {
+            todo: {
+                lastWriteCallId: null,
+                lastReadCallId: null,
+                lastTurn: 0,
+                lastReminderTurn: 0,
+            },
+            context: {
+                lastCallId: null,
+            },
+            automata: {
+                enabled: false,
+                lastTurn: 0,
+                lastReflectionTurn: 0,
+            },
+            files: {
+                pathToCallIds: new Map(),
+            },
+        },
         todos: [],
-        automataEnabled: false,
-        lastAutomataTurn: 0,
-        lastReflectionTurn: 0,
     }) as any
 
 describe("detectTargetType", () => {
     it("should detect tool hashes via state lookup", () => {
         const state = createMockState()
-        state.hashToCallId.set("a1b2c3", "call_1")
-        state.hashToCallId.set("d4e5f6", "call_2")
+        state.hashRegistry.calls.set("a1b2c3", "call_1")
+        state.hashRegistry.calls.set("d4e5f6", "call_2")
         expect(detectTargetType("a1b2c3", state)).toBe("tool_hash")
         expect(detectTargetType("d4e5f6", state)).toBe("tool_hash")
     })
 
     it("should detect message hashes via state lookup", () => {
         const state = createMockState()
-        state.hashToMessagePart.set("abc123", "msg_1:0")
-        state.hashToMessagePart.set("def456", "msg_2:0")
+        state.hashRegistry.messages.set("abc123", "msg_1:0")
+        state.hashRegistry.messages.set("def456", "msg_2:0")
         expect(detectTargetType("abc123", state)).toBe("message_hash")
         expect(detectTargetType("def456", state)).toBe("message_hash")
     })
 
     it("should detect reasoning hashes via state lookup", () => {
         const state = createMockState()
-        state.hashToReasoningPart.set("789abc", "reason_1:0")
-        state.hashToReasoningPart.set("012345", "reason_2:0")
+        state.hashRegistry.reasoning.set("789abc", "reason_1:0")
+        state.hashRegistry.reasoning.set("012345", "reason_2:0")
         expect(detectTargetType("789abc", state)).toBe("reasoning_hash")
         expect(detectTargetType("012345", state)).toBe("reasoning_hash")
     })
@@ -130,10 +150,10 @@ describe("collectAllToolHashes", () => {
 
     it("should return all eligible tool hashes", () => {
         // Setup: Add some tools with hashes (6 hex chars, no prefix)
-        state.hashToCallId.set("abc123", "call_001")
-        state.hashToCallId.set("def456", "call_002")
-        state.callIdToHash.set("call_001", "abc123")
-        state.callIdToHash.set("call_002", "def456")
+        state.hashRegistry.calls.set("abc123", "call_001")
+        state.hashRegistry.calls.set("def456", "call_002")
+        state.hashRegistry.callIds.set("call_001", "abc123")
+        state.hashRegistry.callIds.set("call_002", "def456")
 
         state.toolParameters.set("call_001", {
             tool: "read",
@@ -155,10 +175,10 @@ describe("collectAllToolHashes", () => {
 
     it("should exclude already pruned tools", () => {
         // Setup: Add tools, one already pruned
-        state.hashToCallId.set("abc123", "call_001")
-        state.hashToCallId.set("def456", "call_002")
-        state.callIdToHash.set("call_001", "abc123")
-        state.callIdToHash.set("call_002", "def456")
+        state.hashRegistry.calls.set("abc123", "call_001")
+        state.hashRegistry.calls.set("def456", "call_002")
+        state.hashRegistry.callIds.set("call_001", "abc123")
+        state.hashRegistry.callIds.set("call_002", "def456")
 
         state.toolParameters.set("call_001", {
             tool: "read",
@@ -183,10 +203,10 @@ describe("collectAllToolHashes", () => {
 
     it("should exclude protected tools", () => {
         // Setup: Add tools, one is protected
-        state.hashToCallId.set("abc123", "call_001")
-        state.hashToCallId.set("def789", "call_002")
-        state.callIdToHash.set("call_001", "abc123")
-        state.callIdToHash.set("call_002", "def789")
+        state.hashRegistry.calls.set("abc123", "call_001")
+        state.hashRegistry.calls.set("def789", "call_002")
+        state.hashRegistry.callIds.set("call_001", "abc123")
+        state.hashRegistry.callIds.set("call_002", "def789")
 
         state.toolParameters.set("call_001", {
             tool: "read",
@@ -213,8 +233,8 @@ describe("collectAllToolHashes", () => {
 
     it("should exclude tools without hashes (turn protection)", () => {
         // Setup: Add tools where one doesn't have a hash (simulating turn protection)
-        state.hashToCallId.set("abc123", "call_001")
-        state.callIdToHash.set("call_001", "abc123")
+        state.hashRegistry.calls.set("abc123", "call_001")
+        state.hashRegistry.callIds.set("call_001", "abc123")
         // call_002 exists in toolParameters but has no hash (protected by turn)
         state.toolParameters.set("call_001", {
             tool: "read",
@@ -244,8 +264,8 @@ describe("collectAllMessageHashes", () => {
 
     it("should return all message hashes", () => {
         // Setup: Add some message hashes
-        state.hashToMessagePart.set("abc123", "msg_001:0")
-        state.hashToMessagePart.set("def456", "msg_002:0")
+        state.hashRegistry.messages.set("abc123", "msg_001:0")
+        state.hashRegistry.messages.set("def456", "msg_002:0")
 
         const result = collectAllMessageHashes(state)
 
@@ -256,8 +276,8 @@ describe("collectAllMessageHashes", () => {
 
     it("should exclude already pruned message parts", () => {
         // Setup: Add message hashes, one already pruned
-        state.hashToMessagePart.set("abc123", "msg_001:0")
-        state.hashToMessagePart.set("def456", "msg_002:0")
+        state.hashRegistry.messages.set("abc123", "msg_001:0")
+        state.hashRegistry.messages.set("def456", "msg_002:0")
 
         // Mark one as pruned
         state.prune.messagePartIds.push("msg_001:0")

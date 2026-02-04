@@ -1,4 +1,4 @@
-import type { SessionState, WithParts } from "../state/types"
+import type { SessionState, WithParts, TodoItem } from "../state/types"
 import type { PluginConfig } from "../config"
 import type { Logger } from "../logger"
 import { isMessageCompacted } from "../shared-utils"
@@ -62,11 +62,11 @@ export function removeTodoReminder(
         if (msg.info?.role === "assistant") {
             const parts = Array.isArray(msg.parts) ? msg.parts : []
             for (const part of parts) {
-                if (part?.type === "text" && part.text) {
-                    const originalText = part.text
+                if (part?.type === "text" && (part as any).text) {
+                    const originalText = (part as any).text
                     const newText = originalText.replace(REMINDER_REGEX, "")
                     if (newText !== originalText) {
-                        part.text = newText
+                        ;(part as any).text = newText
                         removed = true
                         logger.info("Removed todo reminder from assistant message")
                     }
@@ -84,9 +84,9 @@ export function removeTodoReminder(
  */
 export function injectTodoReminder(
     state: SessionState,
+    logger: Logger,
     config: PluginConfig,
     messages: WithParts[],
-    logger: Logger,
 ): boolean {
     // Check if feature enabled
     if (!config.tools?.todoReminder?.enabled) {
@@ -103,29 +103,29 @@ export function injectTodoReminder(
     }
 
     // Calculate turns since last todo update
-    const turnsSinceTodo = state.currentTurn - state.lastTodoTurn
+    const turnsSinceTodo = state.currentTurn - state.cursors.todo.lastTurn
     const initialTurns = config.tools.todoReminder.initialTurns ?? 6
     const repeatTurns = config.tools.todoReminder.repeatTurns ?? 4
 
     logger.info(
-        `[TODO-REMINDER DEBUG] currentTurn=${state.currentTurn}, lastTodoTurn=${state.lastTodoTurn}, turnsSinceTodo=${turnsSinceTodo}, lastReminderTurn=${state.lastReminderTurn}, initialTurns=${initialTurns}, repeatTurns=${repeatTurns}`,
+        `[TODO-REMINDER DEBUG] currentTurn=${state.currentTurn}, lastTodoTurn=${state.cursors.todo.lastTurn}, turnsSinceTodo=${turnsSinceTodo}, lastReminderTurn=${state.cursors.todo.lastReminderTurn}, initialTurns=${initialTurns}, repeatTurns=${repeatTurns}`,
     )
 
     // Check if we should remind
     let shouldRemind = false
 
-    if (state.lastReminderTurn === 0) {
+    if (state.cursors.todo.lastReminderTurn === 0) {
         // First reminder: after initialTurns
         shouldRemind = turnsSinceTodo >= initialTurns
     } else {
         // Subsequent reminders: every repeatTurns after last reminder
-        const turnsSinceReminder = state.currentTurn - state.lastReminderTurn
+        const turnsSinceReminder = state.currentTurn - state.cursors.todo.lastReminderTurn
         shouldRemind = turnsSinceReminder >= repeatTurns
     }
 
     if (!shouldRemind) {
         logger.debug(
-            `Skipping reminder - turnsSinceTodo: ${turnsSinceTodo}, lastReminderTurn: ${state.lastReminderTurn}`,
+            `Skipping reminder - turnsSinceTodo: ${turnsSinceTodo}, lastReminderTurn: ${state.cursors.todo.lastReminderTurn}`,
         )
         return false
     }
@@ -144,14 +144,16 @@ export function injectTodoReminder(
         (t) =>
             t.status === "in_progress" &&
             t.inProgressSince !== undefined &&
-            state.currentTurn - t.inProgressSince >= stuckTaskTurns,
+            state.currentTurn - (t.inProgressSince as number) >= stuckTaskTurns,
     )
 
     // Generate stuck task guidance if any task is stuck
     let stuckTaskSection = ""
     if (stuckTasks.length > 0) {
         const longestStuck = Math.max(
-            ...stuckTasks.map((t) => state.currentTurn - (t.inProgressSince ?? state.currentTurn)),
+            ...stuckTasks.map(
+                (t) => state.currentTurn - ((t.inProgressSince as number) ?? state.currentTurn),
+            ),
         )
         stuckTaskSection = STUCK_TASK_GUIDANCE.replace("{stuck_turns}", String(longestStuck))
         logger.info(`Detected ${stuckTasks.length} stuck task(s), longest: ${longestStuck} turns`)
@@ -181,7 +183,7 @@ export function injectTodoReminder(
     messages.push(reminderMessage)
 
     // Update state
-    state.lastReminderTurn = state.currentTurn
+    state.cursors.todo.lastReminderTurn = state.currentTurn
 
     logger.info(`Injected todo reminder after ${turnsSinceTodo} turns without todo update`)
 
@@ -194,8 +196,8 @@ export function injectTodoReminder(
 function isTodoReminderMessage(message: WithParts): boolean {
     if (!message.parts) return false
     for (const part of message.parts) {
-        if (part?.type === "text" && part.text) {
-            if (part.text.includes("🔖 Checkpoint")) {
+        if (part?.type === "text" && (part as any).text) {
+            if ((part as any).text.includes("🔖 Checkpoint")) {
                 return true
             }
         }

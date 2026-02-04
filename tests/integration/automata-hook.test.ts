@@ -46,11 +46,11 @@ describe("Integration: Automata Hook", () => {
         vi.spyOn(stateModule, "checkSession").mockResolvedValue(undefined)
 
         state.sessionId = "test-session"
-        state.automataEnabled = true
+        state.cursors.automata.enabled = true
         state.currentTurn = 4
         state.todos = [{ id: "1", content: "Test", status: "pending", priority: "high" }]
-        state.lastTodoTurn = 0
-        state.lastAutomataTurn = 0
+        state.cursors.todo.lastTurn = 0
+        state.cursors.automata.lastTurn = 0
 
         const output = {
             messages: [

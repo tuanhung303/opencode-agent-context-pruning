@@ -71,12 +71,11 @@ describe("createSessionState", () => {
         const state = createSessionState()
 
         expect(state.toolParameters.size).toBe(0)
-        expect(state.hashToCallId.size).toBe(0)
-        expect(state.callIdToHash.size).toBe(0)
-        expect(state.hashToMessagePart.size).toBe(0)
-        expect(state.messagePartToHash.size).toBe(0)
-        expect(state.softPrunedTools.size).toBe(0)
-        expect(state.softPrunedMessageParts.size).toBe(0)
+        expect(state.hashRegistry.calls.size).toBe(0)
+        expect(state.hashRegistry.callIds.size).toBe(0)
+        expect(state.hashRegistry.messages.size).toBe(0)
+        expect(state.hashRegistry.messagePartIds.size).toBe(0)
+        expect(state.softPrunedItems.size).toBe(0)
     })
 
     it("should initialize stats to zero", () => {
@@ -238,23 +237,24 @@ describe("session state hash maps", () => {
     })
 
     it("should track hash to call ID mappings", () => {
-        mockState.hashToCallId.set("r_abc123", "call_1")
-        mockState.callIdToHash.set("call_1", "r_abc123")
+        mockState.hashRegistry.calls.set("r_abc123", "call_1")
+        mockState.hashRegistry.callIds.set("call_1", "r_abc123")
 
-        expect(mockState.hashToCallId.get("r_abc123")).toBe("call_1")
-        expect(mockState.callIdToHash.get("call_1")).toBe("r_abc123")
+        expect(mockState.hashRegistry.calls.get("r_abc123")).toBe("call_1")
+        expect(mockState.hashRegistry.callIds.get("call_1")).toBe("r_abc123")
     })
 
     it("should track message part hash mappings", () => {
-        mockState.hashToMessagePart.set("a_xyz789", "msg_1:0")
-        mockState.messagePartToHash.set("msg_1:0", "a_xyz789")
+        mockState.hashRegistry.messages.set("a_xyz789", "msg_1:0")
+        mockState.hashRegistry.messagePartIds.set("msg_1:0", "a_xyz789")
 
-        expect(mockState.hashToMessagePart.get("a_xyz789")).toBe("msg_1:0")
-        expect(mockState.messagePartToHash.get("msg_1:0")).toBe("a_xyz789")
+        expect(mockState.hashRegistry.messages.get("a_xyz789")).toBe("msg_1:0")
+        expect(mockState.hashRegistry.messagePartIds.get("msg_1:0")).toBe("a_xyz789")
     })
 
     it("should track soft pruned tools", () => {
-        mockState.softPrunedTools.set("call_1", {
+        mockState.softPrunedItems.set("call_1", {
+            type: "tool",
             originalOutput: "original content",
             tool: "read",
             parameters: {},
@@ -262,12 +262,18 @@ describe("session state hash maps", () => {
             hash: "r_abc123",
         })
 
-        expect(mockState.softPrunedTools.has("call_1")).toBe(true)
-        expect(mockState.softPrunedTools.get("call_1")?.originalOutput).toBe("original content")
+        expect(mockState.softPrunedItems.has("call_1")).toBe(true)
+        const item = mockState.softPrunedItems.get("call_1")
+        if (item?.type === "tool") {
+            expect(item.originalOutput).toBe("original content")
+        } else {
+            throw new Error("Expected tool item")
+        }
     })
 
     it("should track soft pruned message parts", () => {
-        mockState.softPrunedMessageParts.set("msg_1:0", {
+        mockState.softPrunedItems.set("msg_1:0", {
+            type: "message-part",
             originalText: "original text",
             messageId: "msg_1",
             partIndex: 0,
@@ -275,8 +281,13 @@ describe("session state hash maps", () => {
             hash: "a_xyz789",
         })
 
-        expect(mockState.softPrunedMessageParts.has("msg_1:0")).toBe(true)
-        expect(mockState.softPrunedMessageParts.get("msg_1:0")?.originalText).toBe("original text")
+        expect(mockState.softPrunedItems.has("msg_1:0")).toBe(true)
+        const item = mockState.softPrunedItems.get("msg_1:0")
+        if (item?.type === "message-part") {
+            expect(item.originalText).toBe("original text")
+        } else {
+            throw new Error("Expected message-part item")
+        }
     })
 })
 

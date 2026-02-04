@@ -52,12 +52,14 @@ export function formatStatsHeader(strategyStats: SessionState["stats"]["strategy
         manualDiscard.tool.count +
         autoSupersede.hash.count +
         autoSupersede.file.count +
-        autoSupersede.todo.count
+        autoSupersede.todo.count +
+        autoSupersede.context.count
     const toolTokens =
         manualDiscard.tool.tokens +
         autoSupersede.hash.tokens +
         autoSupersede.file.tokens +
-        autoSupersede.todo.tokens
+        autoSupersede.todo.tokens +
+        autoSupersede.context.tokens
 
     if (toolCount > 0) {
         parts.push(`${PRUNE_CATEGORY_ICONS.tool} ${toolCount}(${formatTokenCount(toolTokens)}) ▼`)

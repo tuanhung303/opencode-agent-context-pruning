@@ -321,13 +321,13 @@ export function detectTargetType(target: string, state: SessionState): TargetTyp
     }
 
     // Lookup-based detection (no prefix required)
-    if (state.hashToCallId.has(target)) {
+    if (state.hashRegistry.calls.has(target)) {
         return "tool_hash"
     }
-    if (state.hashToMessagePart.has(target)) {
+    if (state.hashRegistry.messages.has(target)) {
         return "message_hash"
     }
-    if (state.hashToReasoningPart.has(target)) {
+    if (state.hashRegistry.reasoning.has(target)) {
         return "reasoning_hash"
     }
 
@@ -359,7 +359,7 @@ export function groupHashesByToolName(state: SessionState): Record<string, strin
     const prunedCallIds = new Set(state.prune.toolIds)
 
     // Iterate through all known hashes
-    for (const [hash, callId] of state.hashToCallId.entries()) {
+    for (const [hash, callId] of state.hashRegistry.calls.entries()) {
         // Skip if already pruned
         if (prunedCallIds.has(callId)) {
             continue
@@ -433,7 +433,7 @@ export function collectAllToolHashes(state: SessionState, config: PluginConfig):
     const prunedCallIds = new Set(state.prune.toolIds)
     const hashes: string[] = []
 
-    for (const [hash, callId] of state.hashToCallId.entries()) {
+    for (const [hash, callId] of state.hashRegistry.calls.entries()) {
         // Skip if already pruned
         if (prunedCallIds.has(callId)) {
             continue
@@ -467,7 +467,7 @@ export function collectAllMessageHashes(state: SessionState): string[] {
     const prunedPartIds = new Set(state.prune.messagePartIds)
     const hashes: string[] = []
 
-    for (const [hash, partId] of state.hashToMessagePart.entries()) {
+    for (const [hash, partId] of state.hashRegistry.messages.entries()) {
         // Skip if already pruned
         if (prunedPartIds.has(partId)) {
             continue
@@ -490,7 +490,7 @@ export function collectAllReasoningHashes(state: SessionState): string[] {
     const prunedPartIds = new Set(state.prune.reasoningPartIds)
     const hashes: string[] = []
 
-    for (const [hash, partId] of state.hashToReasoningPart.entries()) {
+    for (const [hash, partId] of state.hashRegistry.reasoning.entries()) {
         // Skip if already pruned
         if (prunedPartIds.has(partId)) {
             continue

@@ -1,13 +1,167 @@
 import type { SessionState, WithParts } from "../state"
+import type { Part } from "@opencode-ai/sdk/v2"
 import type { Logger } from "../logger"
 import type { PluginConfig } from "../config"
 import { isMessageCompacted } from "../shared-utils"
 import { generatePartHash } from "../utils/hash"
 
+/**
+ * Filter out step-start and step-finish parts from messages.
+ * These are structural markers that consume tokens but provide no semantic value.
+ * Should be called during context rendering when pruneStepMarkers is enabled.
+ */
+export const filterStepMarkers = (
+    messages: WithParts[],
+    config: PluginConfig,
+    logger: Logger,
+): void => {
+    if (!config.strategies.aggressivePruning?.pruneStepMarkers) {
+        return
+    }
+
+    let totalRemoved = 0
+    for (const msg of messages) {
+        const parts = Array.isArray(msg.parts) ? msg.parts : []
+        const originalLength = parts.length
+
+        msg.parts = parts.filter((part) => {
+            if (part.type === "step-start" || part.type === "step-finish") {
+                return false
+            }
+            return true
+        })
+
+        totalRemoved += originalLength - msg.parts.length
+    }
+
+    if (totalRemoved > 0) {
+        logger.debug(`Filtered ${totalRemoved} step marker parts`)
+    }
+}
+
 const PRUNED_TOOL_ERROR_INPUT_REPLACEMENT = "[input removed due to failed tool call]"
 const PRUNED_QUESTION_INPUT_REPLACEMENT = "[questions removed - see output for user's answers]"
 const PRUNED_MESSAGE_PART_REPLACEMENT = "[Assistant message part removed to save context]"
 const PRUNED_REASONING_REPLACEMENT = "[Reasoning redacted to save context]"
+const PRUNED_FILE_PART_REPLACEMENT = "[File attachment masked to save context]"
+
+/**
+ * Check if a part is a file attachment part.
+ * File parts contain binary or large data that can be masked.
+ */
+function isFilePart(part: Part): boolean {
+    return (
+        part.type === "file" ||
+        (part.type === "tool" &&
+            part.state?.status === "completed" &&
+            (part.state as any).attachments !== undefined)
+    )
+}
+
+/**
+ * Create a breadcrumb for a file part.
+ * Returns a short summary like "[File: image.png, 12KB]" or "[2 attachments]"
+ */
+function createFilePartBreadcrumb(part: Part): string {
+    if (part.type === "file") {
+        const filePart = part as any
+        const name = filePart.name || filePart.url || "unnamed"
+        const size = filePart.size ? `${Math.round(filePart.size / 1024)}KB` : "unknown size"
+        return `[File: ${name}, ${size}]`
+    }
+
+    if (part.type === "tool" && (part.state as any)?.attachments) {
+        const attachments = (part.state as any).attachments
+        const count = Array.isArray(attachments) ? attachments.length : 1
+        return `[${count} file attachment${count > 1 ? "s" : ""}]`
+    }
+
+    return "[file]"
+}
+
+/**
+ * Mask file parts in messages to save context.
+ * Replaces file attachments with breadcrumbs.
+ * Should be called during context rendering when pruneFiles is enabled.
+ */
+export const maskFileParts = (
+    messages: WithParts[],
+    config: PluginConfig,
+    logger: Logger,
+    state: SessionState,
+): void => {
+    if (!config.strategies.aggressivePruning?.pruneFiles) {
+        return
+    }
+
+    let totalMasked = 0
+    for (const msg of messages) {
+        const parts = Array.isArray(msg.parts) ? msg.parts : []
+        for (let i = 0; i < parts.length; i++) {
+            const part = parts[i]
+            if (part && isFilePart(part)) {
+                const breadcrumb = createFilePartBreadcrumb(part)
+                const hash = generatePartHash(JSON.stringify(part))
+
+                // Store the masked part hash in registry
+                state.hashRegistry.fileParts.set(hash, breadcrumb)
+
+                // Replace with breadcrumb part
+                parts[i] = {
+                    type: "text" as const,
+                    text: breadcrumb,
+                } as any
+
+                totalMasked++
+            }
+        }
+    }
+
+    if (totalMasked > 0) {
+        logger.debug(`Masked ${totalMasked} file parts`)
+    }
+}
+
+/** Keys to preserve when stripping tool inputs (metadata only) */
+const INPUT_METADATA_KEYS: Record<string, string[]> = {
+    read: ["filePath", "offset", "limit"],
+    write: ["filePath"],
+    edit: ["filePath"],
+    glob: ["pattern", "path"],
+    grep: ["pattern", "path", "include"],
+    bash: ["command", "description", "workdir"],
+    webfetch: ["url", "format"],
+    websearch: ["query"],
+    task: ["description", "subagent_type"],
+    skill: ["name"],
+    todowrite: [],
+    todoread: [],
+}
+
+/**
+ * Strip tool input to metadata-only object.
+ * Removes verbose content like file contents, keeping only key identifiers.
+ */
+function stripInputToMetadata(
+    tool: string,
+    input: Record<string, unknown>,
+): Record<string, unknown> {
+    const keysToKeep = INPUT_METADATA_KEYS[tool] || Object.keys(input).slice(0, 3)
+    const stripped: Record<string, unknown> = {}
+
+    for (const key of keysToKeep) {
+        if (input[key] !== undefined) {
+            const value = input[key]
+            if (typeof value === "string" && value.length > 100) {
+                stripped[key] = value.slice(0, 97) + "..."
+            } else {
+                stripped[key] = value
+            }
+        }
+    }
+
+    return stripped
+}
 
 /**
  * Generates a deterministic hash for message parts.
@@ -58,7 +212,12 @@ export const injectHashesIntoToolOutputs = (
                 continue
             }
 
-            const hash = state.callIdToHash.get(part.callID)
+            // Skip if already compacted by OpenCode (check time.compacted field)
+            if (part.state.time?.compacted) {
+                continue
+            }
+
+            const hash = state.hashRegistry.callIds.get(part.callID)
             if (!hash) {
                 continue
             }
@@ -127,19 +286,19 @@ export const injectHashesIntoAssistantMessages = (
             }
 
             // Check if we already have a hash for this part
-            let hash = state.messagePartToHash.get(partId)
+            let hash = state.hashRegistry.messagePartIds.get(partId)
             if (!hash) {
                 // Generate new hash from content with collision handling
                 const baseHash = generateMessagePartHash(part.text)
                 let finalHash = baseHash
                 let seq = 2
-                while (state.hashToMessagePart.has(finalHash)) {
+                while (state.hashRegistry.messages.has(finalHash)) {
                     finalHash = `${baseHash}_${seq}`
                     seq++
                 }
                 hash = finalHash
-                state.hashToMessagePart.set(hash, partId)
-                state.messagePartToHash.set(partId, hash)
+                state.hashRegistry.messages.set(hash, partId)
+                state.hashRegistry.messagePartIds.set(partId, hash)
                 logger.debug(`Generated hash ${hash} for assistant text part ${partId}`)
             }
 
@@ -213,19 +372,19 @@ export const injectHashesIntoReasoningBlocks = (
             }
 
             // Check if we already have a hash for this part
-            let hash = state.reasoningPartToHash.get(partId)
+            let hash = state.hashRegistry.reasoningPartIds.get(partId)
             if (!hash) {
                 // Generate new hash from content with collision handling
                 const baseHash = generateReasoningPartHash(part.text)
                 let finalHash = baseHash
                 let seq = 2
-                while (state.hashToReasoningPart.has(finalHash)) {
+                while (state.hashRegistry.reasoning.has(finalHash)) {
                     finalHash = `${baseHash}_${seq}`
                     seq++
                 }
                 hash = finalHash
-                state.hashToReasoningPart.set(hash, partId)
-                state.reasoningPartToHash.set(partId, hash)
+                state.hashRegistry.reasoning.set(hash, partId)
+                state.hashRegistry.reasoningPartIds.set(partId, hash)
                 logger.debug(`Generated hash ${hash} for reasoning part ${partId}`)
             }
 
@@ -361,6 +520,13 @@ export const prune = (
                             part.state.input,
                             status,
                         )
+                        // FIX INPUT LEAK: Strip input to metadata-only
+                        if (part.state.input && typeof part.state.input === "object") {
+                            part.state.input = stripInputToMetadata(
+                                part.tool,
+                                part.state.input as Record<string, unknown>,
+                            )
+                        }
                     }
                 } else if (status === "error") {
                     // Prune error inputs

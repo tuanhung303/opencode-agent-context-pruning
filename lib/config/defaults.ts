@@ -103,5 +103,17 @@ export const DEFAULT_CONFIG: PluginConfig = {
             minTurnsOld: 3,
             maxTokens: 500,
         },
+        aggressivePruning: {
+            pruneSourceUrls: true,
+            pruneFiles: true,
+            pruneSnapshots: true,
+            pruneStepMarkers: true,
+            pruneToolInputs: true,
+            pruneRetryParts: true,
+            pruneUserCodeBlocks: true,
+            aggressiveFilePrune: true,
+            stateQuerySupersede: true,
+            truncateOldErrors: true,
+        },
     },
 }

@@ -22,7 +22,7 @@ export async function executeContextToolRestore(
     const restored: string[] = []
 
     for (const hash of hashes) {
-        const callId = state.hashToCallId.get(hash)
+        const callId = state.hashRegistry.calls.get(hash)
         if (callId) {
             const pruneIndex = state.prune.toolIds.indexOf(callId)
             if (pruneIndex !== -1) {
@@ -53,7 +53,7 @@ export async function executeContextMessageRestore(
     const restored: string[] = []
 
     for (const hash of hashes) {
-        const partId = state.hashToMessagePart.get(hash)
+        const partId = state.hashRegistry.messages.get(hash)
         if (partId) {
             const pruneIndex = state.prune.messagePartIds.indexOf(partId)
             if (pruneIndex !== -1) {

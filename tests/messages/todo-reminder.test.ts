@@ -35,12 +35,37 @@ const createMockConfig = (): PluginConfig =>
 const createMockState = (overrides: Partial<SessionState> = {}): SessionState =>
     ({
         currentTurn: 10,
-        lastTodoTurn: 0,
-        lastReminderTurn: 0,
         todos: [],
         prune: { toolIds: [], messagePartIds: [], reasoningPartIds: [] },
-        hashToCallId: new Map(),
-        callIdToHash: new Map(),
+        hashRegistry: {
+            calls: new Map(),
+            callIds: new Map(),
+            messages: new Map(),
+            messagePartIds: new Map(),
+            reasoning: new Map(),
+            reasoningPartIds: new Map(),
+        },
+        cursors: {
+            todo: {
+                lastTurn: 0,
+                lastReminderTurn: 0,
+                lastWriteCallId: null,
+                lastReadCallId: null,
+            },
+            context: { lastCallId: null },
+            automata: { enabled: false, lastTurn: 0, lastReflectionTurn: 0 },
+            files: { pathToCallIds: new Map() },
+        },
+        stats: {
+            strategyStats: {
+                autoSupersede: {
+                    hash: { count: 0, tokens: 0 },
+                    file: { count: 0, tokens: 0 },
+                    todo: { count: 0, tokens: 0 },
+                    context: { count: 0, tokens: 0 },
+                },
+            },
+        },
         ...overrides,
     }) as unknown as SessionState
 
@@ -72,10 +97,10 @@ describe("todo-reminder", () => {
     describe("injectTodoReminder", () => {
         it("should inject reminder when turns threshold exceeded", () => {
             state.currentTurn = 10
-            state.lastTodoTurn = 0
-            state.lastReminderTurn = 0
+            state.cursors.todo.lastTurn = 0
+            state.cursors.todo.lastReminderTurn = 0
 
-            const result = injectTodoReminder(state, config, messages, logger as any)
+            const result = injectTodoReminder(state, logger as any, config, messages)
 
             expect(result).toBe(true)
             expect(messages.length).toBe(1)
@@ -85,7 +110,7 @@ describe("todo-reminder", () => {
         it("should not inject reminder when disabled", () => {
             config.tools.todoReminder.enabled = false
 
-            const result = injectTodoReminder(state, config, messages, logger as any)
+            const result = injectTodoReminder(state, logger as any, config, messages)
 
             expect(result).toBe(false)
             expect(messages.length).toBe(0)
@@ -94,17 +119,17 @@ describe("todo-reminder", () => {
         it("should not inject reminder when all todos completed", () => {
             state.todos = [{ id: "1", content: "Task 1", status: "completed", priority: "high" }]
 
-            const result = injectTodoReminder(state, config, messages, logger as any)
+            const result = injectTodoReminder(state, logger as any, config, messages)
 
             expect(result).toBe(false)
         })
 
         it("should inject reminder when pending todos exist", () => {
             state.currentTurn = 10
-            state.lastTodoTurn = 0
+            state.cursors.todo.lastTurn = 0
             state.todos = [{ id: "1", content: "Task 1", status: "pending", priority: "high" }]
 
-            const result = injectTodoReminder(state, config, messages, logger as any)
+            const result = injectTodoReminder(state, logger as any, config, messages)
 
             expect(result).toBe(true)
         })
@@ -113,7 +138,7 @@ describe("todo-reminder", () => {
     describe("stuck task detection", () => {
         it("should include stuck task guidance when task in_progress for too long", () => {
             state.currentTurn = 20
-            state.lastTodoTurn = 0
+            state.cursors.todo.lastTurn = 0
             state.todos = [
                 {
                     id: "1",
@@ -124,7 +149,7 @@ describe("todo-reminder", () => {
                 },
             ]
 
-            injectTodoReminder(state, config, messages, logger as any)
+            injectTodoReminder(state, logger as any, config, messages)
 
             expect(messages.length).toBe(1)
             expect(getMessageText(messages[0])).toContain("Stuck Task Detected")
@@ -133,7 +158,7 @@ describe("todo-reminder", () => {
 
         it("should NOT include stuck task guidance when under threshold", () => {
             state.currentTurn = 15
-            state.lastTodoTurn = 0
+            state.cursors.todo.lastTurn = 0
             state.todos = [
                 {
                     id: "1",
@@ -144,7 +169,7 @@ describe("todo-reminder", () => {
                 },
             ]
 
-            injectTodoReminder(state, config, messages, logger as any)
+            injectTodoReminder(state, logger as any, config, messages)
 
             expect(messages.length).toBe(1)
             expect(getMessageText(messages[0])).not.toContain("Stuck Task Detected")
@@ -152,7 +177,7 @@ describe("todo-reminder", () => {
 
         it("should show longest stuck duration when multiple tasks stuck", () => {
             state.currentTurn = 25
-            state.lastTodoTurn = 0
+            state.cursors.todo.lastTurn = 0
             state.todos = [
                 {
                     id: "1",
@@ -170,14 +195,14 @@ describe("todo-reminder", () => {
                 },
             ]
 
-            injectTodoReminder(state, config, messages, logger as any)
+            injectTodoReminder(state, logger as any, config, messages)
 
             expect(getMessageText(messages[0])).toContain("20 turns")
         })
 
         it("should NOT detect stuck task without inProgressSince", () => {
             state.currentTurn = 25
-            state.lastTodoTurn = 0
+            state.cursors.todo.lastTurn = 0
             state.todos = [
                 {
                     id: "1",
@@ -188,7 +213,7 @@ describe("todo-reminder", () => {
                 },
             ]
 
-            injectTodoReminder(state, config, messages, logger as any)
+            injectTodoReminder(state, logger as any, config, messages)
 
             expect(getMessageText(messages[0])).not.toContain("Stuck Task Detected")
         })
@@ -196,7 +221,7 @@ describe("todo-reminder", () => {
         it("should respect custom stuckTaskTurns config", () => {
             config.tools.todoReminder.stuckTaskTurns = 5 // Lower threshold
             state.currentTurn = 15
-            state.lastTodoTurn = 0
+            state.cursors.todo.lastTurn = 0
             state.todos = [
                 {
                     id: "1",
@@ -207,7 +232,7 @@ describe("todo-reminder", () => {
                 },
             ]
 
-            injectTodoReminder(state, config, messages, logger as any)
+            injectTodoReminder(state, logger as any, config, messages)
 
             expect(getMessageText(messages[0])).toContain("Stuck Task Detected")
         })
@@ -216,8 +241,8 @@ describe("todo-reminder", () => {
     describe("reminder deduplication", () => {
         it("should remove old reminder before injecting new one", () => {
             state.currentTurn = 20
-            state.lastTodoTurn = 0
-            state.lastReminderTurn = 10
+            state.cursors.todo.lastTurn = 0
+            state.cursors.todo.lastReminderTurn = 10
 
             // Add existing reminder message
             messages.push(
@@ -228,7 +253,7 @@ describe("todo-reminder", () => {
                 ),
             )
 
-            injectTodoReminder(state, config, messages, logger as any)
+            injectTodoReminder(state, logger as any, config, messages)
 
             // Should have exactly one reminder (old removed, new added)
             const reminderCount = messages.filter((m) =>

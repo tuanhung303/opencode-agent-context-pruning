@@ -72,10 +72,34 @@ export const TurnProtectionSchema = z.object({
     turns: z.number().positive().default(4),
 })
 
+export const AggressivePruningSchema = z.object({
+    /** Prune source-url parts (web search citations) */
+    pruneSourceUrls: z.boolean().default(true),
+    /** Prune file attachment parts (images, documents) */
+    pruneFiles: z.boolean().default(true),
+    /** Prune snapshot parts, keeping only the latest */
+    pruneSnapshots: z.boolean().default(true),
+    /** Filter out step-start/step-finish markers entirely */
+    pruneStepMarkers: z.boolean().default(true),
+    /** Strip verbose tool inputs (write/edit content) on supersede */
+    pruneToolInputs: z.boolean().default(true),
+    /** Auto-prune retry parts after successful completion */
+    pruneRetryParts: z.boolean().default(true),
+    /** Truncate large code blocks in old user messages */
+    pruneUserCodeBlocks: z.boolean().default(true),
+    /** One-file-one-view: any file op supersedes ALL previous ops on same file */
+    aggressiveFilePrune: z.boolean().default(true),
+    /** State query supersede: ls, find, pwd, git status - keep only latest */
+    stateQuerySupersede: z.boolean().default(true),
+    /** Truncate old error outputs to first line only */
+    truncateOldErrors: z.boolean().default(true),
+})
+
 export const StrategiesSchema = z.object({
     purgeErrors: PurgeErrorsSchema,
     truncation: TruncationSchema,
     thinkingCompression: ThinkingCompressionSchema,
+    aggressivePruning: AggressivePruningSchema,
 })
 
 export const PluginConfigSchema = z.object({
@@ -101,5 +125,6 @@ export type PurgeErrors = z.infer<typeof PurgeErrorsSchema>
 export type Truncation = z.infer<typeof TruncationSchema>
 export type ThinkingCompression = z.infer<typeof ThinkingCompressionSchema>
 export type TurnProtection = z.infer<typeof TurnProtectionSchema>
+export type AggressivePruning = z.infer<typeof AggressivePruningSchema>
 export type Strategies = z.infer<typeof StrategiesSchema>
 export type PluginConfig = z.infer<typeof PluginConfigSchema>

@@ -26,6 +26,11 @@ export interface SessionStats {
             hash: { count: number; tokens: number }
             file: { count: number; tokens: number }
             todo: { count: number; tokens: number }
+            context: { count: number; tokens: number }
+            url: { count: number; tokens: number }
+            stateQuery: { count: number; tokens: number }
+            snapshot: { count: number; tokens: number }
+            retry: { count: number; tokens: number }
         }
         purgeErrors: { count: number; tokens: number }
         manualDiscard: {
@@ -69,6 +74,12 @@ export interface TodoItem {
     inProgressSince?: number // Turn when task became in_progress (for stuck task detection)
 }
 
+export type SoftPrunedItem =
+    | ({ type: "tool" } & SoftPrunedEntry)
+    | ({ type: "message-part" } & SoftPrunedMessagePart)
+    | ({ type: "reasoning-part" } & SoftPrunedReasoningPart)
+    | ({ type: "message" } & SoftPrunedMessage)
+
 export interface SessionState {
     sessionId: string | null
     isSubAgent: boolean
@@ -81,35 +92,58 @@ export interface SessionState {
     variant?: string
     lastDiscardStats: LastDiscardStats | null
     lastUserMessageId: string | null
-    // Hash-based discard system
-    hashToCallId: Map<string, string>
-    callIdToHash: Map<string, string>
-    discardHistory: DiscardStats[]
-    // Message part hash system
-    hashToMessagePart: Map<string, string>
-    messagePartToHash: Map<string, string>
-    // Reasoning/thinking block hash system
-    hashToReasoningPart: Map<string, string>
-    reasoningPartToHash: Map<string, string>
-    // Soft prune cache for restore capability
-    softPrunedTools: Map<string, SoftPrunedEntry>
-    softPrunedMessageParts: Map<string, SoftPrunedMessagePart>
-    softPrunedReasoningParts: Map<string, SoftPrunedReasoningPart>
-    // New: message pruning cache for pattern-based discard_msg/distill_msg
-    softPrunedMessages: Map<string, SoftPrunedMessage>
 
-    // Todo reminder tracking
-    lastTodoTurn: number // Turn when todowrite was last called
-    lastReminderTurn: number // Turn when reminder was last injected (0 = never)
-    lastTodowriteCallId: string | null // CallID of last processed todowrite (to avoid reprocessing)
-    lastTodoreadCallId: string | null // CallID of last processed todoread (for supersede)
+    // Hash-based discard system
+    hashRegistry: {
+        calls: Map<string, string>
+        callIds: Map<string, string>
+        messages: Map<string, string>
+        messagePartIds: Map<string, string>
+        reasoning: Map<string, string>
+        reasoningPartIds: Map<string, string>
+        fileParts: Map<string, string>
+    }
+    discardHistory: DiscardStats[]
+
+    // Soft prune cache for restore capability (consolidated)
+    softPrunedItems: Map<string, SoftPrunedItem>
+
+    // Tracking cursors (grouped)
+    cursors: {
+        todo: {
+            lastTurn: number
+            lastReminderTurn: number
+            lastWriteCallId: string | null
+            lastReadCallId: string | null
+        }
+        context: {
+            lastCallId: string | null
+        }
+        automata: {
+            enabled: boolean
+            lastTurn: number
+            lastReflectionTurn: number
+        }
+        files: {
+            pathToCallIds: Map<string, Set<string>>
+        }
+        urls: {
+            urlToCallIds: Map<string, Set<string>>
+        }
+        stateQueries: {
+            queryToCallIds: Map<string, Set<string>>
+        }
+        snapshots: {
+            allCallIds: Set<string>
+            latestCallId: string | null
+        }
+        retries: {
+            // Maps tool+hash to failed callIds awaiting successful retry
+            pendingRetries: Map<string, string[]>
+        }
+    }
+
     todos: TodoItem[] // Current todo list state
-    // File-based supersede tracking
-    filePathToCallIds: Map<string, Set<string>> // Maps file paths to tool call IDs for supersede
-    // Automata Mode tracking
-    automataEnabled: boolean // Whether automata mode is active for this session
-    lastAutomataTurn: number // Turn when automata keyword was last detected
-    lastReflectionTurn: number // Turn when reflection was last injected
 }
 
 export interface SoftPrunedEntry {

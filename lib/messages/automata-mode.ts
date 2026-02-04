@@ -23,7 +23,7 @@ export function detectAutomataActivation(
     messages: WithParts[],
     logger: Logger,
 ): boolean {
-    if (state.automataEnabled) {
+    if (state.cursors.automata.enabled) {
         return true
     }
 
@@ -33,10 +33,10 @@ export function detectAutomataActivation(
 
         const parts = msg.parts || []
         for (const part of parts) {
-            if (part.type === "text" && part.text) {
-                if (part.text.toLowerCase().includes("automata")) {
-                    state.automataEnabled = true
-                    state.lastAutomataTurn = state.currentTurn
+            if (part.type === "text" && (part as any).text) {
+                if ((part as any).text.toLowerCase().includes("automata")) {
+                    state.cursors.automata.enabled = true
+                    state.cursors.automata.lastTurn = state.currentTurn
                     logger.info(`Automata mode activated at turn ${state.currentTurn}`)
                     return true
                 }
@@ -52,19 +52,19 @@ export function detectAutomataActivation(
  */
 export function injectAutomataReflection(
     state: SessionState,
+    logger: Logger,
     config: PluginConfig,
     messages: WithParts[],
-    logger: Logger,
 ): boolean {
-    if (!state.automataEnabled || !config.tools?.automataMode?.enabled) {
+    if (!state.cursors.automata.enabled || !config.tools?.automataMode?.enabled) {
         return false
     }
 
     const initialTurns = config.tools.automataMode.initialTurns ?? 8
     const turnsSinceLastAction =
-        state.lastReflectionTurn > 0
-            ? state.currentTurn - state.lastReflectionTurn
-            : state.currentTurn - state.lastAutomataTurn
+        state.cursors.automata.lastReflectionTurn > 0
+            ? state.currentTurn - state.cursors.automata.lastReflectionTurn
+            : state.currentTurn - state.cursors.automata.lastTurn
 
     if (turnsSinceLastAction < initialTurns) {
         return false
@@ -89,7 +89,7 @@ export function injectAutomataReflection(
     } as WithParts
 
     messages.push(reflectionMessage)
-    state.lastReflectionTurn = state.currentTurn
+    state.cursors.automata.lastReflectionTurn = state.currentTurn
     logger.info(`Injected automata reflection at turn ${state.currentTurn}`)
 
     return true
@@ -123,8 +123,11 @@ export function removeAutomataReflection(
 function isAutomataReflectionMessage(message: WithParts): boolean {
     if (!message.parts) return false
     for (const part of message.parts) {
-        if (part?.type === "text" && part.text) {
-            if (part.text.includes("Strategic Reflection") && part.text.includes("Automata Mode")) {
+        if (part?.type === "text" && (part as any).text) {
+            if (
+                (part as any).text.includes("Strategic Reflection") &&
+                (part as any).text.includes("Automata Mode")
+            ) {
                 return true
             }
         }

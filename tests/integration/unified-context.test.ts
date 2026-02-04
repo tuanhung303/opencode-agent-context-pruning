@@ -61,15 +61,15 @@ describe("Unified Context Tool Integration", () => {
                 messagePartIds: [],
             },
             toolParameters: new Map(),
-            hashToCallId: new Map(),
-            callIdToHash: new Map(),
-            hashToMessagePart: new Map(),
-            messagePartToHash: new Map(),
-            hashToReasoningPart: new Map(),
-            reasoningPartToHash: new Map(),
-            softPrunedTools: new Set(),
-            softPrunedMessageParts: new Set(),
-            softPrunedMessages: new Set(),
+            hashRegistry: {
+                calls: new Map(),
+                callIds: new Map(),
+                messages: new Map(),
+                messagePartIds: new Map(),
+                reasoning: new Map(),
+                reasoningPartIds: new Map(),
+            },
+            softPrunedItems: new Map(),
             discardHistory: [],
             lastCompaction: 0,
             stats: {
@@ -82,6 +82,7 @@ describe("Unified Context Tool Integration", () => {
                         hash: { count: 0, tokens: 0 },
                         file: { count: 0, tokens: 0 },
                         todo: { count: 0, tokens: 0 },
+                        context: { count: 0, tokens: 0 },
                     },
                     purgeErrors: { count: 0, tokens: 0 },
                     manualDiscard: {
@@ -119,8 +120,8 @@ describe("Unified Context Tool Integration", () => {
 
     it("should discard a message by hash and then restore it symmetrically", async () => {
         // Setup: Pre-inject a hash for the message
-        mockState.hashToMessagePart.set("a1b2c3", "msg_1:0")
-        mockState.messagePartToHash.set("msg_1:0", "a1b2c3")
+        mockState.hashRegistry.messages.set("a1b2c3", "msg_1:0")
+        mockState.hashRegistry.messagePartIds.set("msg_1:0", "a1b2c3")
 
         const tool = createContextTool({
             client: mockClient,
@@ -157,13 +158,13 @@ describe("Unified Context Tool Integration", () => {
 
     it("should handle mixed targets (tool hash + message hash) in a single call", async () => {
         // Setup a tool in state
-        mockState.hashToCallId.set("abc123", "call_1")
-        mockState.callIdToHash.set("call_1", "abc123")
+        mockState.hashRegistry.calls.set("abc123", "call_1")
+        mockState.hashRegistry.callIds.set("call_1", "abc123")
         mockState.toolParameters.set("call_1", { tool: "read", turn: 1, parameters: {} } as any)
 
         // Setup a message hash
-        mockState.hashToMessagePart.set("d4e5f6", "msg_1:0")
-        mockState.messagePartToHash.set("msg_1:0", "d4e5f6")
+        mockState.hashRegistry.messages.set("d4e5f6", "msg_1:0")
+        mockState.hashRegistry.messagePartIds.set("msg_1:0", "d4e5f6")
 
         const tool = createContextTool({
             client: mockClient,
@@ -189,12 +190,12 @@ describe("Unified Context Tool Integration", () => {
 
     it("should discard all tools using bulk pattern [tools]", async () => {
         // Setup multiple tools in state (task is protected, so use other tools)
-        mockState.hashToCallId.set("abc123", "call_1")
-        mockState.hashToCallId.set("def456", "call_2")
-        mockState.hashToCallId.set("567890", "call_3")
-        mockState.callIdToHash.set("call_1", "abc123")
-        mockState.callIdToHash.set("call_2", "def456")
-        mockState.callIdToHash.set("call_3", "w_56789")
+        mockState.hashRegistry.calls.set("abc123", "call_1")
+        mockState.hashRegistry.calls.set("def456", "call_2")
+        mockState.hashRegistry.calls.set("567890", "call_3")
+        mockState.hashRegistry.callIds.set("call_1", "abc123")
+        mockState.hashRegistry.callIds.set("call_2", "def456")
+        mockState.hashRegistry.callIds.set("call_3", "w_56789")
         mockState.toolParameters.set("call_1", { tool: "read", turn: 1, parameters: {} } as any)
         mockState.toolParameters.set("call_2", { tool: "grep", turn: 2, parameters: {} } as any)
         mockState.toolParameters.set("call_3", { tool: "write", turn: 3, parameters: {} } as any)
@@ -223,10 +224,10 @@ describe("Unified Context Tool Integration", () => {
 
     it("should distill all tools using bulk pattern [tools] with summary", async () => {
         // Setup multiple tools in state
-        mockState.hashToCallId.set("abc123", "call_1")
-        mockState.hashToCallId.set("def456", "call_2")
-        mockState.callIdToHash.set("call_1", "abc123")
-        mockState.callIdToHash.set("call_2", "def456")
+        mockState.hashRegistry.calls.set("abc123", "call_1")
+        mockState.hashRegistry.calls.set("def456", "call_2")
+        mockState.hashRegistry.callIds.set("call_1", "abc123")
+        mockState.hashRegistry.callIds.set("call_2", "def456")
         mockState.toolParameters.set("call_1", { tool: "read", turn: 1, parameters: {} } as any)
         mockState.toolParameters.set("call_2", { tool: "grep", turn: 2, parameters: {} } as any)
 
@@ -253,10 +254,10 @@ describe("Unified Context Tool Integration", () => {
 
     it("should exclude protected tools from bulk operations", async () => {
         // Setup tools including a protected one
-        mockState.hashToCallId.set("abc123", "call_1")
-        mockState.hashToCallId.set("t_def34", "call_2") // task is protected
-        mockState.callIdToHash.set("call_1", "abc123")
-        mockState.callIdToHash.set("call_2", "t_def34")
+        mockState.hashRegistry.calls.set("abc123", "call_1")
+        mockState.hashRegistry.calls.set("t_def34", "call_2") // task is protected
+        mockState.hashRegistry.callIds.set("call_1", "abc123")
+        mockState.hashRegistry.callIds.set("call_2", "t_def34")
         mockState.toolParameters.set("call_1", { tool: "read", turn: 1, parameters: {} } as any)
         mockState.toolParameters.set("call_2", { tool: "task", turn: 2, parameters: {} } as any)
 
@@ -283,11 +284,10 @@ describe("Unified Context Tool Integration", () => {
 
     it("should handle bulk all pattern [*] for discard", async () => {
         // Setup tools and messages
-        mockState.hashToCallId.set("abc123", "call_1")
-        mockState.callIdToHash.set("call_1", "abc123")
+        mockState.hashRegistry.calls.set("abc123", "call_1")
+        mockState.hashRegistry.callIds.set("call_1", "abc123")
         mockState.toolParameters.set("call_1", { tool: "read", turn: 1, parameters: {} } as any)
-        mockState.hashToMessagePart = new Map()
-        mockState.hashToMessagePart.set("a_xyz12", "msg_1:0")
+        mockState.hashRegistry.messages.set("a_xyz12", "msg_1:0")
 
         const tool = createContextTool({
             client: mockClient,
@@ -320,8 +320,8 @@ describe("Unified Context Tool Integration", () => {
             },
         }
 
-        mockState.hashToCallId.set("abc123", "call_1")
-        mockState.callIdToHash.set("call_1", "abc123")
+        mockState.hashRegistry.calls.set("abc123", "call_1")
+        mockState.hashRegistry.callIds.set("call_1", "abc123")
 
         const tool = createContextTool({
             client: mockClient,

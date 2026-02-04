@@ -1,12 +1,11 @@
 import type { Logger } from "../logger"
-import type { SessionState } from "../state"
+import type { SessionState, ToolParameterEntry } from "../state"
 import {
     formatDistilled,
     formatPrunedItemsList,
     formatStatsHeader,
     formatTokenCount,
 } from "./utils"
-import { ToolParameterEntry } from "../state"
 import { PluginConfig } from "../config"
 
 export type PruneReason =
@@ -17,6 +16,7 @@ export type PruneReason =
     | "duplicate"
     | "distillation"
     | "manual"
+
 export const PRUNE_REASON_LABELS: Record<PruneReason, string> = {
     completion: "Task Complete",
     noise: "Noise Removal",
@@ -27,28 +27,41 @@ export const PRUNE_REASON_LABELS: Record<PruneReason, string> = {
     manual: "Manual Prune",
 }
 
+export interface NotificationContext {
+    state: SessionState
+    reason?: PruneReason
+    pruneToolIds: string[]
+    toolMetadata: Map<string, ToolParameterEntry>
+    workingDirectory: string
+    distillation?: string[]
+    pruneMessagePartIds?: string[]
+    options?: {
+        simplified?: boolean
+    }
+}
+
 function buildMinimalMessage(
     state: SessionState,
-    reason: PruneReason | undefined,
     distillation: string[] | undefined,
     showDistillation: boolean,
 ): string {
     const message = formatStatsHeader(state.stats.strategyStats)
-
     return message + formatDistilled(showDistillation ? distillation : undefined)
 }
 
-function buildDetailedMessage(
-    state: SessionState,
-    reason: PruneReason | undefined,
-    pruneToolIds: string[],
-    toolMetadata: Map<string, ToolParameterEntry>,
-    workingDirectory: string,
-    distillation: string[] | undefined,
-    showDistillation: boolean,
-    simplified: boolean = false,
-    pruneMessagePartIds: string[] = [],
-): string {
+function buildDetailedMessage(ctx: NotificationContext, showDistillation: boolean): string {
+    const {
+        state,
+        reason,
+        pruneToolIds,
+        toolMetadata,
+        workingDirectory,
+        distillation,
+        pruneMessagePartIds = [],
+        options,
+    } = ctx
+    const simplified = options?.simplified ?? false
+
     let message = formatStatsHeader(state.stats.strategyStats)
 
     // Only show pruning details if there are tokens being pruned or distilled
@@ -78,25 +91,16 @@ function buildDetailedMessage(
     return (message + formatDistilled(showDistillation ? distillation : undefined)).trim()
 }
 
-export interface NotifyOptions {
-    simplified?: boolean
-}
-
 export async function sendUnifiedNotification(
     client: any,
     logger: Logger,
     config: PluginConfig,
-    state: SessionState,
+    ctx: NotificationContext,
     sessionId: string,
-    pruneToolIds: string[],
-    toolMetadata: Map<string, ToolParameterEntry>,
-    reason: PruneReason | undefined,
     params: any,
-    workingDirectory: string,
-    distillation?: string[],
-    options?: NotifyOptions,
-    pruneMessagePartIds: string[] = [],
 ): Promise<boolean> {
+    const { pruneToolIds, pruneMessagePartIds = [], state, reason, distillation } = ctx
+
     const hasPruned = pruneToolIds.length > 0 || pruneMessagePartIds.length > 0
     if (!hasPruned) {
         return false
@@ -107,22 +111,11 @@ export async function sendUnifiedNotification(
     }
 
     const showDistillation = config.tools.distill.showDistillation
-    const simplified = options?.simplified ?? false
 
     const message =
         config.pruneNotification === "minimal"
-            ? buildMinimalMessage(state, reason, distillation, showDistillation)
-            : buildDetailedMessage(
-                  state,
-                  reason,
-                  pruneToolIds,
-                  toolMetadata,
-                  workingDirectory,
-                  distillation,
-                  showDistillation,
-                  simplified,
-                  pruneMessagePartIds,
-              )
+            ? buildMinimalMessage(state, distillation, showDistillation)
+            : buildDetailedMessage(ctx, showDistillation)
 
     await sendIgnoredMessage(client, sessionId, message, params, logger)
     return true

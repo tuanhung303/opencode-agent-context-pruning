@@ -334,10 +334,15 @@ describe("groupHashesByToolName", () => {
         const state = createSessionState()
 
         // Set up hash mappings
-        state.hashToCallId.set("abc123", "call_1")
-        state.hashToCallId.set("def456", "call_2")
-        state.hashToCallId.set("123456", "call_3")
-        state.hashToCallId.set("789abc", "call_4")
+        state.hashRegistry.calls.set("abc123", "call_1")
+        state.hashRegistry.calls.set("def456", "call_2")
+        state.hashRegistry.calls.set("123456", "call_3")
+        state.hashRegistry.calls.set("789abc", "call_4")
+
+        state.hashRegistry.callIds.set("call_1", "abc123")
+        state.hashRegistry.callIds.set("call_2", "def456")
+        state.hashRegistry.callIds.set("call_3", "123456")
+        state.hashRegistry.callIds.set("call_4", "789abc")
 
         // Set up tool parameters
         state.toolParameters.set("call_1", { tool: "read", parameters: {}, turn: 1 })
@@ -355,8 +360,10 @@ describe("groupHashesByToolName", () => {
     it("should exclude pruned hashes", () => {
         const state = createSessionState()
 
-        state.hashToCallId.set("abc123", "call_1")
-        state.hashToCallId.set("def456", "call_2")
+        state.hashRegistry.calls.set("abc123", "call_1")
+        state.hashRegistry.calls.set("def456", "call_2")
+        state.hashRegistry.callIds.set("call_1", "abc123")
+        state.hashRegistry.callIds.set("call_2", "def456")
 
         state.toolParameters.set("call_1", { tool: "read", parameters: {}, turn: 1 })
         state.toolParameters.set("call_2", { tool: "read", parameters: {}, turn: 2 })
@@ -378,7 +385,8 @@ describe("groupHashesByToolName", () => {
     it("should skip hashes without tool parameters", () => {
         const state = createSessionState()
 
-        state.hashToCallId.set("abc123", "call_1")
+        state.hashRegistry.calls.set("abc123", "call_1")
+        state.hashRegistry.callIds.set("call_1", "abc123")
         // No toolParameters entry for call_1
 
         const grouped = groupHashesByToolName(state)
@@ -388,7 +396,8 @@ describe("groupHashesByToolName", () => {
     it("should handle special pluralization for bash", () => {
         const state = createSessionState()
 
-        state.hashToCallId.set("b_12345", "call_1")
+        state.hashRegistry.calls.set("b_12345", "call_1")
+        state.hashRegistry.callIds.set("call_1", "b_12345")
         state.toolParameters.set("call_1", { tool: "bash", parameters: {}, turn: 1 })
 
         const grouped = groupHashesByToolName(state)
@@ -398,7 +407,8 @@ describe("groupHashesByToolName", () => {
     it("should handle task tool", () => {
         const state = createSessionState()
 
-        state.hashToCallId.set("t_12345", "call_1")
+        state.hashRegistry.calls.set("t_12345", "call_1")
+        state.hashRegistry.callIds.set("call_1", "t_12345")
         state.toolParameters.set("call_1", { tool: "task", parameters: {}, turn: 1 })
 
         const grouped = groupHashesByToolName(state)

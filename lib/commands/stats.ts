@@ -43,8 +43,16 @@ function formatStatsMessage(
     // Calculate auto-supersede totals
     const autoSupersede = strategyStats.autoSupersede
     const autoSupersedeTotal = {
-        count: autoSupersede.hash.count + autoSupersede.file.count + autoSupersede.todo.count,
-        tokens: autoSupersede.hash.tokens + autoSupersede.file.tokens + autoSupersede.todo.tokens,
+        count:
+            autoSupersede.hash.count +
+            autoSupersede.file.count +
+            autoSupersede.todo.count +
+            autoSupersede.context.count,
+        tokens:
+            autoSupersede.hash.tokens +
+            autoSupersede.file.tokens +
+            autoSupersede.todo.tokens +
+            autoSupersede.context.tokens,
     }
 
     // Calculate manual discard totals (new nested structure)
@@ -96,6 +104,11 @@ function formatStatsMessage(
                 if (autoSupersede.todo.count > 0) {
                     lines.push(
                         `    ✅ todo          ${autoSupersede.todo.count.toString().padStart(3)} prunes, ~${formatTokenCount(autoSupersede.todo.tokens)}`,
+                    )
+                }
+                if (autoSupersede.context.count > 0) {
+                    lines.push(
+                        `    🔧 context       ${autoSupersede.context.count.toString().padStart(3)} prunes, ~${formatTokenCount(autoSupersede.context.tokens)}`,
                     )
                 }
             }
