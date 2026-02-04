@@ -3,7 +3,7 @@
     "name": "@tuanhung303/opencode-acp",
     "version": "2.9.12",
     "type": "module",
-    "description": "OpenCode plugin that optimizes token usage by pruning obsolete tool outputs from conversation context",
+    "description": "Reduce LLM token usage by up to 50% through intelligent context pruning. Auto-supersede duplicates, manually discard/distill content, and preserve critical state.",
     "main": "./dist/index.js",
     "types": "./dist/index.d.ts",
     "scripts": {
@@ -62,6 +62,7 @@
     "files": [
         "dist/",
         "README.md",
+        "NPM.md",
         "LICENSE"
     ]
 }

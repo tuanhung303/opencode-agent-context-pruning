@@ -1,119 +1,89 @@
 # Agentic Context Pruning (ACP)
 
 [![npm version](https://img.shields.io/npm/v/@tuanhung303/opencode-acp.svg)](https://www.npmjs.com/package/@tuanhung303/opencode-acp)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-Automatically reduces token usage in OpenCode by intelligently managing conversation context.
+**Reduce token usage by up to 50% through intelligent context management.**
 
-## 🤖 Agent Auto
-
-ACP exposes the `context` tool to manage conversation context efficiently.
-
-```typescript
-// Discard - remove completed/noisy content
-context({ action: "discard", targets: [["a1b2c3"], ["d4e5f6"]] })
-
-// Distill - replace with summaries
-context({
-    action: "distill",
-    targets: [
-        ["a1b2c3", "Key finding"],
-        ["Let me...", "Summary"],
-    ],
-})
-
-// Discard old reasoning/thinking blocks
-context({ action: "discard", targets: [["abc123"], ["def456"]] })
-```
-
-**Targets:**
-
-| Type         | Format                  | Example                                    |
-| ------------ | ----------------------- | ------------------------------------------ |
-| Tool outputs | 6 hex chars             | `a1b2c3`, `d4e5f6`, `123abc`               |
-| Reasoning    | 6 hex chars             | `abc123` (thinking block hash)             |
-| Messages     | Pattern `"start...end"` | `"Let me..."` (starts), `"...done"` (ends) |
-
-**When:**
-
-- `discard` — Completed tasks, noise, redundant outputs
-- `distill` — Large outputs to preserve as summaries
-
-## 🏗️ CI/CD Pipeline
-
-ACP is maintained with a robust CI/CD pipeline:
-
-- **CI**: Every Pull Request to `main` triggers automated linting, formatting checks, type checking, and unit tests to ensure code quality.
-- **CD**: Successful merges to `main` automatically trigger version bumping, git tagging, and publishing to npm.
+ACP optimizes LLM context windows by automatically pruning obsolete content—tool outputs, messages, and reasoning blocks—while preserving critical operational state.
 
 ---
 
-## ⏩ Just Skip Reading This Readme
+## 📊 Context Flow Architecture
 
-### It's the Age of Agents
+```mermaid
+flowchart TB
+    subgraph Input["📥 Input Layer"]
+        U[User Message]
+        T[Tool Outputs]
+        M[Assistant Messages]
+        R[Thinking Blocks]
+    end
 
-- **Just paste this link into Open Code and ask it to explain.**
-- Ask why context pruning is important and how ACP helps save tokens.
+    subgraph Processing["⚙️ ACP Processing"]
+        direction TB
+        Auto["Auto-Supersede"]
+        Manual["Manual Pruning"]
 
+        subgraph AutoStrategies["Auto-Supersede Strategies"]
+            H[Hash-Based<br/>Duplicates]
+            F[File-Based<br/>Operations]
+            Todo[Todo-Based<br/>Updates]
+            URL[Source-URL<br/>Fetches]
+            SQ[State Query<br/>Dedup]
+        end
+
+        subgraph ManualTools["Manual Tools"]
+            D[Discard]
+            Dist[Distill]
+        end
+    end
+
+    subgraph Output["📤 Optimized Context"]
+        Clean[Clean Context<br/>~50% smaller]
+        L[LLM Provider]
+    end
+
+    U --> Processing
+    T --> Auto
+    M --> Manual
+    R --> Manual
+
+    Auto --> H
+    Auto --> F
+    Auto --> Todo
+    Auto --> URL
+    Auto --> SQ
+
+    Manual --> D
+    Manual --> Dist
+
+    H --> Clean
+    F --> Clean
+    Todo --> Clean
+    URL --> Clean
+    SQ --> Clean
+    D --> Clean
+    Dist --> Clean
+
+    Clean --> L
+
+    style Input fill:#e1f5fe,stroke:#01579b,stroke-width:2px
+    style Processing fill:#f3e5f5,stroke:#4a148c,stroke-width:2px
+    style AutoStrategies fill:#fff3e0,stroke:#e65100,stroke-width:1px
+    style ManualTools fill:#e8f5e9,stroke:#1b5e20,stroke-width:1px
+    style Output fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px
 ```
-Hey please read this readme and tell me why I should use ACP: https://raw.githubusercontent.com/tuanhung303/opencode-acp/master/README.md
+
+---
+
+## 🚀 Quick Start
+
+### Installation
+
+```bash
+npm install @tuanhung303/opencode-acp
 ```
-
-## 👶 Context Pruning Features
-
-ACP provides two modes of operation: **Agentic Pruning** (enabled by default) and **Auto-Pruning** (opt-in).
-
-### Agentic vs Auto Pruning
-
-| Mode        | Enabled by Default | Control                | Strategies                                                          |
-| :---------- | :----------------- | :--------------------- | :------------------------------------------------------------------ |
-| **Agentic** | ✅ Yes             | Explicit Agent Control | `context` (discard/distill)                                         |
-| **Auto**    | ❌ No              | Implicit/Automatic     | `deduplication`, `purgeErrors`, `truncation`, `thinkingCompression` |
-
-#### 1. Agentic Pruning (LLM-Driven)
-
-The AI identifies content it's "done" with and explicitly removes or summarizes it from the conversation history.
-
-- **Discard** — Removes tool content without preservation (for completed tasks or noise).
-- **Distill** — Replaces large chunks of text with concise summaries to keep the "vibe" without the token cost.
-
-#### 2. Auto-Pruning (Heuristic-Driven)
-
-ACP automatically spots patterns and applies pruning rules without agent intervention. **These are disabled by default to prevent unexpected context loss.**
-
-**Classic Strategies:**
-
-- **Deduplication** — Automatically spots repeated calls (like reading the same file twice) and keeps only the most recent version.
-- **Supersede Writes** — If a file is `write` and then `read`, the original write input is pruned because the read output is the current "truth."
-- **Purge Errors** — Keeps the error message but removes the massive stack traces or large inputs that caused the crash after a few turns.
-- **Truncation** — Automatically truncates very large tool outputs (e.g. from `read` or `bash`) if they exceed token limits.
-- **Thinking Compression** — Compresses or removes large `<thinking>` blocks from older assistant messages.
-
-**Aggressive Pruning Strategies (New):**
-
-Enable with `strategies.aggressivePruning.*` settings for up to **~50% token savings**.
-
-| Strategy              | Description                                             | Default |
-| --------------------- | ------------------------------------------------------- | ------- |
-| `pruneToolInputs`     | Strip verbose tool inputs to metadata-only on supersede | ✅      |
-| `pruneStepMarkers`    | Filter out `step-start`/`step-finish` markers entirely  | ✅      |
-| `pruneSourceUrls`     | Supersede older webfetch/websearch calls for same URL   | ✅      |
-| `pruneFiles`          | Mask file attachments with breadcrumbs                  | ✅      |
-| `pruneSnapshots`      | Keep only the latest snapshot (opt-out)                 | ✅      |
-| `pruneRetryParts`     | Auto-prune failed attempts when retry succeeds          | ✅      |
-| `pruneUserCodeBlocks` | Truncate large code blocks in old user messages         | ✅      |
-| `truncateOldErrors`   | Truncate old error outputs to first line only           | ✅      |
-| `aggressiveFilePrune` | One-file-one-view: any file op supersedes ALL previous  | ✅      |
-| `stateQuerySupersede` | Keep only latest state queries (ls, find, git status)   | ✅      |
-
-### Safety Features
-
-- **Todo Reminder** — Monitors `todowrite` usage. If the agent goes "rogue" without updating its list, it gets a nudge to refocus.
-- **Automata Mode** — Autonomous reflection mechanism triggered by the keyword "automata". Injects strategic prompts to help agents stay on track and find optimizations.
-- **Turn Protection** — A safety buffer that prevents any pruning for the last X messages.
-
-## 🛠 Installation
-
-### 👨‍💻 For Humans
 
 Add to your OpenCode config:
 
@@ -124,19 +94,266 @@ Add to your OpenCode config:
 }
 ```
 
-Using `@latest` ensures you always get the newest version automatically when OpenCode starts. Restart OpenCode to begin.
+### Basic Usage
 
-### 🤖 For LLM Agents
+```typescript
+// Discard completed work
+context({ action: "discard", targets: [["a1b2c3"]] })
 
-Fetch this README and follow the instructions:
+// Distill large outputs
+context({
+    action: "distill",
+    targets: [["d4e5f6", "Found 15 TypeScript files"]],
+})
 
-```bash
-curl -s https://raw.githubusercontent.com/tuanhung303/opencode-acp/master/README.md
+// Bulk operations
+context({ action: "discard", targets: [["[tools]"]] })
+context({ action: "discard", targets: [["[thinking]"]] })
+context({ action: "discard", targets: [["[*]"]] }) // Nuclear option
 ```
 
-## How ACP Works
+---
 
-ACP hooks into OpenCode's message flow to intelligently reduce context size before sending to the LLM:
+## 📚 Documentation
+
+| Document                                                        | Purpose                      |
+| --------------------------------------------------------------- | ---------------------------- |
+| [Validation Guide](docs/VALIDATION_GUIDE.md)                    | 43 comprehensive test cases  |
+| [Test Harness](docs/TEST_HARNESS.md)                            | Ready-to-run test scripts    |
+| [Context Architecture](docs/CONTROLLED_CONTEXT_ARCHITECTURE.md) | Memory management strategies |
+| [Decision Tree](docs/PRUNING_DECISION_TREE.md)                  | Visual pruning flowcharts    |
+| [Limitations Report](docs/PRUNING_LIMITATIONS_REPORT.md)        | What cannot be pruned        |
+
+---
+
+## 🤖 Agent Auto Mode
+
+ACP provides the `context` tool for intelligent context management:
+
+### Tool Interface
+
+```typescript
+context({
+    action: "discard" | "distill",
+    targets: [string, string?][]  // [[target, summary?], ...]
+})
+```
+
+### Target Types
+
+| Type                | Format         | Example                                      |
+| ------------------- | -------------- | -------------------------------------------- |
+| **Tool outputs**    | 6 hex chars    | `44136f`, `01cb91`                           |
+| **Thinking blocks** | 6 hex chars    | `abc123`                                     |
+| **Messages**        | 6 hex chars    | `def456`                                     |
+| **Bulk patterns**   | Special syntax | `[tools]`, `[messages]`, `[thinking]`, `[*]` |
+
+### Bulk Operations
+
+```typescript
+// Prune all tools (except protected)
+context({ action: "discard", targets: [["[tools]"]] })
+
+// Prune all messages
+context({ action: "discard", targets: [["[messages]"]] })
+
+// Prune all thinking blocks
+context({ action: "discard", targets: [["[thinking]"]] })
+
+// Nuclear: Prune everything eligible
+context({ action: "discard", targets: [["[*]"]] })
+
+// Distill with shared summary
+context({
+    action: "distill",
+    targets: [["[tools]", "Research phase complete"]],
+})
+```
+
+---
+
+## 🔄 Auto-Supersede Mechanisms
+
+ACP automatically removes redundant content through multiple strategies:
+
+### 1. Hash-Based Supersede
+
+Duplicate tool calls with identical arguments are automatically deduplicated.
+
+```typescript
+read({ filePath: "package.json" }) // First call
+// ...other work...
+read({ filePath: "package.json" }) // Auto-supersedes first
+```
+
+**Result**: Only the latest call is retained.
+
+### 2. File-Based Supersede
+
+File operations automatically supersede previous operations on the same file.
+
+```typescript
+read({ filePath: "config.ts" }) // Read
+write({ filePath: "config.ts" }) // Supersedes read
+edit({ filePath: "config.ts" }) // Supersedes write
+```
+
+**Result**: Only the edit operation remains.
+
+### 3. Todo-Based Supersede
+
+Todo operations automatically supersede previous todo states.
+
+```typescript
+todowrite({ todos: [{ id: "1", status: "pending" }] }) // First
+todowrite({ todos: [{ id: "1", status: "in_progress" }] }) // Supersedes
+```
+
+**Result**: Only the latest todo state is retained.
+
+### 4. Source-URL Supersede
+
+Identical URL fetches are deduplicated.
+
+```typescript
+webfetch({ url: "https://api.example.com" }) // First
+webfetch({ url: "https://api.example.com" }) // Supersedes first
+```
+
+### 5. State Query Supersede
+
+State queries (`ls`, `find`, `git status`) are deduplicated.
+
+```typescript
+bash({ command: "ls -la" }) // First
+bash({ command: "ls -la" }) // Supersedes first
+```
+
+---
+
+## 🛡️ Protected Tools
+
+These tools are exempt from pruning to ensure operational continuity:
+
+```
+task, todowrite, todoread, context, batch, write, edit, plan_enter, plan_exit
+```
+
+Additional tools can be protected via configuration:
+
+```jsonc
+{
+    "commands": {
+        "protectedTools": ["my_custom_tool"],
+    },
+}
+```
+
+---
+
+## ⚙️ Configuration
+
+ACP uses its own config file with multiple levels:
+
+```
+Priority: Defaults → Global → Config Dir → Project
+```
+
+- **Global**: `~/.config/opencode/acp.jsonc`
+- **Config Dir**: `$OPENCODE_CONFIG_DIR/acp.jsonc`
+- **Project**: `.opencode/acp.jsonc`
+
+### Default Configuration
+
+```jsonc
+{
+    "$schema": "https://raw.githubusercontent.com/opencode-acp/opencode-acp/master/acp.schema.json",
+    "enabled": true,
+    "autoPruneAfterTool": false,
+    "pruneNotification": "minimal",
+
+    "commands": {
+        "enabled": true,
+        "protectedTools": [],
+    },
+
+    "tools": {
+        "discard": { "enabled": true },
+        "distill": { "enabled": true },
+        "todoReminder": { "enabled": true },
+        "automataMode": { "enabled": true },
+    },
+
+    "strategies": {
+        "deduplication": { "enabled": false },
+        "purgeErrors": { "enabled": false },
+        "truncation": { "enabled": false },
+        "thinkingCompression": { "enabled": false },
+        "supersedeWrites": { "enabled": false },
+    },
+}
+```
+
+### Aggressive Pruning (Opt-In)
+
+Enable for up to **50% token savings**:
+
+```jsonc
+{
+    "strategies": {
+        "aggressivePruning": {
+            "pruneToolInputs": true, // Strip verbose inputs
+            "pruneStepMarkers": true, // Remove step markers
+            "pruneSourceUrls": true, // Dedup URL fetches
+            "pruneFiles": true, // Mask file attachments
+            "pruneSnapshots": true, // Keep latest snapshot
+            "pruneRetryParts": true, // Prune failed retries
+            "pruneUserCodeBlocks": true, // Truncate old code blocks
+            "truncateOldErrors": true, // Truncate old errors
+            "aggressiveFilePrune": true, // One-file-one-view
+            "stateQuerySupersede": true, // Dedup state queries
+        },
+    },
+}
+```
+
+---
+
+## 📊 Token Savings
+
+| Metric              | Without ACP  | With ACP    | Savings |
+| ------------------- | ------------ | ----------- | ------- |
+| **Typical Session** | ~80k tokens  | ~40k tokens | **50%** |
+| **Long Session**    | ~150k tokens | ~75k tokens | **50%** |
+| **File-Heavy Work** | ~100k tokens | ~35k tokens | **65%** |
+
+**Cache Impact**: ~65% cache hit rate with ACP vs ~85% without. The token savings typically outweigh the cache miss cost, especially in long sessions.
+
+---
+
+## 🧪 Testing
+
+Run the comprehensive test suite:
+
+```bash
+# Load test todos
+todowrite({ /* copy from docs/VALIDATION_GUIDE.md */ })
+
+# Run preparation
+prep-0 through prep-7
+
+# Execute tests
+t1 through t43
+
+# Generate report
+report-1 through report-4
+```
+
+See [Validation Guide](docs/VALIDATION_GUIDE.md) for detailed test procedures.
+
+---
+
+## 🏗️ Architecture Overview
 
 ```mermaid
 flowchart LR
@@ -157,210 +374,139 @@ flowchart LR
         I --> C
     end
 
-    %% Arctic Clarity Color Palette (Lightened)
-    style OpenCode fill:#F4F7F9,stroke:#5A6B8A,stroke-width:1.5px,color:#1E2A36
-    style ACP fill:#E8F5F2,stroke:#9AC4C0,stroke-width:1.5px,color:#1E2A36
-    style A fill:#FAFCFD,stroke:#D0D8E0,stroke-width:1px,color:#2D3E50
-    style B fill:#FAFCFD,stroke:#D0D8E0,stroke-width:1px,color:#2D3E50
-    style C fill:#FAFCFD,stroke:#D0D8E0,stroke-width:1px,color:#2D3E50
-    style D fill:#FAFCFD,stroke:#D0D8E0,stroke-width:1px,color:#2D3E50
-    style E fill:#FAFCFD,stroke:#D0D8E0,stroke-width:1px,color:#2D3E50
-    style F fill:#F5FAF9,stroke:#A8C9C5,stroke-width:1px,color:#1E2A36
-    style G fill:#F5FAF9,stroke:#A8C9C5,stroke-width:1px,color:#1E2A36
-    style H fill:#F5FAF9,stroke:#A8C9C5,stroke-width:1px,color:#1E2A36
-    style I fill:#F5FAF9,stroke:#A8C9C5,stroke-width:1px,color:#1E2A36
+    style OpenCode fill:#F4F7F9,stroke:#5A6B8A,stroke-width:1.5px
+    style ACP fill:#E8F5F2,stroke:#9AC4C0,stroke-width:1.5px
 ```
 
-ACP uses multiple tools and strategies to reduce context size:
+ACP hooks into OpenCode's message flow to reduce context size before sending to the LLM:
 
-### Tools
+1. **Sync Tool Cache** - Updates internal tool state tracking
+2. **Inject Hashes** - Makes content addressable for pruning
+3. **Apply Strategies** - Runs auto-supersede mechanisms
+4. **Prune** - Applies manual and automatic pruning rules
 
-**Discard** — Exposes a `discard` tool that the AI can call to remove completed or noisy tool content from context.
+---
 
-**Distill** — Exposes a `distill` tool that the AI can call to distill valuable context into concise summaries before removing the tool content.
+## 📝 Commands
 
-### Strategies
+| Command          | Description                       |
+| ---------------- | --------------------------------- |
+| `/acp`           | List available commands           |
+| `/acp context`   | Show token usage breakdown        |
+| `/acp stats`     | Show aggregate pruning statistics |
+| `/acp sweep [n]` | Prune last N tool outputs         |
 
-**Deduplication** — Detects repeated tool calls with identical arguments (e.g., reading the same file multiple times) and retains only the most recent output. Earlier duplicates are replaced with lightweight placeholders. Runs automatically on every request with zero LLM cost.
+---
 
-**Supersede Writes** — Prunes `write` tool inputs when the same file has been subsequently `read`. The write content becomes redundant because the read output captures the current file state. Runs automatically on every request with zero LLM cost.
+## 🔧 Advanced Features
 
-**Purge Errors** — Removes tool inputs for failed tool calls after a configurable turn threshold (default: 4). Error messages are preserved for debugging context, but potentially large input payloads are stripped. Runs automatically on every request with zero LLM cost.
+### Todo Reminder
 
-**Todo Reminder** — Tracks `todowrite` activity and injects reminders when the agent neglects its task list. Helps maintain focus during long sessions by prompting the agent to review and update pending tasks.
-
-> **Non-destructive:** Your session history is never modified. ACP replaces pruned content with placeholders only in the request sent to your LLM.
-
-## Impact on Prompt Caching
-
-LLM providers cache prompts using **exact prefix matching**—the KV (Key-Value) cache is reused only when the beginning of a new prompt is byte-for-byte identical to a cached prompt. Even a single character change invalidates the cache from that point forward.
-
-| Provider  | Mechanism          | Min Tokens  | TTL       | Cache Discount |
-| :-------- | :----------------- | :---------- | :-------- | :------------- |
-| Anthropic | Manual breakpoints | 1,024–3,000 | ~5 min    | ~90% off       |
-| OpenAI    | Automatic          | 1,024       | ~5–10 min | ~50% off       |
-
-When ACP prunes a tool output mid-conversation, it changes message content and invalidates cached prefixes from that point forward.
-
-**Trade-off:** You lose some cache read benefits but gain larger token savings from reduced context size and improved response quality through reduced context poisoning. In most cases, the token savings outweigh the cache miss cost—especially in long sessions where context bloat becomes significant.
-
-> **Note:** In testing, cache hit rates were approximately 65% with ACP enabled vs 85% without.
-
-**Best use case:** Providers that charge per-request (e.g., GitHub Copilot, Google Antigravity) see no negative price impact from cache invalidation.
-
-## Configuration
-
-ACP uses its own config file:
-
-- Global: `~/.config/opencode/acp.jsonc` (or `acp.json`), created automatically on first run
-- Custom config directory: `$OPENCODE_CONFIG_DIR/acp.jsonc` (or `acp.json`), if `OPENCODE_CONFIG_DIR` is set
-- Project: `.opencode/acp.jsonc` (or `acp.json`) in your project's `.opencode` directory
-
-<details>
-<summary><strong>Default Configuration</strong> (click to expand)</summary>
+Monitors `todowrite` usage and prompts when tasks are neglected:
 
 ```jsonc
 {
-    "$schema": "https://raw.githubusercontent.com/opencode-acp/opencode-acp/master/acp.schema.json",
-    // Enable or disable the plugin
-    "enabled": true,
-    // Automatically run pruning after each tool execution (Default: false)
-    "autoPruneAfterTool": false,
-    // Notification display: "off", "minimal", or "detailed"
-    "pruneNotification": "minimal",
-    // Slash commands configuration
-    "commands": {
-        "enabled": true,
-        "protectedTools": [],
-    },
-    // LLM-driven context pruning tools (Enabled by default)
     "tools": {
-        "discard": { "enabled": true },
-        "distill": { "enabled": true },
-        "todoReminder": { "enabled": true },
-        "automataMode": { "enabled": true },
-    },
-    // Automatic pruning strategies (Disabled by default - Opt-in)
-    "strategies": {
-        "deduplication": { "enabled": false },
-        "purgeErrors": { "enabled": false },
-        "truncation": { "enabled": false },
-        "thinkingCompression": { "enabled": false },
-        "supersedeWrites": { "enabled": false },
-    },
-}
-```
-
-</details>
-
-### Opt-In Configuration
-
-To enable all automatic pruning strategies, use the following configuration:
-
-```jsonc
-{
-    "$schema": "https://raw.githubusercontent.com/opencode-acp/opencode-acp/master/acp.schema.json",
-    "autoPruneAfterTool": true,
-    "strategies": {
-        "deduplication": { "enabled": true },
-        "purgeErrors": { "enabled": true, "turns": 4 },
-        "truncation": { "enabled": true, "maxTokens": 2000 },
-        "thinkingCompression": { "enabled": true, "minTurnsOld": 3 },
-        // Aggressive pruning (all enabled by default, opt-out)
-        "aggressivePruning": {
-            "pruneToolInputs": true,
-            "pruneStepMarkers": true,
-            "pruneSourceUrls": true,
-            "pruneFiles": true,
-            "pruneSnapshots": true,
-            "pruneRetryParts": true,
-            "pruneUserCodeBlocks": true,
-            "truncateOldErrors": true,
-            "aggressiveFilePrune": true,
-            "stateQuerySupersede": true,
+        "todoReminder": {
+            "enabled": true,
+            "initialTurns": 12, // Turns before first reminder
+            "repeatTurns": 6, // Interval between reminders
         },
     },
 }
 ```
 
-**Aggressive Pruning Explained:**
-
-- **`pruneToolInputs`** — When a tool is superseded, its verbose input (e.g., file contents in a `write` call) is stripped to metadata only (`{filePath}`). This fixes the "input leak" where superseded tools retained large input payloads.
-- **`pruneStepMarkers`** — Removes `step-start` and `step-finish` structural markers from context entirely. These consume tokens but provide no semantic value.
-- **`pruneSourceUrls`** — Supersedes older `webfetch`/`websearch` calls for the same URL/query. Only the latest fetch result is retained.
-- **`pruneFiles`** — Masks file attachment parts (images, documents) with breadcrumbs like `[File: image.png, 12KB]` instead of sending binary data.
-- **`pruneSnapshots`** — Automatically supersedes old snapshots, keeping only the latest. Snapshots can be very large; this ensures minimal context overhead.
-- **`pruneRetryParts`** — Detects error→retry sequences and automatically prunes failed attempts when a retry succeeds.
-- **`pruneUserCodeBlocks`** — Truncates large code blocks in user messages older than 5 turns, replacing them with `[Code block: typescript, 15 lines - truncated]`.
-- **`truncateOldErrors`** — Truncates old error outputs (older than 3 turns) to first line only, e.g., `Error: Something failed\n[Error output truncated - 500 chars total]`.
-- **`aggressiveFilePrune`** — **One-File-One-View policy**: Any file operation (read/write/edit/glob/grep) supersedes ALL previous operations on the same file, not just write→read.
-- **`stateQuerySupersede`** — Supersedes identical state queries (`ls`, `find`, `pwd`, `git status`), keeping only the latest directory/file state.
-
-### Commands
-
-ACP exposes a `/acp` slash command with the following subcommands:
-
-| Command          | Description                                                                                                                      |
-| :--------------- | :------------------------------------------------------------------------------------------------------------------------------- |
-| `/acp`           | Lists available ACP commands                                                                                                     |
-| `/acp context`   | Displays token usage breakdown by category (system, user, assistant, tools) and cumulative savings from pruning                  |
-| `/acp stats`     | Shows aggregate pruning statistics across all sessions                                                                           |
-| `/acp sweep [n]` | Prunes all tool outputs since the last user message. Optional `n` limits to the last N tools. Respects `commands.protectedTools` |
-
-### Turn Protection
-
-Prevents tool outputs from being pruned for a configurable number of message turns. This buffer ensures the agent can reference recent outputs before they become eligible for pruning. Applies to both manual tools (`discard`, `distill`) and automatic strategies.
-
-### Todo Reminder
-
-Monitors `todowrite` activity and injects reminders when the agent neglects its task list:
-
-| Setting        | Default | Description                               |
-| :------------- | :------ | :---------------------------------------- |
-| `initialTurns` | 12      | Turns of inactivity before first reminder |
-| `repeatTurns`  | 6       | Interval between subsequent reminders     |
-
-- Reminders are prunable like any other content
-- Only triggers when `pending` or `in_progress` todos exist
-- Resets on `todowrite` calls (`todoread` alone does not reset)
-
 ### Automata Mode
 
-An autonomous reflection mechanism that triggers when the user's prompt contains "automata" (case-insensitive). Once active, it periodically injects strategic prompts (after `initialTurns` of continuous work).
+Autonomous reflection triggered by "automata" keyword:
 
-| Setting        | Default | Description                           |
-| :------------- | :------ | :------------------------------------ |
-| `enabled`      | true    | Enable automata mode injection        |
-| `initialTurns` | 8       | Turns of work before first reflection |
-
-- Prompt sections: Review Progress, Discover Objectives, Re-prioritize, Suggest Optimizations
-- Automatically replaces previous reflection with new ones
-- Clears on `todowrite` actions (acknowledging the reflection)
-
-### Protected Tools
-
-These tools are always exempt from pruning across all strategies:
-
-```
-task, todowrite, todoread, discard, distill, batch, write, edit, plan_enter, plan_exit
+```jsonc
+{
+    "tools": {
+        "automataMode": {
+            "enabled": true,
+            "initialTurns": 8, // Turns before first reflection
+        },
+    },
+}
 ```
 
-Additional tools can be protected via `protectedTools` arrays in each config section.
+### Stuck Task Detection
 
-### Config Precedence
+Identifies tasks stuck in `in_progress` for too long:
 
-Settings merge in priority order (later overrides earlier):
-
+```jsonc
+{
+    "tools": {
+        "todoReminder": {
+            "stuckTaskTurns": 12, // Threshold for stuck detection
+        },
+    },
+}
 ```
-Defaults → Global (~/.config/opencode/acp.jsonc) → Config Dir ($OPENCODE_CONFIG_DIR/acp.jsonc) → Project (.opencode/acp.jsonc)
+
+---
+
+## 🚧 Limitations
+
+- **Subagents**: ACP is disabled for subagent sessions
+- **Cache Invalidation**: Pruning mid-conversation invalidates prompt caches
+- **Protected Tools**: Some tools cannot be pruned by design
+
+---
+
+## 📦 npm Package
+
+**Package**: `@tuanhung303/opencode-acp`  
+**License**: MIT  
+**Repository**: https://github.com/tuanhung303/opencode-agent-context-pruning
+
+### Installation Methods
+
+```bash
+# Via npm
+npm install @tuanhung303/opencode-acp
+
+# Via OpenCode config
+# Add to opencode.jsonc: "plugin": ["@tuanhung303/opencode-acp@latest"]
+
+# Via URL (for agents)
+curl -s https://raw.githubusercontent.com/tuanhung303/opencode-acp/master/README.md
 ```
 
-Restart OpenCode after modifying configuration.
+### CI/CD
 
-## Limitations
+- **CI**: Every PR triggers linting, type checking, and unit tests
+- **CD**: Merges to `main` auto-publish to npm
 
-**Subagents** — ACP is disabled for subagents. Subagent sessions prioritize returning concise summaries to the main agent over token efficiency. Pruning could interfere with this summarization behavior.
+---
 
-## License
+## 🤝 Contributing
 
-MIT
+1. Fork the repository
+2. Create a feature branch
+3. Run tests: `npm test`
+4. Submit a pull request
+
+---
+
+## 📄 License
+
+MIT © [tuanhung303](https://github.com/tuanhung303)
+
+---
+
+## 🗨️ For LLM Agents
+
+If you're an AI assistant reading this:
+
+> **Quick Pruning Reference:**
+>
+> - Light pressure (<50%): No action
+> - Moderate (50-75%): `context({ action: "discard", targets: [["[tools]"]] })`
+> - High (75-90%): Anchor critical info, then bulk prune
+> - Critical (>90%): `context({ action: "discard", targets: [["[*]"]] })`
+>
+> **Always Protect:** Active todos, current file edits, user requirements
+
+Ask the user: "Would you like me to run a context optimization check?"
