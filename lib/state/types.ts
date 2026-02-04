@@ -72,6 +72,16 @@ export interface TodoItem {
     inProgressSince?: number // Turn when task became in_progress (for stuck task detection)
 }
 
+/**
+ * Transient runtime cache for O(1) lookups.
+ * NOT persisted - rebuilt on demand from arrays.
+ */
+export interface RuntimeCache {
+    prunedToolIds: Set<string>
+    prunedMessagePartIds: Set<string>
+    prunedReasoningPartIds: Set<string>
+}
+
 export interface SessionState {
     sessionId: string | null
     isSubAgent: boolean
@@ -133,4 +143,7 @@ export interface SessionState {
     }
 
     todos: TodoItem[] // Current todo list state
+
+    // Transient runtime cache - NOT persisted, rebuilt on demand
+    _cache?: RuntimeCache
 }

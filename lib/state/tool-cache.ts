@@ -221,7 +221,6 @@ export async function syncToolCache(
                     continue
                 }
 
-
                 state.lastToolPrune =
                     (part.tool === "discard" || part.tool === "distill") &&
                     part.state.status === "completed"
@@ -230,7 +229,6 @@ export async function syncToolCache(
                 if (state.toolParameters.has(part.callID)) {
                     continue
                 }
-
 
                 const allProtectedTools = config.tools.settings.protectedTools
 
@@ -486,10 +484,7 @@ export async function syncToolCache(
                             }
                             state.cursors.retries.pendingRetries.delete(toolHash)
                         }
-                    } else if (
-                        pruneRetryParts &&
-                        part.state?.status === "error"
-                    ) {
+                    } else if (pruneRetryParts && part.state?.status === "error") {
                         // Track failed attempts for potential retry pruning
                         const toolHash = baseHash
                         if (!state.cursors.retries.pendingRetries.has(toolHash)) {
@@ -747,7 +742,7 @@ function trackContextInteractions(
 /**
  * Trim the tool parameters cache to prevent unbounded memory growth.
  * Uses FIFO eviction - removes oldest entries first.
- * Also cleans up corresponding hash mappings to prevent memory leaks.
+ * Also cleans up corresponding hash mappings and cursor references to prevent memory leaks.
  */
 export function trimToolParametersCache(state: SessionState): void {
     if (state.toolParameters.size <= MAX_TOOL_CACHE_SIZE) {
@@ -767,6 +762,75 @@ export function trimToolParametersCache(state: SessionState): void {
         if (hash) {
             state.hashRegistry.calls.delete(hash)
             state.hashRegistry.callIds.delete(callId)
+        }
+
+        // Clean up cursor references to prevent dangling pointers
+        // Files cursor: remove from all path-to-callId mappings
+        for (const [path, callIds] of state.cursors.files.pathToCallIds) {
+            if (callIds.has(callId)) {
+                callIds.delete(callId)
+                if (callIds.size === 0) {
+                    state.cursors.files.pathToCallIds.delete(path)
+                }
+            }
+        }
+
+        // URLs cursor: remove from all url-to-callId mappings
+        for (const [url, callIds] of state.cursors.urls.urlToCallIds) {
+            if (callIds.has(callId)) {
+                callIds.delete(callId)
+                if (callIds.size === 0) {
+                    state.cursors.urls.urlToCallIds.delete(url)
+                }
+            }
+        }
+
+        // State queries cursor: remove from all query-to-callId mappings
+        for (const [query, callIds] of state.cursors.stateQueries.queryToCallIds) {
+            if (callIds.has(callId)) {
+                callIds.delete(callId)
+                if (callIds.size === 0) {
+                    state.cursors.stateQueries.queryToCallIds.delete(query)
+                }
+            }
+        }
+
+        // Snapshots cursor: remove from Set and clear latestCallId if needed
+        if (state.cursors.snapshots.allCallIds.has(callId)) {
+            state.cursors.snapshots.allCallIds.delete(callId)
+            if (state.cursors.snapshots.latestCallId === callId) {
+                // Find the next latest snapshot (most recent in Set)
+                const remainingSnapshots = Array.from(state.cursors.snapshots.allCallIds)
+                const nextLatest: string | null =
+                    remainingSnapshots.length > 0
+                        ? (remainingSnapshots[remainingSnapshots.length - 1] ?? null)
+                        : null
+                state.cursors.snapshots.latestCallId = nextLatest
+            }
+        }
+
+        // Context cursor: clear lastCallId if it was evicted
+        if (state.cursors.context.lastCallId === callId) {
+            state.cursors.context.lastCallId = null
+        }
+
+        // Todo cursor: clear last write/read call IDs if they were evicted
+        if (state.cursors.todo.lastWriteCallId === callId) {
+            state.cursors.todo.lastWriteCallId = null
+        }
+        if (state.cursors.todo.lastReadCallId === callId) {
+            state.cursors.todo.lastReadCallId = null
+        }
+
+        // Retries cursor: remove from all pending retry arrays
+        for (const [toolHash, failedCallIds] of state.cursors.retries.pendingRetries) {
+            const index = failedCallIds.indexOf(callId)
+            if (index !== -1) {
+                failedCallIds.splice(index, 1)
+                if (failedCallIds.length === 0) {
+                    state.cursors.retries.pendingRetries.delete(toolHash)
+                }
+            }
         }
     }
 }
