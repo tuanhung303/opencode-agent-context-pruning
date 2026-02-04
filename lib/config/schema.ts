@@ -51,10 +51,56 @@ export const PurgeErrorsSchema = z.object({
     protectedTools: z.array(z.string()).default([]),
 })
 
+/**
+ * Pruning preset definitions.
+ * - compact: Maximum cleanup for long sessions
+ * - balanced: Default - good for most use cases
+ * - verbose: Minimal cleanup for debugging/audit
+ */
+export const PRUNING_PRESETS = {
+    compact: {
+        pruneSourceUrls: true,
+        pruneFiles: true,
+        pruneSnapshots: true,
+        pruneStepMarkers: true,
+        pruneToolInputs: true,
+        pruneRetryParts: true,
+        pruneUserCodeBlocks: true,
+        aggressiveFilePrune: true,
+        stateQuerySupersede: true,
+        truncateOldErrors: true,
+    },
+    balanced: {
+        pruneSourceUrls: true,
+        pruneFiles: true,
+        pruneSnapshots: true,
+        pruneStepMarkers: true,
+        pruneToolInputs: true,
+        pruneRetryParts: true,
+        pruneUserCodeBlocks: false,
+        aggressiveFilePrune: true,
+        stateQuerySupersede: true,
+        truncateOldErrors: false,
+    },
+    verbose: {
+        pruneSourceUrls: false,
+        pruneFiles: false,
+        pruneSnapshots: false,
+        pruneStepMarkers: false,
+        pruneToolInputs: false,
+        pruneRetryParts: false,
+        pruneUserCodeBlocks: false,
+        aggressiveFilePrune: false,
+        stateQuerySupersede: false,
+        truncateOldErrors: false,
+    },
+} as const
 
-
+export type PruningPreset = keyof typeof PRUNING_PRESETS
 
 export const AggressivePruningSchema = z.object({
+    /** Preset to use as base configuration. Individual flags override preset values. */
+    preset: z.enum(["compact", "balanced", "verbose"]).optional(),
     /** Prune source-url parts (web search citations) */
     pruneSourceUrls: z.boolean().default(true),
     /** Prune file attachment parts (images, documents) */
