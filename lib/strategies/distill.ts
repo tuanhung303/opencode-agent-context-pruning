@@ -120,7 +120,16 @@ export async function executeContextToolDistill(
     hashes: string[],
     distillation: string[],
 ): Promise<string> {
-    const { state, logger, config } = ctx
+    const { client, state, logger, config } = ctx
+    const sessionId = toolCtx.sessionID
+
+    // Always fetch messages for proper state sync (required for thinking mode API compatibility)
+    const messagesResponse = await client.session.messages({
+        path: { id: sessionId },
+    })
+    const messages: WithParts[] = (messagesResponse.data || messagesResponse) as WithParts[]
+
+    await ensureSessionInitialized(client, state, sessionId, logger, messages)
 
     const callIds: string[] = []
     const validHashes: string[] = []
@@ -149,14 +158,14 @@ export async function executeContextToolDistill(
 
     if (validHashes.length === 0) {
         // Send no-op notification showing attempted hashes
-        const currentParams = getCurrentParams(state, [], logger)
+        const currentParams = getCurrentParams(state, messages, logger)
         await sendAttemptedNotification(
-            ctx.client,
+            client,
             logger,
             config,
             "distill",
             hashes,
-            toolCtx.sessionID,
+            sessionId,
             currentParams,
             "tool",
         )
@@ -173,10 +182,19 @@ export async function executeContextToolDistill(
  */
 export async function executeContextMessageDistill(
     ctx: PruneToolContext,
-    _toolCtx: { sessionID: string },
+    toolCtx: { sessionID: string },
     entries: Array<[string, string]>,
 ): Promise<string> {
-    const { state, logger } = ctx
+    const { client, state, logger, config } = ctx
+    const sessionId = toolCtx.sessionID
+
+    // Always fetch messages for proper state sync (required for thinking mode API compatibility)
+    const messagesResponse = await client.session.messages({
+        path: { id: sessionId },
+    })
+    const messages: WithParts[] = (messagesResponse.data || messagesResponse) as WithParts[]
+
+    await ensureSessionInitialized(client, state, sessionId, logger, messages)
 
     let distilledCount = 0
 
@@ -193,13 +211,13 @@ export async function executeContextMessageDistill(
         }
     }
 
-    const currentParams = getCurrentParams(state, [], logger)
+    const currentParams = getCurrentParams(state, messages, logger)
     const hashes = entries.map((e) => e[0])
 
     await sendUnifiedNotification(
-        ctx.client,
+        client,
         logger,
-        ctx.config,
+        config,
         {
             state,
             pruneToolIds: [],
@@ -211,7 +229,7 @@ export async function executeContextMessageDistill(
             attemptedTargets: hashes,
             options: { simplified: true },
         },
-        _toolCtx.sessionID,
+        sessionId,
         currentParams,
     )
 
@@ -241,6 +259,14 @@ export async function executeContextReasoningDistill(
 ): Promise<string> {
     const { state, logger, config, client } = ctx
     const sessionId = toolCtx.sessionID
+
+    // Always fetch messages for proper state sync (required for thinking mode API compatibility)
+    const messagesResponse = await client.session.messages({
+        path: { id: sessionId },
+    })
+    const messages: WithParts[] = (messagesResponse.data || messagesResponse) as WithParts[]
+
+    await ensureSessionInitialized(client, state, sessionId, logger, messages)
 
     let distilledCount = 0
     let tokensSaved = 0
@@ -279,7 +305,7 @@ export async function executeContextReasoningDistill(
     }
 
     // Send notification for consistent status display
-    const currentParams = getCurrentParams(state, [], logger)
+    const currentParams = getCurrentParams(state, messages, logger)
     // Build reasoning part IDs list for notification (using "msgId:partIndex" format)
     const reasoningPartIds = processedHashes
         .map((hash) => state.hashRegistry.reasoning.get(hash))
