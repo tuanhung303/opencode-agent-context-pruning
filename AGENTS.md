@@ -31,3 +31,15 @@
 ```bash
 /acp stats
 ```
+
+## Status Bar Behavior
+
+**The status summary** (`「 💬 15(7.5K) ▼ + 🧠 8(16K) ▼ + ⚙️ 39(83.1K) ▼ 」`) is **ephemeral**:
+
+- ✅ **Appears** after successful `context()` prune/distill operations
+- ❌ **Disappears** after context compaction (normal behavior)
+- 🔍 **Check on demand** with `/acp stats` or `/acp budget`
+
+**Note:** If status never appears, check `pruneNotification` is not set to `"off"` in config.
+
+See [`docs/STATUS_BAR_BEHAVIOR.md`](docs/STATUS_BAR_BEHAVIOR.md) for full details.
