@@ -4,6 +4,7 @@ import type { SessionState, WithParts } from "../state"
 import { buildToolIdList } from "../messages/utils"
 import { getFilePathFromParameters, isProtectedFilePath } from "../protected-file-patterns"
 import { calculateTokensSaved } from "./utils"
+import { getPruneCache } from "../state/utils"
 
 /**
  * Purge Errors strategy - prunes tool inputs for tools that errored
@@ -29,9 +30,9 @@ export const purgeErrors = (
         return
     }
 
-    // Filter out IDs already pruned
-    const alreadyPruned = new Set(state.prune.toolIds)
-    const unprunedIds = allToolIds.filter((id) => !alreadyPruned.has(id))
+    // Filter out IDs already pruned - use cached Set for O(1) lookup
+    const { prunedToolIds } = getPruneCache(state)
+    const unprunedIds = allToolIds.filter((id) => !prunedToolIds.has(id))
 
     if (unprunedIds.length === 0) {
         return
