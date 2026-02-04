@@ -17,8 +17,6 @@ vi.mock("../lib/strategies", () => ({
     deduplicate: vi.fn(),
     supersedeWrites: vi.fn(),
     purgeErrors: vi.fn(),
-    truncateLargeOutputs: vi.fn(),
-    compressThinkingBlocks: vi.fn(),
 }))
 
 vi.mock("../lib/messages", () => ({
@@ -72,14 +70,9 @@ const createMockConfig = (): PluginConfig => ({
     enabled: true,
     debug: false,
     pruneNotification: "minimal",
-    autoPruneAfterTool: true,
     commands: {
         enabled: true,
         protectedTools: [],
-    },
-    turnProtection: {
-        enabled: false,
-        turns: 4,
     },
     protectedFilePatterns: [],
     tools: {
@@ -90,7 +83,6 @@ const createMockConfig = (): PluginConfig => ({
         },
         discard: {
             enabled: true,
-            fullyForget: false,
         },
         distill: {
             enabled: true,
@@ -112,19 +104,6 @@ const createMockConfig = (): PluginConfig => ({
             enabled: true,
             turns: 4,
             protectedTools: [],
-        },
-        truncation: {
-            enabled: true,
-            maxTokens: 2000,
-            headRatio: 0.4,
-            tailRatio: 0.4,
-            minTurnsOld: 2,
-            targetTools: ["read", "grep", "glob", "bash"],
-        },
-        thinkingCompression: {
-            enabled: true,
-            minTurnsOld: 3,
-            maxTokens: 500,
         },
     },
 })
@@ -156,8 +135,6 @@ const createMockState = (): SessionState => ({
                 tool: { count: 0, tokens: 0 },
             },
             distillation: { count: 0, tokens: 0 },
-            truncation: { count: 0, tokens: 0 },
-            thinkingCompression: { count: 0, tokens: 0 },
         },
     },
     toolParameters: new Map(),
@@ -175,7 +152,6 @@ const createMockState = (): SessionState => ({
         reasoningPartIds: new Map(),
     },
     discardHistory: [],
-    softPrunedItems: new Map(),
     cursors: {
         todo: {
             lastTurn: 0,

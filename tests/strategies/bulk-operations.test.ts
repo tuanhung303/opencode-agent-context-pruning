@@ -17,10 +17,6 @@ const createMockLogger = () => ({
 const createMockConfig = (overrides?: Partial<PluginConfig>): PluginConfig =>
     ({
         enabled: true,
-        turnProtection: {
-            enabled: true,
-            turns: 1,
-        },
         tools: {
             settings: {
                 protectedTools: ["question", "todowrite"],
@@ -68,8 +64,6 @@ const createMockState = (currentTurn: number = 5): SessionState =>
                     tool: { count: 0, tokens: 0 },
                 },
                 distillation: { count: 0, tokens: 0 },
-                truncation: { count: 0, tokens: 0 },
-                thinkingCompression: { count: 0, tokens: 0 },
             },
         },
         lastDiscardStats: null,
@@ -77,7 +71,6 @@ const createMockState = (currentTurn: number = 5): SessionState =>
         lastCompaction: 0,
         lastUserMessageId: null,
         discardHistory: [],
-        softPrunedItems: new Map(),
         cursors: {
             todo: {
                 lastWriteCallId: null,

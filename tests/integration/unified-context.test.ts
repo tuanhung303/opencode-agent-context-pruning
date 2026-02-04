@@ -49,7 +49,7 @@ describe("Unified Context Tool Integration", () => {
                 settings: {
                     protectedTools: ["task"],
                 },
-                discard: { enabled: true, fullyForget: false },
+                discard: { enabled: true },
                 distill: { enabled: true },
             },
         } as any
@@ -69,7 +69,6 @@ describe("Unified Context Tool Integration", () => {
                 reasoning: new Map(),
                 reasoningPartIds: new Map(),
             },
-            softPrunedItems: new Map(),
             discardHistory: [],
             lastCompaction: 0,
             stats: {
@@ -91,8 +90,6 @@ describe("Unified Context Tool Integration", () => {
                         tool: { count: 0, tokens: 0 },
                     },
                     distillation: { count: 0, tokens: 0 },
-                    truncation: { count: 0, tokens: 0 },
-                    thinkingCompression: { count: 0, tokens: 0 },
                 },
             },
         } as any
@@ -118,7 +115,7 @@ describe("Unified Context Tool Integration", () => {
         mockToolCtx = { sessionID: "test-session" }
     })
 
-    it("should discard a message by hash and then restore it symmetrically", async () => {
+    it("should discard a message by hash", async () => {
         // Setup: Pre-inject a hash for the message
         mockState.hashRegistry.messages.set("a1b2c3", "msg_1:0")
         mockState.hashRegistry.messagePartIds.set("msg_1:0", "a1b2c3")
@@ -131,7 +128,7 @@ describe("Unified Context Tool Integration", () => {
             workingDirectory: "/test",
         })
 
-        // 1. Discard by hash
+        // Discard by hash
         const discardResult = await tool.execute(
             {
                 action: "discard",
@@ -142,18 +139,6 @@ describe("Unified Context Tool Integration", () => {
 
         expect(discardResult).toContain("Discarded 1 message(s)")
         expect(mockState.prune.messagePartIds).toContain("msg_1:0")
-
-        // 2. Restore by hash
-        const restoreResult = await tool.execute(
-            {
-                action: "restore",
-                targets: [["a1b2c3"]],
-            },
-            mockToolCtx,
-        )
-
-        expect(restoreResult).toContain("Restored 1 message(s)")
-        expect(mockState.prune.messagePartIds).not.toContain("msg_1:0")
     })
 
     it("should handle mixed targets (tool hash + message hash) in a single call", async () => {
@@ -308,38 +293,5 @@ describe("Unified Context Tool Integration", () => {
         expect(result).toContain("discard")
         expect(mockState.prune.toolIds).toContain("call_1")
         expect(mockState.prune.messagePartIds).toContain("msg_1:0")
-    })
-
-    it("should reject restore when fullyForget is enabled", async () => {
-        // Setup a tool with fullyForget enabled
-        const fullyForgetConfig = {
-            ...mockConfig,
-            tools: {
-                ...mockConfig.tools,
-                discard: { enabled: true, fullyForget: true },
-            },
-        }
-
-        mockState.hashRegistry.calls.set("abc123", "call_1")
-        mockState.hashRegistry.callIds.set("call_1", "abc123")
-
-        const tool = createContextTool({
-            client: mockClient,
-            state: mockState,
-            logger: mockLogger,
-            config: fullyForgetConfig,
-            workingDirectory: "/test",
-        })
-
-        const restoreResult = await tool.execute(
-            {
-                action: "restore",
-                targets: [["abc123"]],
-            },
-            mockToolCtx,
-        )
-
-        expect(restoreResult).toContain("Cannot restore")
-        expect(restoreResult).toContain("fullyForget")
     })
 })

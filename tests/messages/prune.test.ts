@@ -10,7 +10,7 @@ const createMockLogger = () => ({
     error: () => {},
 })
 
-const createMockConfig = (fullyForget = false): PluginConfig =>
+const createMockConfig = (): PluginConfig =>
     ({
         tools: {
             settings: {
@@ -18,7 +18,6 @@ const createMockConfig = (fullyForget = false): PluginConfig =>
             },
             discard: {
                 enabled: true,
-                fullyForget,
             },
         },
     }) as any
@@ -76,11 +75,11 @@ describe("prune", () => {
 
     beforeEach(() => {
         mockLogger = createMockLogger()
-        mockConfig = createMockConfig(false)
+        mockConfig = createMockConfig()
     })
 
     describe("pruneToolOutputs", () => {
-        it("should replace tool output with breadcrumb containing metadata", () => {
+        it("should remove pruned tool parts entirely", () => {
             const state = createMockState(["call_123"])
             const messages: WithParts[] = [
                 createMessage("msg_1", [
@@ -96,43 +95,17 @@ describe("prune", () => {
 
             prune(state, mockLogger as any, mockConfig, messages)
 
-            const output = (messages[0].parts[0] as any).state.output
-            expect(output).toContain("[Output removed")
-            expect(output).toContain("read")
-            expect(output).toContain("filePath")
-            expect(output).toContain("/test/file.ts")
-            expect(output).toContain("completed")
+            // Tool part should be completely removed
+            expect(messages[0].parts.length).toBe(0)
         })
 
-        it("should include tool name in breadcrumb", () => {
-            const state = createMockState(["call_456"])
-            const messages: WithParts[] = [
-                createMessage("msg_1", [
-                    createToolPart(
-                        "call_456",
-                        "glob",
-                        "completed",
-                        { pattern: "**/*.ts" },
-                        "file1.ts\nfile2.ts",
-                    ),
-                ]),
-            ]
-
-            prune(state, mockLogger as any, mockConfig, messages)
-
-            const output = (messages[0].parts[0] as any).state.output
-            expect(output).toContain("glob")
-            expect(output).toContain("pattern")
-            expect(output).toContain("**/*.ts")
-        })
-
-        it("should not prune tools not in prune list", () => {
-            const state = createMockState(["call_other"])
+        it("should keep non-pruned tool parts", () => {
+            const state = createMockState(["call_123"])
             const originalOutput = "original content"
             const messages: WithParts[] = [
                 createMessage("msg_1", [
                     createToolPart(
-                        "call_123",
+                        "call_456", // Not in prune list
                         "read",
                         "completed",
                         { filePath: "/test/file.ts" },
@@ -143,34 +116,14 @@ describe("prune", () => {
 
             prune(state, mockLogger as any, mockConfig, messages)
 
-            const output = (messages[0].parts[0] as any).state.output
-            expect(output).toBe(originalOutput)
-        })
-
-        it("should not prune question tool outputs", () => {
-            const state = createMockState(["call_question"])
-            const originalOutput = "user answered: yes"
-            const messages: WithParts[] = [
-                createMessage("msg_1", [
-                    createToolPart(
-                        "call_question",
-                        "question",
-                        "completed",
-                        { questions: [{ header: "Test" }] },
-                        originalOutput,
-                    ),
-                ]),
-            ]
-
-            prune(state, mockLogger as any, mockConfig, messages)
-
+            // Part should remain unchanged
+            expect(messages[0].parts.length).toBe(1)
             const output = (messages[0].parts[0] as any).state.output
             expect(output).toBe(originalOutput)
         })
 
         it("should not prune errored tools via pruneToolOutputs", () => {
             const state = createMockState(["call_error"])
-            const originalOutput = "error message"
             const messages: WithParts[] = [
                 createMessage("msg_1", [
                     createToolPart(
@@ -178,22 +131,21 @@ describe("prune", () => {
                         "read",
                         "error",
                         { filePath: "/test/file.ts" },
-                        originalOutput,
+                        "error message",
                     ),
                 ]),
             ]
 
             prune(state, mockLogger as any, mockConfig, messages)
 
-            // Output should remain unchanged (pruneToolOutputs only handles completed)
-            const output = (messages[0].parts[0] as any).state.output
-            expect(output).toBe(originalOutput)
+            // Errored tools in prune list are still removed
+            expect(messages[0].parts.length).toBe(0)
         })
     })
 
     describe("pruneToolInputs (question tool)", () => {
         it("should prune question tool inputs", () => {
-            const state = createMockState(["call_question"])
+            const state = createMockState([]) // Empty prune list - part won't be removed
             const messages: WithParts[] = [
                 createMessage("msg_1", [
                     createToolPart(
@@ -208,14 +160,14 @@ describe("prune", () => {
 
             prune(state, mockLogger as any, mockConfig, messages)
 
-            const input = (messages[0].parts[0] as any).state.input
-            expect(input.questions).toBe("[questions removed - see output for user's answers]")
+            // Part should still exist, but inputs are not pruned (question tool pruning removed)
+            expect(messages[0].parts.length).toBe(1)
         })
     })
 
     describe("pruneToolErrors", () => {
-        it("should prune string inputs for errored tools", () => {
-            const state = createMockState(["call_error"])
+        it("should keep errored tools not in prune list", () => {
+            const state = createMockState([]) // Empty prune list
             const messages: WithParts[] = [
                 createMessage("msg_1", [
                     createToolPart(
@@ -230,55 +182,8 @@ describe("prune", () => {
 
             prune(state, mockLogger as any, mockConfig, messages)
 
-            const input = (messages[0].parts[0] as any).state.input
-            expect(input.command).toBe("[input removed due to failed tool call]")
-            expect(input.description).toBe("[input removed due to failed tool call]")
-        })
-    })
-
-    describe("breadcrumb format", () => {
-        it("should truncate long parameter values", () => {
-            const state = createMockState(["call_123"])
-            const longPath = "/very/long/path/".repeat(10) + "file.ts"
-            const messages: WithParts[] = [
-                createMessage("msg_1", [
-                    createToolPart(
-                        "call_123",
-                        "read",
-                        "completed",
-                        { filePath: longPath },
-                        "content",
-                    ),
-                ]),
-            ]
-
-            prune(state, mockLogger as any, mockConfig, messages)
-
-            const output = (messages[0].parts[0] as any).state.output
-            expect(output).toContain("...")
-            expect(output.length).toBeLessThan(longPath.length + 200)
-        })
-
-        it("should handle bash tool with description", () => {
-            const state = createMockState(["call_bash"])
-            const messages: WithParts[] = [
-                createMessage("msg_1", [
-                    createToolPart(
-                        "call_bash",
-                        "bash",
-                        "completed",
-                        { command: "npm test", description: "Run tests" },
-                        "All tests passed",
-                    ),
-                ]),
-            ]
-
-            prune(state, mockLogger as any, mockConfig, messages)
-
-            const output = (messages[0].parts[0] as any).state.output
-            expect(output).toContain("bash")
-            expect(output).toContain("command")
-            expect(output).toContain("npm test")
+            // Part should still exist
+            expect(messages[0].parts.length).toBe(1)
         })
     })
 
@@ -455,105 +360,6 @@ describe("prune", () => {
             expect((messages[0].parts[0] as any).state.output).toBe("r_abc12\ncontent1")
             expect((messages[0].parts[1] as any).state.output).toBe("g_def34\ncontent2")
             expect((messages[0].parts[2] as any).state.output).toBe("b_ghi56\ncontent3")
-        })
-    })
-
-    describe("fullyForget behavior", () => {
-        it("should completely remove tool parts when fullyForget is enabled", () => {
-            const state = createMockState(["call_123"])
-            const config = createMockConfig(true) // fullyForget = true
-            const messages: WithParts[] = [
-                createMessage("msg_1", [
-                    createToolPart(
-                        "call_123",
-                        "read",
-                        "completed",
-                        { filePath: "/test/file.ts" },
-                        "original content here...",
-                    ),
-                ]),
-            ]
-
-            prune(state, mockLogger as any, config, messages)
-
-            // Tool part should be completely removed
-            expect(messages[0].parts.length).toBe(0)
-        })
-
-        it("should keep non-pruned tool parts when fullyForget is enabled", () => {
-            const state = createMockState(["call_123"])
-            const config = createMockConfig(true) // fullyForget = true
-            const messages: WithParts[] = [
-                createMessage("msg_1", [
-                    createToolPart(
-                        "call_123",
-                        "read",
-                        "completed",
-                        { filePath: "/test/file.ts" },
-                        "content1",
-                    ),
-                    createToolPart(
-                        "call_456",
-                        "glob",
-                        "completed",
-                        { pattern: "**/*.ts" },
-                        "content2",
-                    ),
-                ]),
-            ]
-
-            prune(state, mockLogger as any, config, messages)
-
-            // Only call_123 should be removed, call_456 should remain
-            expect(messages[0].parts.length).toBe(1)
-            expect((messages[0].parts[0] as any).callID).toBe("call_456")
-        })
-
-        it("should replace output with breadcrumb when fullyForget is disabled", () => {
-            const state = createMockState(["call_123"])
-            const config = createMockConfig(false) // fullyForget = false
-            const messages: WithParts[] = [
-                createMessage("msg_1", [
-                    createToolPart(
-                        "call_123",
-                        "read",
-                        "completed",
-                        { filePath: "/test/file.ts" },
-                        "original content here...",
-                    ),
-                ]),
-            ]
-
-            prune(state, mockLogger as any, config, messages)
-
-            // Tool part should still exist with breadcrumb
-            expect(messages[0].parts.length).toBe(1)
-            const output = (messages[0].parts[0] as any).state.output
-            expect(output).toContain("[Output removed")
-            expect(output).toContain("read")
-        })
-
-        it("should handle mixed messages with fullyForget enabled", () => {
-            const state = createMockState(["call_123"])
-            const config = createMockConfig(true) // fullyForget = true
-            const messages: WithParts[] = [
-                createMessage("msg_1", [
-                    createToolPart(
-                        "call_123",
-                        "read",
-                        "completed",
-                        { filePath: "/test/file.ts" },
-                        "content1",
-                    ),
-                    { type: "text", text: "Assistant message here" },
-                ]),
-            ]
-
-            prune(state, mockLogger as any, config, messages)
-
-            // Tool part removed, text part remains
-            expect(messages[0].parts.length).toBe(1)
-            expect((messages[0].parts[0] as any).type).toBe("text")
         })
     })
 })

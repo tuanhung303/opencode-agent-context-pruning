@@ -39,8 +39,6 @@ const createMockState = (): SessionState =>
                 purgeErrors: { count: 0, tokens: 0 },
                 manualDiscard: { count: 0, tokens: 0 },
                 distillation: { count: 0, tokens: 0 },
-                truncation: { count: 0, tokens: 0 },
-                thinkingCompression: { count: 0, tokens: 0 },
             },
         },
         lastDiscardStats: null,

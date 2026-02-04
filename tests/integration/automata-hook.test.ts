@@ -30,8 +30,6 @@ describe("Integration: Automata Hook", () => {
                 deduplication: { enabled: false },
                 supersedeWrites: { enabled: false },
                 purgeErrors: { enabled: false },
-                truncation: { enabled: false },
-                thinkingCompression: { enabled: false },
             },
         }
         client = {

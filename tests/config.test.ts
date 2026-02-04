@@ -43,27 +43,6 @@ describe("ConfigService", () => {
             expect(config.enabled).toBe(false)
             expect(config.pruneNotification).toBe("detailed")
         })
-
-        it("should deep merge strategy settings (handled by loader, verified by service)", () => {
-            const customConfig = {
-                ...DEFAULT_CONFIG,
-                strategies: {
-                    ...DEFAULT_CONFIG.strategies,
-                    truncation: {
-                        ...DEFAULT_CONFIG.strategies.truncation,
-                        enabled: false,
-                        maxTokens: 5000,
-                    },
-                },
-            }
-            vi.mocked(loader.loadConfigFromFile).mockReturnValue(customConfig)
-
-            const service = new ConfigService()
-            const config = service.load("/test/workspace")
-
-            expect(config.strategies.truncation.enabled).toBe(false)
-            expect(config.strategies.truncation.maxTokens).toBe(5000)
-        })
     })
 
     describe("get", () => {
@@ -176,15 +155,6 @@ describe("Global Config Service", () => {
 })
 
 describe("Config Defaults", () => {
-    it("should have truncation settings in defaults (direct check)", async () => {
-        // Import defaults directly for this check
-        const { DEFAULT_CONFIG: actualDefaults } = await import("../lib/config/defaults.js")
-
-        expect(actualDefaults.strategies.truncation.maxTokens).toBeGreaterThan(0)
-        expect(actualDefaults.strategies.truncation.headRatio).toBeGreaterThan(0)
-        expect(actualDefaults.strategies.truncation.tailRatio).toBeGreaterThan(0)
-    })
-
     it("should have protected tools defined", async () => {
         const { DEFAULT_CONFIG: actualDefaults } = await import("../lib/config/defaults.js")
 

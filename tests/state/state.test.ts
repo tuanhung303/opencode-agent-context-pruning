@@ -75,7 +75,6 @@ describe("createSessionState", () => {
         expect(state.hashRegistry.callIds.size).toBe(0)
         expect(state.hashRegistry.messages.size).toBe(0)
         expect(state.hashRegistry.messagePartIds.size).toBe(0)
-        expect(state.softPrunedItems.size).toBe(0)
     })
 
     it("should initialize stats to zero", () => {
@@ -98,8 +97,6 @@ describe("createSessionState", () => {
         expect(state.stats.strategyStats.manualDiscard.thinking.count).toBe(0)
         expect(state.stats.strategyStats.manualDiscard.tool.count).toBe(0)
         expect(state.stats.strategyStats.distillation.count).toBe(0)
-        expect(state.stats.strategyStats.truncation.count).toBe(0)
-        expect(state.stats.strategyStats.thinkingCompression.count).toBe(0)
     })
 })
 
@@ -250,44 +247,6 @@ describe("session state hash maps", () => {
 
         expect(mockState.hashRegistry.messages.get("a_xyz789")).toBe("msg_1:0")
         expect(mockState.hashRegistry.messagePartIds.get("msg_1:0")).toBe("a_xyz789")
-    })
-
-    it("should track soft pruned tools", () => {
-        mockState.softPrunedItems.set("call_1", {
-            type: "tool",
-            originalOutput: "original content",
-            tool: "read",
-            parameters: {},
-            prunedAt: Date.now(),
-            hash: "r_abc123",
-        })
-
-        expect(mockState.softPrunedItems.has("call_1")).toBe(true)
-        const item = mockState.softPrunedItems.get("call_1")
-        if (item?.type === "tool") {
-            expect(item.originalOutput).toBe("original content")
-        } else {
-            throw new Error("Expected tool item")
-        }
-    })
-
-    it("should track soft pruned message parts", () => {
-        mockState.softPrunedItems.set("msg_1:0", {
-            type: "message-part",
-            originalText: "original text",
-            messageId: "msg_1",
-            partIndex: 0,
-            prunedAt: Date.now(),
-            hash: "a_xyz789",
-        })
-
-        expect(mockState.softPrunedItems.has("msg_1:0")).toBe(true)
-        const item = mockState.softPrunedItems.get("msg_1:0")
-        if (item?.type === "message-part") {
-            expect(item.originalText).toBe("original text")
-        } else {
-            throw new Error("Expected message-part item")
-        }
     })
 })
 
