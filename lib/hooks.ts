@@ -12,6 +12,7 @@ import {
     injectTodoReminder,
     detectAutomataActivation,
     injectAutomataReflection,
+    ensureReasoningContentSync,
 } from "./messages"
 import { loadPrompt } from "./prompts"
 import { handleStatsCommand } from "./commands/stats"
@@ -92,7 +93,9 @@ export function createChatMessageTransformHandler(
         })
 
         // Detect new user message
-        const lastUserMessage = [...output.messages].reverse().find((m) => m.info.role === "user" && !isSyntheticMessage(m))
+        const lastUserMessage = [...output.messages]
+            .reverse()
+            .find((m) => m.info.role === "user" && !isSyntheticMessage(m))
         if (lastUserMessage && lastUserMessage.info.id !== state.lastUserMessageId) {
             state.lastUserMessageId = lastUserMessage.info.id
             logger.info(`New user message detected (id: ${lastUserMessage.info.id})`)
@@ -130,6 +133,14 @@ export function createChatMessageTransformHandler(
         for (const [name, strategy] of Object.entries(PRUNE_STRATEGIES)) {
             safeExecute(() => strategy(state, logger, config, output.messages), logger, name)
         }
+
+        // CRITICAL: Ensure reasoning_content is synced on all assistant messages with tool calls
+        // This is required for thinking mode API compatibility (DeepSeek, Kimi, etc.)
+        safeExecute(
+            () => ensureReasoningContentSync(state, output.messages, logger),
+            logger,
+            "ensureReasoningContentSync",
+        )
 
         // Inject todo reminder if needed (after all other strategies)
         safeExecute(
@@ -266,7 +277,6 @@ export function createToolExecuteAfterHandler(
         if (!config.enabled) {
             return
         }
-
 
         if (state.isSubAgent) {
             return

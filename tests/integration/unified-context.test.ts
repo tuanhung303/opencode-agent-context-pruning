@@ -138,7 +138,7 @@ describe("Unified Context Tool Integration", () => {
             mockToolCtx,
         )
 
-        expect(discardResult).toContain("Discarded 1 message(s)")
+        expect(discardResult).toContain("💬")
         expect(mockState.prune.messagePartIds).toContain("msg_1:0")
     })
 
@@ -169,7 +169,7 @@ describe("Unified Context Tool Integration", () => {
         )
 
         expect(result).toContain("discard")
-        expect(result).toContain("Discarded 1 message(s)")
+        expect(result).toContain("💬")
         expect(mockState.prune.toolIds).toContain("call_1")
         expect(mockState.prune.messagePartIds).toContain("msg_1:0")
     })

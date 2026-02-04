@@ -158,6 +158,7 @@ export async function executeContextToolDistill(
             hashes,
             toolCtx.sessionID,
             currentParams,
+            "tool",
         )
         // Return notification in the response too
         const minimalNotification = formatDiscardNotification(0, "distillation", hashes, "tool")

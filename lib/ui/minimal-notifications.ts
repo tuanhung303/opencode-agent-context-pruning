@@ -274,12 +274,21 @@ export function formatDiscardNotification(
 export function formatNoOpNotification(
     type: "discard" | "distill",
     attemptedTargets: string[],
+    targetType?: "tool" | "message" | "reasoning",
 ): string {
     const baseNotification = formatMinimalNotification({
         type,
         status: "success",
         message: "",
     })
+
+    // Type icons for the summary
+    const typeIcons: Record<string, string> = {
+        tool: "⚙️",
+        message: "💬",
+        reasoning: "🧠",
+    }
+    const icon = targetType ? typeIcons[targetType] + " " : ""
 
     if (attemptedTargets.length === 0) {
         return `${baseNotification}- 0 items`
@@ -290,5 +299,5 @@ export function formatNoOpNotification(
     const truncated = truncate(firstTarget, 15)
     const suffix = attemptedTargets.length > 1 ? ` (+${attemptedTargets.length - 1})` : ""
 
-    return `${baseNotification}- ${truncated}${suffix}`
+    return `${baseNotification}- ${icon}${truncated}${suffix}`
 }

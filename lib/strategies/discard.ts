@@ -148,6 +148,7 @@ export async function executeContextToolDiscard(
             hashes,
             toolCtx.sessionID,
             currentParams,
+            "tool",
         )
         // Return notification in the response too
         const minimalNotification = formatDiscardNotification(0, "manual", hashes, "tool")

@@ -431,6 +431,51 @@ export const injectHashesIntoReasoningBlocks = (
 }
 
 /**
+ * Ensures reasoning_content is synced on all assistant messages with tool calls.
+ * CRITICAL for thinking mode API compatibility (DeepSeek, Kimi, etc.)
+ *
+ * When thinking mode is enabled, APIs require reasoning_content to exist on ALL
+ * assistant messages that have tool calls. This function ensures the field is
+ * populated from reasoning parts, regardless of whether pruning is active.
+ */
+export const ensureReasoningContentSync = (
+    state: SessionState,
+    messages: WithParts[],
+    logger: Logger,
+): void => {
+    for (const msg of messages) {
+        if (isMessageCompacted(state, msg)) {
+            continue
+        }
+
+        // Only process assistant messages
+        if (msg.info.role !== "assistant") {
+            continue
+        }
+
+        const parts = Array.isArray(msg.parts) ? msg.parts : []
+
+        // Check if message has tool calls
+        const hasToolCalls = parts.some((p: any) => p.type === "tool" && p.callID)
+        if (!hasToolCalls) {
+            continue
+        }
+
+        // Skip if reasoning_content already exists
+        if ((msg.info as any).reasoning_content) {
+            continue
+        }
+
+        // Find reasoning content from parts
+        const reasoningPart = parts.find((p: any) => p.type === "reasoning" && p.text)
+        if (reasoningPart && (reasoningPart as any).text) {
+            ;(msg.info as any).reasoning_content = (reasoningPart as any).text
+            logger.debug(`Synced reasoning_content for assistant message: ${msg.info.id}`)
+        }
+    }
+}
+
+/**
  * Creates a compact breadcrumb string for pruned tool outputs.
  * Format: [Output removed...] tool({param: "value"}) → status
  *
@@ -508,9 +553,23 @@ export const prune = (
         const messageId = msg.info.id
         const isAssistant = msg.info.role === "assistant"
 
+        // Track if this message has/had tool calls (for thinking mode API compatibility)
+        let messageHasToolCalls = false
+        let reasoningContent: string | undefined
+
         for (let partIndex = 0; partIndex < parts.length; partIndex++) {
             const part = parts[partIndex]
             if (!part) continue
+
+            // Track tool calls (internal format uses "tool" with callID)
+            if (part.type === "tool" && (part as any).callID) {
+                messageHasToolCalls = true
+            }
+
+            // Capture reasoning content for later use
+            if (isAssistant && part.type === "reasoning" && part.text) {
+                reasoningContent = part.text
+            }
 
             // Handle pruned tool parts - replace with placeholder for layout consistency
             if (part.type === "tool" && part.callID && prunedToolIds.has(part.callID)) {
@@ -536,13 +595,28 @@ export const prune = (
             }
 
             // Handle reasoning parts - keep preview for traceability
+            // CRITICAL: Also sync msg.info.reasoning_content for thinking mode API compatibility
             if (isAssistant && part.type === "reasoning" && prunedReasoningPartIds.size > 0) {
                 const partId = `${messageId}:${partIndex}`
                 if (prunedReasoningPartIds.has(partId)) {
                     const originalText = part.text || ""
-                    part.text = createPrunedPlaceholder(originalText)
+                    const placeholder = createPrunedPlaceholder(originalText)
+                    part.text = placeholder
+                    reasoningContent = placeholder // Update captured content
                     logger.debug(`Pruned reasoning part ${partId}`)
                 }
+            }
+        }
+
+        // CRITICAL: Ensure reasoning_content is set on assistant messages with tool calls
+        // When thinking mode is enabled, API requires reasoning_content on ALL assistant messages
+        // that have tool calls. This must be done AFTER processing all parts.
+        if (isAssistant && messageHasToolCalls && reasoningContent) {
+            if (!(msg.info as any).reasoning_content) {
+                ;(msg.info as any).reasoning_content = reasoningContent
+                logger.debug(
+                    `Set reasoning_content on assistant message with tool calls: ${messageId}`,
+                )
             }
         }
     }

@@ -133,8 +133,10 @@ export async function executeContext(
                     // Find the message
                     const msg = messages.find((m) => m.info.id === messageId)
                     if (msg && msg.info.role === "assistant") {
-                        // Check if message has tool calls (has tool parts)
-                        const hasToolCalls = msg.parts?.some((p: any) => p.type === "tool")
+                        // Check if message has tool calls (internal format uses "tool", SDK format uses "tool-call")
+                        const hasToolCalls = msg.parts?.some(
+                            (p: any) => p.type === "tool" || p.type === "tool-call",
+                        )
                         // Check if message has reasoning_content
                         const hasReasoning =
                             (msg.info as any).reasoning_content ||
