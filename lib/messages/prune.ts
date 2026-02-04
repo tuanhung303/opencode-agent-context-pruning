@@ -4,6 +4,7 @@ import type { Logger } from "../logger"
 import type { PluginConfig } from "../config"
 import { isMessageCompacted } from "../shared-utils"
 import { generatePartHash } from "../utils/hash"
+import { getPruneCache } from "../state/utils"
 
 /**
  * Filter out step-start and step-finish parts from messages.
@@ -317,9 +318,9 @@ export const injectHashesIntoAssistantMessages = (
                 logger.debug(`Generated hash ${hash} for assistant text part ${partId}`)
             }
 
-            // Append trailing hash tag
-            part.text = `${part.text}${createHashTag(MESSAGE_HASH_TAG, hash)}`
-            logger.debug(`Injected hash ${hash} into assistant text part`)
+            // Hash registered in registry - no injection into visible text
+            // Bulk [messages] pattern works via registry lookup
+            logger.debug(`Registered hash ${hash} for assistant text part (no injection)`)
         }
     }
 }
@@ -466,10 +467,8 @@ export const prune = (
     config: PluginConfig,
     messages: WithParts[],
 ): void => {
-    // Convert to Set for O(1) lookup instead of O(n) array.includes()
-    const prunedToolIds = new Set(state.prune.toolIds)
-    const prunedMessagePartIds = new Set(state.prune.messagePartIds)
-    const prunedReasoningPartIds = new Set(state.prune.reasoningPartIds)
+    // Use cached Sets for O(1) lookup
+    const { prunedToolIds, prunedMessagePartIds, prunedReasoningPartIds } = getPruneCache(state)
 
     // Early exit if nothing to prune
     if (

@@ -3,6 +3,7 @@ import { isMessageCompacted } from "../shared-utils"
 import type { SessionState, WithParts } from "../state"
 import type { UserMessage } from "@opencode-ai/sdk/v2"
 import type { PluginConfig } from "../config"
+import { getPruneCache } from "../state/utils"
 
 const SYNTHETIC_MESSAGE_ID = "msg_01234567890123456789012345"
 
@@ -358,13 +359,13 @@ function pluralizeToolName(tool: string): string {
 export function groupHashesByToolName(state: SessionState): Record<string, string[]> {
     const grouped: Record<string, string[]> = {}
 
-    // Get all pruned callIds as a Set for O(1) lookup
-    const prunedCallIds = new Set(state.prune.toolIds)
+    // Use cached Set for O(1) lookup
+    const { prunedToolIds } = getPruneCache(state)
 
     // Iterate through all known hashes
     for (const [hash, callId] of state.hashRegistry.calls.entries()) {
         // Skip if already pruned
-        if (prunedCallIds.has(callId)) {
+        if (prunedToolIds.has(callId)) {
             continue
         }
 
@@ -433,12 +434,12 @@ export function formatHashInventory(grouped: Record<string, string[]>): string {
  */
 export function collectAllToolHashes(state: SessionState, config: PluginConfig): string[] {
     const allProtectedTools = config.tools.settings.protectedTools
-    const prunedCallIds = new Set(state.prune.toolIds)
+    const { prunedToolIds } = getPruneCache(state)
     const hashes: string[] = []
 
     for (const [hash, callId] of state.hashRegistry.calls.entries()) {
         // Skip if already pruned
-        if (prunedCallIds.has(callId)) {
+        if (prunedToolIds.has(callId)) {
             continue
         }
 
@@ -467,12 +468,12 @@ export function collectAllToolHashes(state: SessionState, config: PluginConfig):
  * @returns Array of message hashes eligible for bulk operations
  */
 export function collectAllMessageHashes(state: SessionState): string[] {
-    const prunedPartIds = new Set(state.prune.messagePartIds)
+    const { prunedMessagePartIds } = getPruneCache(state)
     const hashes: string[] = []
 
     for (const [hash, partId] of state.hashRegistry.messages.entries()) {
         // Skip if already pruned
-        if (prunedPartIds.has(partId)) {
+        if (prunedMessagePartIds.has(partId)) {
             continue
         }
 
@@ -490,12 +491,12 @@ export function collectAllMessageHashes(state: SessionState): string[] {
  * @returns Array of reasoning hashes eligible for bulk operations
  */
 export function collectAllReasoningHashes(state: SessionState): string[] {
-    const prunedPartIds = new Set(state.prune.reasoningPartIds)
+    const { prunedReasoningPartIds } = getPruneCache(state)
     const hashes: string[] = []
 
     for (const [hash, partId] of state.hashRegistry.reasoning.entries()) {
         // Skip if already pruned
-        if (prunedPartIds.has(partId)) {
+        if (prunedReasoningPartIds.has(partId)) {
             continue
         }
 
