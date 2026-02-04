@@ -7,6 +7,8 @@ import {
     formatTokenCount,
 } from "./utils"
 import { formatNoOpNotification } from "./minimal-notifications"
+import type { ItemizedPrunedItem, ItemizedDistilledItem } from "./pruning-status"
+import { formatItemizedDetails } from "./pruning-status"
 import { PluginConfig } from "../config"
 
 export type PruneReason =
@@ -42,6 +44,10 @@ export interface NotificationContext {
     options?: {
         simplified?: boolean
     }
+    /** Itemized list of pruned items with types for detailed display */
+    itemizedPruned?: ItemizedPrunedItem[]
+    /** Itemized list of distilled items with types for detailed display */
+    itemizedDistilled?: ItemizedDistilledItem[]
 }
 
 function buildMinimalMessage(
@@ -51,8 +57,19 @@ function buildMinimalMessage(
     attemptedTargets?: string[],
     reason?: PruneReason,
     targetType?: "tool" | "message" | "reasoning",
+    itemizedPruned?: ItemizedPrunedItem[],
+    itemizedDistilled?: ItemizedDistilledItem[],
 ): string {
     const statsMessage = formatStatsHeader(state.stats.strategyStats)
+
+    // If we have itemized data, use the new formatter with icons
+    if (
+        (itemizedPruned && itemizedPruned.length > 0) ||
+        (itemizedDistilled && itemizedDistilled.length > 0)
+    ) {
+        const details = formatItemizedDetails(itemizedPruned || [], itemizedDistilled || [])
+        return `${statsMessage}- ${details}`
+    }
 
     // Build the action notification with attempted targets
     if (attemptedTargets && attemptedTargets.length > 0) {
@@ -159,6 +176,8 @@ export async function sendUnifiedNotification(
                   ctx.attemptedTargets,
                   reason,
                   ctx.targetType,
+                  ctx.itemizedPruned,
+                  ctx.itemizedDistilled,
               )
             : buildDetailedMessage(ctx, showDistillation)
 

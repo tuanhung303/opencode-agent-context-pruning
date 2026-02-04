@@ -18,6 +18,24 @@
  * @module lib/ui/pruning-status
  */
 
+import { PRUNE_CATEGORY_ICONS } from "./utils"
+
+/**
+ * Item representing a pruned item with its type
+ */
+export interface ItemizedPrunedItem {
+    type: "tool" | "message" | "reasoning"
+    name: string
+}
+
+/**
+ * Item representing a distilled item with its type and summary
+ */
+export interface ItemizedDistilledItem {
+    type: "tool" | "message" | "reasoning"
+    summary: string
+}
+
 /**
  * Format pruned tools list for display
  * Format: "pruned: tool1, tool2, tool3..."
@@ -153,4 +171,83 @@ export function dimText(text: string): string {
     }
 
     return `${ANSI_DIM}${text}${ANSI_RESET}`
+}
+
+/**
+ * Get the icon for a prune item type
+ */
+function getPruneItemIcon(type: "tool" | "message" | "reasoning"): string {
+    switch (type) {
+        case "tool":
+            return PRUNE_CATEGORY_ICONS.tool
+        case "message":
+            return PRUNE_CATEGORY_ICONS.message
+        case "reasoning":
+            return PRUNE_CATEGORY_ICONS.thinking
+    }
+}
+
+/**
+ * Truncate content for display with quotes
+ * Shows first N characters followed by "..." if truncated
+ *
+ * @param content - The content to truncate
+ * @param maxLength - Maximum length before truncation (default: 15)
+ * @returns Truncated string with quotes
+ *
+ * @example
+ * truncateWithQuotes("Analysis summary content", 15)
+ * // Returns: ""Analysis summary...""
+ */
+function truncateWithQuotes(content: string, maxLength: number = 15): string {
+    if (content.length <= maxLength) {
+        return `"${content}"`
+    }
+    return `"${content.slice(0, maxLength)}..."`
+}
+
+/**
+ * Format itemized details with icons
+ * Creates detailed line showing each pruned/distilled item with type icon
+ *
+ * Format: "⚙️ tool_name ₊ ⚙️ tool_name ₊ 💬 \"summary...\" ₊ 🧠 \"reasoning...\""
+ *
+ * @param prunedItems - Array of pruned items with types
+ * @param distilledItems - Array of distilled items with types and summaries
+ * @param maxContentLength - Maximum length for content previews (default: 15)
+ * @returns Formatted string or empty string if no items
+ *
+ * @example
+ * formatItemizedDetails(
+ *   [{ type: "tool", name: "grep" }, { type: "tool", name: "read" }],
+ *   [{ type: "message", summary: "Analysis summary" }]
+ * )
+ * // Returns: "⚙️ grep ₊ ⚙️ read ₊ 💬 \"Analysis summa...\""
+ */
+export function formatItemizedDetails(
+    prunedItems: ItemizedPrunedItem[],
+    distilledItems: ItemizedDistilledItem[],
+    maxContentLength: number = 15,
+): string {
+    const parts: string[] = []
+
+    // Add pruned items with icons
+    for (const item of prunedItems) {
+        const icon = getPruneItemIcon(item.type)
+        parts.push(`${icon} ${item.name}`)
+    }
+
+    // Add distilled items with icons and quoted summaries
+    for (const item of distilledItems) {
+        const icon = getPruneItemIcon(item.type)
+        const summary = truncateWithQuotes(item.summary, maxContentLength)
+        parts.push(`${icon} ${summary}`)
+    }
+
+    if (parts.length === 0) {
+        return ""
+    }
+
+    // Join with ₊ separator (matching summary style)
+    return parts.join(" ₊ ")
 }

@@ -6,6 +6,7 @@ import type { PruneToolContext } from "./_types"
 import { SessionState, ToolParameterEntry, WithParts, ensureSessionInitialized } from "../state"
 import { saveSessionState } from "../state/persistence"
 import { sendUnifiedNotification, sendAttemptedNotification } from "../ui/notification"
+import type { ItemizedDistilledItem } from "../ui/pruning-status"
 import { formatDiscardNotification } from "../ui/minimal-notifications"
 import { formatPruningStatus, dimText } from "../ui/pruning-status"
 import { calculateTokensSaved, getCurrentParams } from "./utils"
@@ -48,14 +49,23 @@ export async function executeToolDistill(
     // Add to prune lists
     state.prune.toolIds.push(...callIds)
 
-    // Collect metadata
+    // Collect metadata and build itemized distilled data
     const toolMetadata = new Map<string, ToolParameterEntry>()
     const prunedToolNames: string[] = []
-    for (const callId of callIds) {
+    const itemizedDistilled: ItemizedDistilledItem[] = []
+    for (let i = 0; i < callIds.length; i++) {
+        const callId = callIds[i]!
+        const summary = distillation[i]
         const toolParameters = state.toolParameters.get(callId)
         if (toolParameters) {
             toolMetadata.set(callId, toolParameters)
             prunedToolNames.push(toolParameters.tool)
+        }
+        if (summary) {
+            itemizedDistilled.push({
+                type: "tool",
+                summary,
+            })
         }
     }
 
@@ -87,6 +97,7 @@ export async function executeToolDistill(
             distillation,
             attemptedTargets: hashes,
             options: { simplified: true },
+            itemizedDistilled,
         },
         sessionId,
         currentParams,
@@ -197,6 +208,7 @@ export async function executeContextMessageDistill(
     await ensureSessionInitialized(client, state, sessionId, logger, messages)
 
     let distilledCount = 0
+    const itemizedDistilled: ItemizedDistilledItem[] = []
 
     for (const [hash, summary] of entries) {
         const partId = state.hashRegistry.messages.get(hash)
@@ -205,6 +217,10 @@ export async function executeContextMessageDistill(
                 state.prune.messagePartIds.push(partId)
                 logger.info(`Distilled message part ${partId} via hash ${hash}: ${summary}`)
                 distilledCount++
+                itemizedDistilled.push({
+                    type: "message",
+                    summary,
+                })
             }
         } else {
             logger.warn(`Unknown message hash: ${hash}`)
@@ -228,6 +244,7 @@ export async function executeContextMessageDistill(
             workingDirectory: ctx.workingDirectory,
             attemptedTargets: hashes,
             options: { simplified: true },
+            itemizedDistilled,
         },
         sessionId,
         currentParams,
@@ -271,8 +288,9 @@ export async function executeContextReasoningDistill(
     let distilledCount = 0
     let tokensSaved = 0
     const processedHashes: string[] = []
+    const itemizedDistilled: ItemizedDistilledItem[] = []
 
-    for (const [hash, _summary] of entries) {
+    for (const [hash, summary] of entries) {
         const partId = state.hashRegistry.reasoning.get(hash)
         if (partId) {
             if (!state.prune.reasoningPartIds.includes(partId)) {
@@ -281,6 +299,10 @@ export async function executeContextReasoningDistill(
                 distilledCount++
                 tokensSaved += 2000 // Estimate tokens per reasoning block
                 logger.info(`Distilled reasoning part ${partId} via hash ${hash}`)
+                itemizedDistilled.push({
+                    type: "reasoning",
+                    summary,
+                })
             } else {
                 logger.debug(`Hash ${hash} already pruned, skipping`)
             }
@@ -322,6 +344,7 @@ export async function executeContextReasoningDistill(
             pruneReasoningPartIds: reasoningPartIds,
             reason: "manual",
             workingDirectory: ctx.workingDirectory,
+            itemizedDistilled,
         },
         sessionId,
         currentParams,

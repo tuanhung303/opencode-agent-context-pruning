@@ -6,6 +6,7 @@ import type { PruneToolContext } from "./_types"
 import { SessionState, ToolParameterEntry, WithParts, ensureSessionInitialized } from "../state"
 import { saveSessionState } from "../state/persistence"
 import { sendUnifiedNotification, PruneReason, sendAttemptedNotification } from "../ui/notification"
+import type { ItemizedPrunedItem } from "../ui/pruning-status"
 import { formatDiscardNotification } from "../ui/minimal-notifications"
 import { formatPruningStatus, dimText } from "../ui/pruning-status"
 import { calculateTokensSaved, getCurrentParams } from "./utils"
@@ -56,14 +57,19 @@ export async function executeToolPrune(
     // Add to prune lists
     state.prune.toolIds.push(...callIds)
 
-    // Collect metadata
+    // Collect metadata and build itemized data
     const toolMetadata = new Map<string, ToolParameterEntry>()
     const prunedToolNames: string[] = []
+    const itemizedPruned: ItemizedPrunedItem[] = []
     for (const callId of callIds) {
         const toolParameters = state.toolParameters.get(callId)
         if (toolParameters) {
             toolMetadata.set(callId, toolParameters)
             prunedToolNames.push(toolParameters.tool)
+            itemizedPruned.push({
+                type: "tool",
+                name: toolParameters.tool,
+            })
         }
     }
 
@@ -91,6 +97,7 @@ export async function executeToolPrune(
             workingDirectory,
             attemptedTargets: hashes,
             options: { simplified: true },
+            itemizedPruned,
         },
         sessionId,
         currentParams,
@@ -191,6 +198,7 @@ export async function executeContextMessageDiscard(
 
     let discardedCount = 0
     let tokensSaved = 0
+    const itemizedPruned: ItemizedPrunedItem[] = []
 
     for (const hash of hashes) {
         const partId = state.hashRegistry.messages.get(hash)
@@ -201,6 +209,10 @@ export async function executeContextMessageDiscard(
                 discardedCount++
                 // Estimate tokens saved (rough estimate based on typical message size)
                 tokensSaved += 500
+                itemizedPruned.push({
+                    type: "message",
+                    name: `message part`,
+                })
             }
         } else {
             logger.warn(`Unknown message hash: ${hash}`)
@@ -236,6 +248,7 @@ export async function executeContextMessageDiscard(
             workingDirectory: ctx.workingDirectory,
             attemptedTargets: hashes,
             options: { simplified: true },
+            itemizedPruned: discardedCount > 0 ? itemizedPruned : [],
         },
         toolCtx.sessionID,
         currentParams,
@@ -281,6 +294,7 @@ export async function executeContextReasoningDiscard(
     let discardedCount = 0
     let tokensSaved = 0
     const validHashes: string[] = []
+    const itemizedPruned: ItemizedPrunedItem[] = []
 
     for (const hash of hashes) {
         const partId = state.hashRegistry.reasoning.get(hash)
@@ -292,6 +306,10 @@ export async function executeContextReasoningDiscard(
                 // Estimate tokens saved (rough estimate based on typical reasoning block size)
                 tokensSaved += 2000
                 logger.info(`Discarded reasoning part ${partId} via hash ${hash}`)
+                itemizedPruned.push({
+                    type: "reasoning",
+                    name: `thinking block`,
+                })
             } else {
                 logger.debug(`Hash ${hash} already pruned, skipping`)
             }
@@ -331,6 +349,7 @@ export async function executeContextReasoningDiscard(
             workingDirectory: ctx.workingDirectory,
             attemptedTargets: hashes,
             options: { simplified: true },
+            itemizedPruned: discardedCount > 0 ? itemizedPruned : [],
         },
         toolCtx.sessionID,
         currentParams,
