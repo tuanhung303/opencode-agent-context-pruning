@@ -29,6 +29,19 @@ context({ action: "discard", targets: [["a1b2c3"], ["d4e5f6"]] })
 context({ action: "distill", targets: [["a1b2c3", "JWT validation"], ["d4e5f6", "Auth flow"]] })
 context({ action: "restore", targets: [["a1b2c3"], ["d4e5f6"]] })
 
+WHEN TO PRUNE THINKING BLOCKS
+Your <thinking> blocks accumulate and consume significant tokens. Prune them when:
+- Analysis is complete and conclusions are documented
+- After implementing a plan (reasoning no longer needed)
+- When switching to a new task/phase
+- During REFLECT phase of any workflow
+
+Pattern: After completing analysis, distill or discard the thinking hash:
+context({ action: "distill", targets: [["abc123", "Decided: use strategy X"]] })
+
+Bulk prune all thinking + tools + messages:
+context({ action: "discard", targets: [["[*]"]] })
+
 </instruction>
 
 <instruction name=aggressive_pruning policy_level=normal>

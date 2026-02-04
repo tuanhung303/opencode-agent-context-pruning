@@ -19,8 +19,8 @@ Contains 45 comprehensive tests covering:
 
 ## Quick Start
 
-1. **Read the full test spec**: Start with [`docs/test_prompt.md`](docs/test_prompt.md)
-2. **Complete preparation tasks**: Run items `prep-1` through `prep-9` first
+1. **Read the full test spec**: Start with [`docs/VALIDATION_GUIDE.md`](docs/VALIDATION_GUIDE.md)
+2. **Complete preparation tasks**: Run items `prep-0` through `prep-9` first
 3. **Execute tests**: Follow the numbered test sequence `t1` through `t45`
 4. **Generate report**: Complete post-test tasks `report-1` through `report-4`
 
@@ -37,7 +37,7 @@ Before running any tests, verify:
 
 ## Test Execution
 
-Copy the full todo list from `docs/test_prompt.md` section "Executable Todo List for Agents" into `todowrite()` to track progress.
+Copy the full todo list from `docs/VALIDATION_GUIDE.md` section "Executable Todo List for Agents" into `todowrite()` to track progress.
 
 ## Trail Files
 
@@ -50,7 +50,7 @@ Maintain these files during execution:
 
 ## Need Help?
 
-Refer to the detailed preparation section in [`docs/test_prompt.md`](docs/test_prompt.md) for:
+Refer to the detailed preparation section in [`docs/VALIDATION_GUIDE.md`](docs/VALIDATION_GUIDE.md) for:
 
 - Hash capture protocols
 - Turn-based testing methodology
