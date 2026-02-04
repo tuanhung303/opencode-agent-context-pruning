@@ -119,11 +119,6 @@
                             "description": "Enable the discard tool",
                             "type": "boolean",
                             "default": true
-                        },
-                        "fullyForget": {
-                            "description": "When true, completely removes tool parts from messages instead of leaving breadcrumbs. Disable restore when enabled.",
-                            "type": "boolean",
-                            "default": true
                         }
                     },
                     "additionalProperties": false

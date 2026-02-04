@@ -5,6 +5,35 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.0] - 2026-02-04
+
+### Breaking Changes
+
+- **Removed 4 unused auto-pruning features**: The following features have been removed:
+    - **Truncation**: Head-tail truncation of large tool outputs (replaced by hash-based supersede)
+    - **Thinking Compression**: Compression of extended reasoning blocks (replaced by explicit `distill` tool)
+    - **Turn Protection**: Prevention of pruning within N recent turns (conflicted with aggressive supersede)
+    - **Auto-Prune After Tool**: Automatic strategy execution after each tool (superseded by on-demand pruning)
+
+### Removed
+
+- Strategy files: `lib/strategies/truncation.ts`, `lib/strategies/thinking-compression.ts`
+- Config options: `truncation`, `thinkingCompression`, `turnProtection`, `autoPruneAfterTool`
+- Stats tracking: `truncation` and `thinkingCompression` counters
+- Related tests and display code
+
+### Migration
+
+Users with custom configs should remove these settings from `settings.json`:
+```json
+{
+  "contextPruning.strategies.truncation": null,
+  "contextPruning.strategies.thinkingCompression": null,
+  "contextPruning.turnProtection": null,
+  "contextPruning.autoPruneAfterTool": null
+}
+```
+
 ## [2.9.2] - 2026-02-02
 
 ### Fixed
