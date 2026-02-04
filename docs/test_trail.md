@@ -1,6 +1,6 @@
 # ACP Test Trail Log
 
-**Date**: 2026-02-04
+**Date**: 2026-02-05
 **Agent**: Rei-Agent (claude-opus-4-5)
 **Session**: Validation run complete
 
@@ -19,7 +19,7 @@
 
 | Test | Status  | Hash   | Notes                                        |
 | ---- | ------- | ------ | -------------------------------------------- |
-| t1   | ✅ PASS | 825138 | Discard tool hash confirmed                  |
+| t1   | ✅ PASS | 825138 | Discard tool hash confirmed (file-supersede) |
 | t2   | ✅ PASS | 0c72a8 | Discard message hash confirmed               |
 | t3   | ✅ PASS | -      | Mixed discard (tool + message) confirmed     |
 | t4   | ✅ PASS | 28f1d5 | Distill with summary confirmed               |
@@ -72,4 +72,4 @@ Duration: 1.40s
 
 ---
 
-**Completed**: 2026-02-04 18:49 UTC
+**Completed**: 2026-02-05
