@@ -56,13 +56,25 @@ context({ action: "discard", targets: [["invalid_hash"]] })
 // → No status appears (nothing was pruned)
 ```
 
-### 3. Context Compaction
+### 3. Context Compaction (Expected Behavior)
 
-OpenCode periodically compacts the conversation context. When this happens:
+OpenCode periodically **compacts** the conversation by removing old messages to save tokens.
 
-- Old messages are removed entirely
-- The status notification is part of the removed context
-- **This is the most common cause of "disappearing" status**
+**What happens:**
+
+1. You run `context()` → Status message is created
+2. OpenCode compacts context → Old messages removed
+3. Status message is part of removed messages
+4. Status appears to "disappear"
+
+**This is NOT a bug** — it's working as designed. The status is a **notification**, not a **persistent dashboard**.
+
+**Why we don't re-send:**
+
+- Re-sending would create duplicate messages
+- Would spam the user every time compaction happens
+- Adds unnecessary token usage
+- The `/acp stats` command already provides persistent stats
 
 ### 4. Different Response Types
 
@@ -152,11 +164,17 @@ Shows current context budget:
 
 ### "Status appears then disappears"
 
-This is **normal behavior**. The status is a notification, not a persistent UI element. It will be removed when:
+**This is expected behavior — NOT a bug.**
 
-- OpenCode compacts context (removes old messages)
-- You run `context({ action: "discard", targets: [["[messages]"]] })`
-- Session reaches token limit and auto-compacts
+The status is a **notification message**, not a persistent UI element. When OpenCode compacts the conversation (to save tokens), old messages including the status notification are removed.
+
+**Correct workflow:**
+
+1. See status immediately after `context()` call
+2. Status may disappear later (compaction)
+3. Use `/acp stats` to check history anytime
+
+**Do NOT expect status to persist** — it's ephemeral by design.
 
 ### "Status shows 0 for everything"
 
