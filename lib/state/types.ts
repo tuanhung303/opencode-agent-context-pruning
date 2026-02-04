@@ -39,8 +39,6 @@ export interface SessionStats {
             tool: { count: number; tokens: number }
         }
         distillation: { count: number; tokens: number }
-        truncation: { count: number; tokens: number }
-        thinkingCompression: { count: number; tokens: number }
     }
 }
 
@@ -74,12 +72,6 @@ export interface TodoItem {
     inProgressSince?: number // Turn when task became in_progress (for stuck task detection)
 }
 
-export type SoftPrunedItem =
-    | ({ type: "tool" } & SoftPrunedEntry)
-    | ({ type: "message-part" } & SoftPrunedMessagePart)
-    | ({ type: "reasoning-part" } & SoftPrunedReasoningPart)
-    | ({ type: "message" } & SoftPrunedMessage)
-
 export interface SessionState {
     sessionId: string | null
     isSubAgent: boolean
@@ -104,9 +96,6 @@ export interface SessionState {
         fileParts: Map<string, string>
     }
     discardHistory: DiscardStats[]
-
-    // Soft prune cache for restore capability (consolidated)
-    softPrunedItems: Map<string, SoftPrunedItem>
 
     // Tracking cursors (grouped)
     cursors: {
@@ -144,36 +133,4 @@ export interface SessionState {
     }
 
     todos: TodoItem[] // Current todo list state
-}
-
-export interface SoftPrunedEntry {
-    originalOutput: string
-    tool: string
-    parameters: Record<string, unknown>
-    prunedAt: number
-    hash: string
-}
-
-export interface SoftPrunedMessagePart {
-    originalText: string
-    messageId: string
-    partIndex: number
-    prunedAt: number
-    hash: string
-}
-
-export interface SoftPrunedMessage {
-    content: string
-    messageId: string
-    partIndex: number
-    prunedAt: number
-    hash: string
-}
-
-export interface SoftPrunedReasoningPart {
-    originalText: string
-    messageId: string
-    partIndex: number
-    prunedAt: number
-    hash: string
 }

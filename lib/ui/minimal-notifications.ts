@@ -14,7 +14,7 @@ export interface PruneOperation {
 }
 
 export interface MinimalNotification {
-    type: "build" | "test" | "npm" | "protected" | "distill" | "discard" | "restore"
+    type: "build" | "test" | "npm" | "protected" | "distill" | "discard"
     status: "success" | "error" | "warning"
     message: string
     count?: number
@@ -28,7 +28,6 @@ const TYPE_ICONS: Record<MinimalNotification["type"], string> = {
     protected: "⚠️",
     distill: "✨",
     discard: "🗑️",
-    restore: "↩️",
 }
 
 const STATUS_ICONS: Record<MinimalNotification["status"], string> = {
@@ -219,19 +218,6 @@ export function formatDiscardNotification(count: number, reason: PruneReason): s
         type: "discard",
         status: "success",
         message: reason,
-        count,
-    })
-}
-
-/**
- * Format restore notification
- * 「 ↩️ restore ✓ 3 items 」
- */
-export function formatRestoreNotification(count: number): string {
-    return formatMinimalNotification({
-        type: "restore",
-        status: "success",
-        message: "items",
         count,
     })
 }

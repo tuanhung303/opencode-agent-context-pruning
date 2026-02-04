@@ -18,6 +18,4 @@ export type {
     Tools,
     Commands,
     PurgeErrors,
-    Truncation,
-    ThinkingCompression,
 } from "./config/index.js"

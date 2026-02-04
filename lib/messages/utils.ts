@@ -306,7 +306,7 @@ import type { TargetTypeResult } from "../strategies/_types"
  * Detect target type using state map lookups (no prefix-based detection).
  * Supports: tool_hash, message_hash, reasoning_hash, bulk patterns
  * Format: 6 hex chars (e.g., a1b2c3) for all hash types
- * Bulk patterns: [tools], [messages], [*], [all]
+ * Bulk patterns: [tools], [messages], [thinking], [*], [all]
  */
 export function detectTargetType(target: string, state: SessionState): TargetTypeResult {
     // Match bulk patterns first
@@ -315,6 +315,9 @@ export function detectTargetType(target: string, state: SessionState): TargetTyp
     }
     if (target === "[messages]") {
         return "bulk_messages"
+    }
+    if (target === "[thinking]") {
+        return "bulk_thinking"
     }
     if (target === "[*]" || target === "[all]") {
         return "bulk_all"

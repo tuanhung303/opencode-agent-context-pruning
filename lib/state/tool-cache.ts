@@ -1,4 +1,4 @@
-import type { SessionState, ToolStatus, WithParts, TodoItem, SoftPrunedItem } from "./index"
+import type { SessionState, ToolStatus, WithParts, TodoItem } from "./index"
 import type { Logger } from "../logger"
 import { PluginConfig } from "../config"
 import { isMessageCompacted } from "../shared-utils"
@@ -163,19 +163,6 @@ function supersedeToolCall(
                     part.state?.status === "completed" ? ((part.state as any).output ?? "") : ""
                 tokensSaved = countTokens(inputStr) + countTokens(outputStr)
 
-                // Get hash for this call
-                const hash = state.hashRegistry.callIds.get(callId) ?? callId
-
-                // Mark as soft pruned
-                state.softPrunedItems.set(callId, {
-                    type: "tool",
-                    originalOutput: outputStr,
-                    tool: part.tool,
-                    parameters: part.state?.input ?? {},
-                    prunedAt: state.currentTurn,
-                    hash,
-                })
-
                 // Clear the output to free memory
                 if (part.state?.status === "completed") {
                     ;(part.state as any).output = `[auto-superseded: ${reason}]`
@@ -187,6 +174,11 @@ function supersedeToolCall(
                         part.tool,
                         part.state.input as Record<string, unknown>,
                     )
+                }
+
+                // Add to prune list so it gets filtered out
+                if (!state.prune.toolIds.includes(callId)) {
+                    state.prune.toolIds.push(callId)
                 }
 
                 logger.debug(`Superseded tool ${callId}: ${reason}, ~${tokensSaved} tokens`)
@@ -229,12 +221,6 @@ export async function syncToolCache(
                     continue
                 }
 
-                const turnProtectionEnabled = config.turnProtection.enabled
-                const turnProtectionTurns = config.turnProtection.turns
-                const isProtectedByTurn =
-                    turnProtectionEnabled &&
-                    turnProtectionTurns > 0 &&
-                    state.currentTurn - turnCounter < turnProtectionTurns
 
                 state.lastToolPrune =
                     (part.tool === "discard" || part.tool === "distill") &&
@@ -245,10 +231,6 @@ export async function syncToolCache(
                     continue
                 }
 
-                // Skip turn-protected tools
-                if (isProtectedByTurn) {
-                    continue
-                }
 
                 const allProtectedTools = config.tools.settings.protectedTools
 
@@ -506,8 +488,7 @@ export async function syncToolCache(
                         }
                     } else if (
                         pruneRetryParts &&
-                        part.state?.status === "error" &&
-                        !isProtectedByTurn
+                        part.state?.status === "error"
                     ) {
                         // Track failed attempts for potential retry pruning
                         const toolHash = baseHash
@@ -614,7 +595,7 @@ function trackTodoInteractions(state: SessionState, messages: WithParts[], logge
     if (latestTodowriteCallId && latestTodowriteCallId !== state.cursors.todo.lastWriteCallId) {
         for (const { callId, turn } of allTodowriteCallIds) {
             if (callId === latestTodowriteCallId) continue
-            if (state.softPrunedItems.has(callId)) continue // Already pruned
+            if (state.prune.toolIds.includes(callId)) continue // Already pruned
 
             const tokensSaved = supersedeToolCall(
                 state,
@@ -667,7 +648,7 @@ function trackTodoInteractions(state: SessionState, messages: WithParts[], logge
     if (latestTodoreadCallId && latestTodoreadCallId !== state.cursors.todo.lastReadCallId) {
         for (const { callId, turn } of allTodoreadCallIds) {
             if (callId === latestTodoreadCallId) continue
-            if (state.softPrunedItems.has(callId)) continue // Already pruned
+            if (state.prune.toolIds.includes(callId)) continue // Already pruned
 
             const tokensSaved = supersedeToolCall(
                 state,
@@ -738,7 +719,7 @@ function trackContextInteractions(
     if (latestContextCallId && latestContextCallId !== state.cursors.context.lastCallId) {
         for (const { callId, turn } of allContextCallIds) {
             if (callId === latestContextCallId) continue
-            if (state.softPrunedItems.has(callId)) continue // Already pruned
+            if (state.prune.toolIds.includes(callId)) continue // Already pruned
 
             const tokensSaved = supersedeToolCall(
                 state,

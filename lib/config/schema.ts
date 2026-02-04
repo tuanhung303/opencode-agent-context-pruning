@@ -7,7 +7,6 @@ import { z } from "zod"
 
 export const DiscardToolSchema = z.object({
     enabled: z.boolean().default(true),
-    fullyForget: z.boolean().default(true),
 })
 
 export const DistillToolSchema = z.object({
@@ -52,25 +51,8 @@ export const PurgeErrorsSchema = z.object({
     protectedTools: z.array(z.string()).default([]),
 })
 
-export const TruncationSchema = z.object({
-    enabled: z.boolean().default(false),
-    maxTokens: z.number().positive().default(2000),
-    headRatio: z.number().min(0).max(1).default(0.4),
-    tailRatio: z.number().min(0).max(1).default(0.4),
-    minTurnsOld: z.number().positive().default(2),
-    targetTools: z.array(z.string()).default(["read", "grep", "glob", "bash"]),
-})
 
-export const ThinkingCompressionSchema = z.object({
-    enabled: z.boolean().default(false),
-    minTurnsOld: z.number().positive().default(3),
-    maxTokens: z.number().positive().default(500),
-})
 
-export const TurnProtectionSchema = z.object({
-    enabled: z.boolean().default(false),
-    turns: z.number().positive().default(4),
-})
 
 export const AggressivePruningSchema = z.object({
     /** Prune source-url parts (web search citations) */
@@ -97,8 +79,6 @@ export const AggressivePruningSchema = z.object({
 
 export const StrategiesSchema = z.object({
     purgeErrors: PurgeErrorsSchema,
-    truncation: TruncationSchema,
-    thinkingCompression: ThinkingCompressionSchema,
     aggressivePruning: AggressivePruningSchema,
 })
 
@@ -106,9 +86,7 @@ export const PluginConfigSchema = z.object({
     enabled: z.boolean().default(true),
     debug: z.boolean().default(false),
     pruneNotification: z.enum(["off", "minimal", "detailed"]).default("minimal"),
-    autoPruneAfterTool: z.boolean().default(false),
     commands: CommandsSchema,
-    turnProtection: TurnProtectionSchema,
     protectedFilePatterns: z.array(z.string()).default([]),
     tools: ToolsSchema,
     strategies: StrategiesSchema,
@@ -122,9 +100,6 @@ export type AutomataMode = z.infer<typeof AutomataModeSchema>
 export type Tools = z.infer<typeof ToolsSchema>
 export type Commands = z.infer<typeof CommandsSchema>
 export type PurgeErrors = z.infer<typeof PurgeErrorsSchema>
-export type Truncation = z.infer<typeof TruncationSchema>
-export type ThinkingCompression = z.infer<typeof ThinkingCompressionSchema>
-export type TurnProtection = z.infer<typeof TurnProtectionSchema>
 export type AggressivePruning = z.infer<typeof AggressivePruningSchema>
 export type Strategies = z.infer<typeof StrategiesSchema>
 export type PluginConfig = z.infer<typeof PluginConfigSchema>

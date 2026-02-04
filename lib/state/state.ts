@@ -1,5 +1,5 @@
 import type { OpenCodeClient } from "../client"
-import type { SessionState, WithParts, SoftPrunedItem } from "./types"
+import type { SessionState, WithParts } from "./types"
 import type { Logger } from "../logger"
 import { loadSessionState } from "./persistence"
 import { isSubAgentSession } from "./utils"
@@ -74,8 +74,6 @@ export function createSessionState(): SessionState {
                     tool: { count: 0, tokens: 0 },
                 },
                 distillation: { count: 0, tokens: 0 },
-                truncation: { count: 0, tokens: 0 },
-                thinkingCompression: { count: 0, tokens: 0 },
             },
         },
         toolParameters: new Map(),
@@ -94,7 +92,6 @@ export function createSessionState(): SessionState {
             fileParts: new Map(),
         },
         discardHistory: [],
-        softPrunedItems: new Map(),
         cursors: {
             todo: {
                 lastTurn: 0,
@@ -160,8 +157,6 @@ function migrateStrategyStats(persisted: any): SessionState["stats"]["strategySt
             tool: { count: 0, tokens: 0 },
         },
         distillation: { count: 0, tokens: 0 },
-        truncation: { count: 0, tokens: 0 },
-        thinkingCompression: { count: 0, tokens: 0 },
     }
 
     if (!persisted) {
@@ -186,8 +181,6 @@ function migrateStrategyStats(persisted: any): SessionState["stats"]["strategySt
               }
             : persisted.manualDiscard || defaultStats.manualDiscard,
         distillation: persisted.distillation || defaultStats.distillation,
-        truncation: persisted.truncation || defaultStats.truncation,
-        thinkingCompression: persisted.thinkingCompression || defaultStats.thinkingCompression,
     }
 }
 

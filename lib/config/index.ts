@@ -29,5 +29,3 @@ export type TodoReminder = import("./schema.js").TodoReminder
 export type Tools = import("./schema.js").Tools
 export type Commands = import("./schema.js").Commands
 export type PurgeErrors = import("./schema.js").PurgeErrors
-export type Truncation = import("./schema.js").Truncation
-export type ThinkingCompression = import("./schema.js").ThinkingCompression

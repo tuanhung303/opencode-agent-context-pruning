@@ -19,14 +19,15 @@ export interface PruneToolContext {
  * Special bulk target patterns for pruning all items of a type.
  * - "[tools]": All tool outputs eligible for pruning
  * - "[messages]": All assistant message parts eligible for pruning
- * - "[*]" or "[all]": All eligible items (tools + messages)
+ * - "[thinking]": All reasoning/thinking blocks eligible for pruning
+ * - "[*]" or "[all]": All eligible items (tools + messages + thinking)
  */
-export type BulkTargetPattern = "[tools]" | "[messages]" | "[*]" | "[all]"
+export type BulkTargetPattern = "[tools]" | "[messages]" | "[thinking]" | "[*]" | "[all]"
 
 /**
  * Internal bulk target type for categorization.
  */
-export type BulkTargetType = "bulk_tools" | "bulk_messages" | "bulk_all"
+export type BulkTargetType = "bulk_tools" | "bulk_messages" | "bulk_thinking" | "bulk_all"
 
 /**
  * Result type for target type detection including bulk patterns.

@@ -1,5 +1,5 @@
 /**
- * Unified context tool - combines discard, distill, and restore operations.
+ * Unified context tool - combines discard and distill operations.
  */
 
 import { tool } from "@opencode-ai/plugin"
@@ -19,18 +19,17 @@ import {
     executeContextMessageDistill,
     executeBulkDistill,
 } from "./distill"
-import { executeContextToolRestore, executeContextMessageRestore } from "./restore"
 
 const CONTEXT_TOOL_SPEC = loadPrompt("context-spec")
 
 /**
- * Execute context operation (discard, distill, restore) with unified interface.
+ * Execute context operation (discard, distill) with unified interface.
  * Supports mixed targets: tool hashes and message patterns in single call.
  */
 export async function executeContext(
     ctx: PruneToolContext,
     toolCtx: { sessionID: string },
-    action: "discard" | "distill" | "restore",
+    action: "discard" | "distill",
     targets: Array<[string] | [string, string]>,
 ): Promise<string> {
     const { client, state, logger } = ctx
@@ -61,7 +60,7 @@ export async function executeContext(
     const messageSummaries: string[] = []
     // Track bulk operations
     const bulkTargets: Array<{
-        type: "bulk_tools" | "bulk_messages" | "bulk_all"
+        type: "bulk_tools" | "bulk_messages" | "bulk_thinking" | "bulk_all"
         summary?: string
     }> = []
 
@@ -99,6 +98,7 @@ export async function executeContext(
         } else if (
             targetType === "bulk_tools" ||
             targetType === "bulk_messages" ||
+            targetType === "bulk_thinking" ||
             targetType === "bulk_all"
         ) {
             // Bulk operations - validate summary requirement for distill
@@ -153,14 +153,6 @@ export async function executeContext(
             )
             bulkResults.push(bulkResult)
         }
-    } else if (action === "restore") {
-        if (toolHashes.length > 0) {
-            toolResult = await executeContextToolRestore(ctx, toolHashes)
-        }
-        if (messageHashes.length > 0) {
-            messageResult = await executeContextMessageRestore(ctx, toolCtx, messageHashes)
-        }
-        // Note: Bulk restore is not supported
     }
 
     // Combine results
@@ -176,8 +168,8 @@ export function createContextTool(ctx: PruneToolContext): ReturnType<typeof tool
         description: CONTEXT_TOOL_SPEC,
         args: {
             action: tool.schema
-                .enum(["discard", "distill", "restore"])
-                .describe("The action to perform: discard, distill, or restore"),
+                .enum(["discard", "distill"])
+                .describe("The action to perform: discard or distill"),
             targets: tool.schema
                 .array(
                     tool.schema.union([
@@ -191,9 +183,11 @@ export function createContextTool(ctx: PruneToolContext): ReturnType<typeof tool
                     ]),
                 )
                 .describe(
-                    "Array of [target] or [target, summary] tuples. Use [target] for discard/restore, [target, summary] for distill. " +
+                    "Array of [target] or [target, summary] tuples. Use [target] for discard, [target, summary] for distill. " +
                         "Bulk patterns: use '[tools]' to target all tool outputs, '[messages]' for all assistant messages, " +
-                        "or '[*]'/'[all]' for all eligible items. Example: [['[tools]', 'Summary']] for bulk distill.",
+                        "'[thinking]' for all reasoning/thinking blocks (highest value target, ~2000+ tokens each), " +
+                        "or '[*]'/'[all]' for all eligible items. " +
+                        "Example: [['[tools]', 'Research complete']] for bulk distill of all tool outputs.",
                 ),
         },
         async execute(args, toolCtx) {

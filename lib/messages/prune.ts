@@ -465,8 +465,6 @@ export const prune = (
         return
     }
 
-    const fullyForget = config.tools.discard.fullyForget ?? true
-
     // Single pass over all messages and parts
     for (const msg of messages) {
         if (isMessageCompacted(state, msg)) {
@@ -477,19 +475,19 @@ export const prune = (
         const messageId = msg.info.id
         const isAssistant = msg.info.role === "assistant"
 
-        // Filter out parts if fullyForget is enabled
-        if (fullyForget && prunedToolIds.size > 0) {
+        // Filter out pruned tool parts entirely
+        if (prunedToolIds.size > 0) {
             const originalLength = parts.length
             msg.parts = parts.filter((part) => {
                 if (part.type === "tool" && part.callID && prunedToolIds.has(part.callID)) {
-                    logger.debug(`Fully forgot tool part ${part.callID} (${part.tool})`)
+                    logger.debug(`Removed pruned tool part ${part.callID} (${part.tool})`)
                     return false
                 }
                 return true
             })
             const removedCount = originalLength - msg.parts.length
             if (removedCount > 0) {
-                logger.debug(`Removed ${removedCount} tool parts via fullyForget`)
+                logger.debug(`Removed ${removedCount} tool parts`)
             }
             // Continue with remaining parts for message/reasoning pruning
         }
@@ -497,49 +495,6 @@ export const prune = (
         for (let partIndex = 0; partIndex < parts.length; partIndex++) {
             const part = parts[partIndex]
             if (!part) continue
-
-            // Handle tool parts (only if fullyForget is disabled)
-            if (
-                !fullyForget &&
-                part.type === "tool" &&
-                part.callID &&
-                prunedToolIds.has(part.callID)
-            ) {
-                const status = part.state?.status
-
-                if (status === "completed") {
-                    if (part.tool === "question") {
-                        // Prune question inputs
-                        if (part.state.input?.questions !== undefined) {
-                            part.state.input.questions = PRUNED_QUESTION_INPUT_REPLACEMENT
-                        }
-                    } else {
-                        // Prune tool outputs
-                        part.state.output = createPrunedOutputBreadcrumb(
-                            part.tool,
-                            part.state.input,
-                            status,
-                        )
-                        // FIX INPUT LEAK: Strip input to metadata-only
-                        if (part.state.input && typeof part.state.input === "object") {
-                            part.state.input = stripInputToMetadata(
-                                part.tool,
-                                part.state.input as Record<string, unknown>,
-                            )
-                        }
-                    }
-                } else if (status === "error") {
-                    // Prune error inputs
-                    const input = part.state.input
-                    if (input && typeof input === "object") {
-                        for (const key of Object.keys(input)) {
-                            if (typeof input[key] === "string") {
-                                input[key] = PRUNED_TOOL_ERROR_INPUT_REPLACEMENT
-                            }
-                        }
-                    }
-                }
-            }
 
             // Handle assistant text parts
             if (isAssistant && part.type === "text" && prunedMessagePartIds.size > 0) {

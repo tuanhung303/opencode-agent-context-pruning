@@ -18,12 +18,6 @@ export const DEFAULT_PROTECTED_TOOLS = [
     "task",
     "todowrite",
     "todoread",
-    "discard_tool",
-    "discard_msg",
-    "distill_tool",
-    "distill_msg",
-    "restore_tool",
-    "restore_msg",
     "context",
     "batch",
     "write",
@@ -36,14 +30,9 @@ export const DEFAULT_CONFIG: PluginConfig = {
     enabled: true,
     debug: false,
     pruneNotification: "minimal",
-    autoPruneAfterTool: false,
     commands: {
         enabled: true,
         protectedTools: [...DEFAULT_PROTECTED_TOOLS],
-    },
-    turnProtection: {
-        enabled: false,
-        turns: 4,
     },
     protectedFilePatterns: [
         // Environment and secrets
@@ -67,7 +56,6 @@ export const DEFAULT_CONFIG: PluginConfig = {
         },
         discard: {
             enabled: true,
-            fullyForget: true,
         },
         distill: {
             enabled: true,
@@ -89,19 +77,6 @@ export const DEFAULT_CONFIG: PluginConfig = {
             enabled: false,
             turns: 4,
             protectedTools: [],
-        },
-        truncation: {
-            enabled: false,
-            maxTokens: 2000,
-            headRatio: 0.4,
-            tailRatio: 0.4,
-            minTurnsOld: 2,
-            targetTools: ["read", "grep", "glob", "bash"],
-        },
-        thinkingCompression: {
-            enabled: false,
-            minTurnsOld: 3,
-            maxTokens: 500,
         },
         aggressivePruning: {
             pruneSourceUrls: true,

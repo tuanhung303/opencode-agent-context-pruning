@@ -9,7 +9,11 @@ import { sendUnifiedNotification } from "../ui/notification"
 import { formatDiscardNotification } from "../ui/minimal-notifications"
 import { formatPruningStatus, dimText } from "../ui/pruning-status"
 import { calculateTokensSaved, getCurrentParams } from "./utils"
-import { collectAllToolHashes, collectAllMessageHashes } from "../messages/utils"
+import {
+    collectAllToolHashes,
+    collectAllMessageHashes,
+    collectAllReasoningHashes,
+} from "../messages/utils"
 import type { BulkTargetType } from "./_types"
 import type { Logger } from "../logger"
 
@@ -167,19 +171,7 @@ export async function executeContextMessageDistill(
         if (partId) {
             if (!state.prune.messagePartIds.includes(partId)) {
                 state.prune.messagePartIds.push(partId)
-                // Parse partId to get messageId and partIndex
-                const [messageId, partIndexStr] = partId.split(":")
-                const partIndex = parseInt(partIndexStr!, 10)
-                // Store the summary as soft-pruned content for restore capability
-                state.softPrunedItems.set(partId, {
-                    type: "message",
-                    content: summary,
-                    messageId: messageId!,
-                    partIndex: partIndex,
-                    prunedAt: Date.now(),
-                    hash: hash,
-                })
-                logger.info(`Distilled message part ${partId} via hash ${hash}`)
+                logger.info(`Distilled message part ${partId} via hash ${hash}: ${summary}`)
                 distilledCount++
             }
         } else {
@@ -302,6 +294,53 @@ export async function executeBulkDistill(
             }
         } else {
             results.push("No eligible message parts to distill")
+        }
+    }
+
+    // Handle reasoning/thinking blocks (many-to-one distill)
+    if (bulkType === "bulk_thinking" || bulkType === "bulk_all") {
+        const reasoningHashes = collectAllReasoningHashes(state)
+        if (reasoningHashes.length > 0) {
+            logger.info(`Bulk distill: collecting ${reasoningHashes.length} reasoning hashes`)
+            // Many-to-one: remove all thinking blocks, create single summary
+            let distilledCount = 0
+            let tokensSaved = 0
+            const deletedHashes: string[] = []
+
+            for (const hash of reasoningHashes) {
+                const partId = state.hashRegistry.reasoning.get(hash)
+                if (partId && !state.prune.reasoningPartIds.includes(partId)) {
+                    state.prune.reasoningPartIds.push(partId)
+                    deletedHashes.push(hash)
+                    logger.info(`Bulk distilled reasoning part ${partId} via hash ${hash}`)
+                    distilledCount++
+                    tokensSaved += 2000 // Estimate tokens per reasoning block
+                }
+            }
+
+            if (distilledCount > 0) {
+                // Update stats for bulk reasoning distill
+                state.stats.pruneTokenCounter += tokensSaved
+                state.stats.pruneMessageCounter += distilledCount
+                state.stats.strategyStats.manualDiscard.thinking.count += distilledCount
+                state.stats.strategyStats.manualDiscard.thinking.tokens += tokensSaved
+
+                saveSessionState(state, logger).catch((err: Error) =>
+                    logger.error("Failed to persist state", { error: err.message }),
+                )
+
+                const deletedList =
+                    deletedHashes.length > 3
+                        ? `${deletedHashes.slice(0, 3).join(", ")}... (${deletedHashes.length} total)`
+                        : deletedHashes.join(", ")
+                results.push(
+                    `Distilled ${distilledCount} thinking block(s) into single summary, saved ~${tokensSaved} tokens [merged: ${deletedList}]`,
+                )
+            } else {
+                results.push("No eligible thinking blocks to distill")
+            }
+        } else {
+            results.push("No eligible thinking blocks to distill")
         }
     }
 

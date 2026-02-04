@@ -71,12 +71,6 @@ function formatStatsMessage(
         { name: "Purge Errors", data: strategyStats.purgeErrors, breakdown: null },
         { name: "Manual Discard", data: manualDiscardTotal, breakdown: "manualDiscard" },
         { name: "Distillation", data: strategyStats.distillation, breakdown: null },
-        { name: "Truncation", data: strategyStats.truncation, breakdown: null },
-        {
-            name: "Thinking Compress",
-            data: strategyStats.thinkingCompression,
-            breakdown: null,
-        },
     ]
 
     // Sort by token savings (descending)

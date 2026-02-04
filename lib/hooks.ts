@@ -3,7 +3,7 @@ import type { Logger } from "./logger"
 import type { PluginConfig } from "./config"
 import type { OpenCodeClient } from "./client"
 import { syncSessionState } from "./state/index"
-import { purgeErrors, truncateLargeOutputs, compressThinkingBlocks } from "./strategies"
+import { purgeErrors } from "./strategies"
 import {
     prune,
     injectHashesIntoToolOutputs,
@@ -34,8 +34,6 @@ type Strategy = (
 
 const PRUNE_STRATEGIES: Record<string, Strategy> = {
     purgeErrors,
-    truncateLargeOutputs,
-    compressThinkingBlocks,
     prune,
 }
 
@@ -268,9 +266,6 @@ export function createToolExecuteAfterHandler(
             return
         }
 
-        if (!config.autoPruneAfterTool) {
-            return
-        }
 
         if (state.isSubAgent) {
             return

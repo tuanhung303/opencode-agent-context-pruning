@@ -327,22 +327,26 @@ export async function executeBulkDiscard(
         }
     }
 
-    // Handle reasoning/thinking blocks
-    if (bulkType === "bulk_all") {
+    // Handle reasoning/thinking blocks (bulk_all and bulk_thinking)
+    if (bulkType === "bulk_all" || bulkType === "bulk_thinking") {
         const reasoningHashes = collectAllReasoningHashes(state)
         if (reasoningHashes.length > 0) {
             logger.info(`Bulk discard: collecting ${reasoningHashes.length} reasoning hashes`)
             let discardedCount = 0
             let tokensSaved = 0
+            const deletedHashes: string[] = []
+
             for (const hash of reasoningHashes) {
                 const partId = state.hashRegistry.reasoning.get(hash)
                 if (partId && !state.prune.reasoningPartIds.includes(partId)) {
                     state.prune.reasoningPartIds.push(partId)
-                    logger.info(`Bulk discarded reasoning part ${partId}`)
+                    deletedHashes.push(hash)
+                    logger.info(`Bulk discarded reasoning part ${partId} via hash ${hash}`)
                     discardedCount++
                     tokensSaved += 2000 // Estimate tokens per reasoning block
                 }
             }
+
             if (discardedCount > 0) {
                 // Update stats for bulk reasoning discards
                 state.stats.pruneTokenCounter += tokensSaved
@@ -358,8 +362,19 @@ export async function executeBulkDiscard(
                 saveSessionState(state, logger).catch((err: Error) =>
                     logger.error("Failed to persist state", { error: err.message }),
                 )
-                results.push(`Discarded ${discardedCount} reasoning block(s)`)
+
+                const deletedList =
+                    deletedHashes.length > 3
+                        ? `${deletedHashes.slice(0, 3).join(", ")}... (${deletedHashes.length} total)`
+                        : deletedHashes.join(", ")
+                results.push(
+                    `Discarded ${discardedCount} thinking block(s), saved ~${tokensSaved} tokens [${deletedList}]`,
+                )
+            } else {
+                results.push("No eligible thinking blocks to discard")
             }
+        } else {
+            results.push("No eligible thinking blocks to discard")
         }
     }
 
