@@ -157,10 +157,10 @@ export async function executeContextToolDiscard(
  */
 export async function executeContextMessageDiscard(
     ctx: PruneToolContext,
-    _toolCtx: { sessionID: string },
+    toolCtx: { sessionID: string },
     hashes: string[],
 ): Promise<string> {
-    const { state, logger } = ctx
+    const { state, logger, config, client } = ctx
 
     let discardedCount = 0
     let tokensSaved = 0
@@ -191,6 +191,27 @@ export async function executeContextMessageDiscard(
             itemCount: discardedCount,
             tokensSaved: state.stats.pruneTokenCounter,
         }
+
+        // Send notification for consistent status display
+        const currentParams = getCurrentParams(state, [], logger)
+        await sendUnifiedNotification(
+            client,
+            logger,
+            config,
+            {
+                state,
+                pruneToolIds: [],
+                toolMetadata: new Map(),
+                pruneMessagePartIds: state.prune.messagePartIds.slice(-discardedCount),
+                reason: "manual",
+                workingDirectory: ctx.workingDirectory,
+                options: { simplified: true },
+            },
+            toolCtx.sessionID,
+            currentParams,
+        )
+
+        commitStats(state)
     }
 
     saveSessionState(state, logger).catch((err: Error) =>
@@ -205,10 +226,10 @@ export async function executeContextMessageDiscard(
  */
 export async function executeContextReasoningDiscard(
     ctx: PruneToolContext,
-    _toolCtx: { sessionID: string },
+    toolCtx: { sessionID: string },
     hashes: string[],
 ): Promise<string> {
-    const { state, logger } = ctx
+    const { state, logger, config, client } = ctx
 
     let discardedCount = 0
     let tokensSaved = 0
@@ -246,6 +267,27 @@ export async function executeContextReasoningDiscard(
         itemCount: discardedCount,
         tokensSaved: state.stats.pruneTokenCounter,
     }
+
+    // Send notification for consistent status display
+    const currentParams = getCurrentParams(state, [], logger)
+    await sendUnifiedNotification(
+        client,
+        logger,
+        config,
+        {
+            state,
+            pruneToolIds: [],
+            toolMetadata: new Map(),
+            pruneMessagePartIds: [],
+            reason: "manual",
+            workingDirectory: ctx.workingDirectory,
+            options: { simplified: true },
+        },
+        toolCtx.sessionID,
+        currentParams,
+    )
+
+    commitStats(state)
 
     saveSessionState(state, logger).catch((err: Error) =>
         logger.error("Failed to persist state", { error: err.message }),
@@ -317,6 +359,27 @@ export async function executeBulkDiscard(
                     tokensSaved: state.stats.pruneTokenCounter,
                 }
 
+                // Send notification for consistent status display
+                const currentParams = getCurrentParams(state, [], logger)
+                await sendUnifiedNotification(
+                    ctx.client,
+                    logger,
+                    config,
+                    {
+                        state,
+                        pruneToolIds: [],
+                        toolMetadata: new Map(),
+                        pruneMessagePartIds: state.prune.messagePartIds.slice(-discardedCount),
+                        reason: "manual",
+                        workingDirectory: ctx.workingDirectory,
+                        options: { simplified: true },
+                    },
+                    toolCtx.sessionID,
+                    currentParams,
+                )
+
+                commitStats(state)
+
                 saveSessionState(state, logger).catch((err: Error) =>
                     logger.error("Failed to persist state", { error: err.message }),
                 )
@@ -358,6 +421,27 @@ export async function executeBulkDiscard(
                     itemCount: discardedCount,
                     tokensSaved: state.stats.pruneTokenCounter,
                 }
+
+                // Send notification for consistent status display
+                const currentParams = getCurrentParams(state, [], logger)
+                await sendUnifiedNotification(
+                    ctx.client,
+                    logger,
+                    config,
+                    {
+                        state,
+                        pruneToolIds: [],
+                        toolMetadata: new Map(),
+                        pruneMessagePartIds: [],
+                        reason: "manual",
+                        workingDirectory: ctx.workingDirectory,
+                        options: { simplified: true },
+                    },
+                    toolCtx.sessionID,
+                    currentParams,
+                )
+
+                commitStats(state)
 
                 saveSessionState(state, logger).catch((err: Error) =>
                     logger.error("Failed to persist state", { error: err.message }),
