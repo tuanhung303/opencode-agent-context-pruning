@@ -44,6 +44,20 @@ const PRUNED_QUESTION_INPUT_REPLACEMENT = "[questions removed - see output for u
 const PRUNED_MESSAGE_PART_REPLACEMENT = "[Assistant message part removed to save context]"
 const PRUNED_REASONING_REPLACEMENT = "[Reasoning redacted to save context]"
 const PRUNED_FILE_PART_REPLACEMENT = "[File attachment masked to save context]"
+// Hash tag names for trailing format
+const TOOL_HASH_TAG = "tool_hash"
+const MESSAGE_HASH_TAG = "message_hash"
+const THINKING_HASH_TAG = "thinking_hash"
+
+/** Create trailing hash tag */
+const createHashTag = (tagName: string, hash: string): string =>
+    `\n<${tagName}>${hash}</${tagName}>`
+
+/** Check if content already has trailing hash tag */
+const hasTrailingHashTag = (content: string, tagName: string): boolean => {
+    const regex = new RegExp(`<${tagName}>[a-f0-9]{6}</${tagName}>$`, "i")
+    return regex.test(content)
+}
 
 /**
  * Check if a part is a file attachment part.
@@ -223,13 +237,14 @@ export const injectHashesIntoToolOutputs = (
             }
 
             // Skip if already has hash prefix (format: xxxxxx - 6 hex chars)
-            if (part.state.output && /^[a-f0-9]{6}/i.test(part.state.output)) {
+            // Skip if already has trailing hash tag
+            if (part.state.output && hasTrailingHashTag(part.state.output, TOOL_HASH_TAG)) {
                 continue
             }
 
-            // Prepend hash to output
+            // Append trailing hash tag
             if (part.state.output) {
-                part.state.output = `${hash}\n${part.state.output}`
+                part.state.output = `${part.state.output}${createHashTag(TOOL_HASH_TAG, hash)}`
                 logger.debug(`Injected hash ${hash} into ${part.tool} output`)
             }
         }
@@ -273,8 +288,8 @@ export const injectHashesIntoAssistantMessages = (
                 continue
             }
 
-            // Skip if already has hash prefix (format: xxxxxx - 6 hex chars)
-            if (/^[a-f0-9]{6}/i.test(part.text)) {
+            // Skip if already has trailing hash tag
+            if (hasTrailingHashTag(part.text, MESSAGE_HASH_TAG)) {
                 continue
             }
 
@@ -302,8 +317,8 @@ export const injectHashesIntoAssistantMessages = (
                 logger.debug(`Generated hash ${hash} for assistant text part ${partId}`)
             }
 
-            // Prepend hash to text
-            part.text = `${hash}\n${part.text}`
+            // Append trailing hash tag
+            part.text = `${part.text}${createHashTag(MESSAGE_HASH_TAG, hash)}`
             logger.debug(`Injected hash ${hash} into assistant text part`)
         }
     }
@@ -359,8 +374,8 @@ export const injectHashesIntoReasoningBlocks = (
                 continue
             }
 
-            // Skip if already has hash prefix (format: xxxxxx - 6 hex chars)
-            if (/^[a-f0-9]{6}/i.test(part.text)) {
+            // Skip if already has trailing hash tag
+            if (hasTrailingHashTag(part.text, THINKING_HASH_TAG)) {
                 continue
             }
 
@@ -388,8 +403,8 @@ export const injectHashesIntoReasoningBlocks = (
                 logger.debug(`Generated hash ${hash} for reasoning part ${partId}`)
             }
 
-            // Prepend hash to text
-            part.text = `${hash}\n${part.text}`
+            // Append trailing hash tag
+            part.text = `${part.text}${createHashTag(THINKING_HASH_TAG, hash)}`
             logger.debug(`Injected hash ${hash} into reasoning part`)
         }
     }

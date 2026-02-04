@@ -16,12 +16,14 @@ A unified tool to discard or distill content.
 TARGET TYPES (Auto-detected)
 - Tool outputs: a1b2c3 (6 hex characters, no prefix)
 - Text parts: Assistant messages (with hash)
-- Reasoning blocks: <thinking> with hash
+- Reasoning blocks: <thinking> with trailing <thinking_hash> tag
 
 HASH FORMAT
-- Exactly 6 hex chars (0-9, a-f) - no prefix needed
-- Example: <thinking>a1b2c3
-reasoning...</thinking> → hash is: a1b2c3
+- Exactly 6 hex chars (0-9, a-f) in trailing tag
+- Example: <thinking>
+reasoning...
+<thinking_hash>a1b2c3</thinking_hash>
+</thinking> → hash is: a1b2c3
 
 HIGH-VALUE TARGET: THINKING BLOCKS
 Your <thinking> blocks are the largest context consumers (~2000+ tokens each).

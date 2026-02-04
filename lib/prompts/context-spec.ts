@@ -98,8 +98,8 @@ Good: "Chose JWT over sessions: stateless, scales better. Rejected OAuth: overki
 
 Example — extracting thinking block hash:
   <thinking>
-  abc123
   The user wants to implement auth...
+  <thinking_hash>abc123</thinking_hash>
   </thinking>
   
   → Hash is: abc123

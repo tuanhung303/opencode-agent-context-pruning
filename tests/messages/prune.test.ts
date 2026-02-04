@@ -206,7 +206,7 @@ describe("prune", () => {
             injectHashesIntoToolOutputs(state, mockConfig, messages, mockLogger as any)
 
             const output = (messages[0].parts[0] as any).state.output
-            expect(output).toBe("abc123\nfile content here")
+            expect(output).toBe("file content here\n<tool_hash>abc123</tool_hash>")
         })
 
         it("should not inject hash if tool is already pruned", () => {
@@ -266,7 +266,7 @@ describe("prune", () => {
         it("should not inject hash if output already has hash prefix", () => {
             const hashMappings = new Map([["call_123", "abc123"]])
             const state = createMockState([], hashMappings)
-            const alreadyHashedOutput = "abc123\nfile content here"
+            const alreadyHashedOutput = "file content here\n<tool_hash>abc123</tool_hash>"
             const messages: WithParts[] = [
                 createMessage("msg_1", [
                     createToolPart(
@@ -357,9 +357,15 @@ describe("prune", () => {
 
             injectHashesIntoToolOutputs(state, mockConfig, messages, mockLogger as any)
 
-            expect((messages[0].parts[0] as any).state.output).toBe("r_abc12\ncontent1")
-            expect((messages[0].parts[1] as any).state.output).toBe("g_def34\ncontent2")
-            expect((messages[0].parts[2] as any).state.output).toBe("b_ghi56\ncontent3")
+            expect((messages[0].parts[0] as any).state.output).toBe(
+                "content1\n<tool_hash>r_abc12</tool_hash>",
+            )
+            expect((messages[0].parts[1] as any).state.output).toBe(
+                "content2\n<tool_hash>g_def34</tool_hash>",
+            )
+            expect((messages[0].parts[2] as any).state.output).toBe(
+                "content3\n<tool_hash>b_ghi56</tool_hash>",
+            )
         })
     })
 })
