@@ -79,7 +79,7 @@ describe("prune", () => {
     })
 
     describe("pruneToolOutputs", () => {
-        it("should remove pruned tool parts entirely", () => {
+        it("should replace pruned tool parts with placeholder", () => {
             const state = createMockState(["call_123"])
             const messages: WithParts[] = [
                 createMessage("msg_1", [
@@ -95,8 +95,10 @@ describe("prune", () => {
 
             prune(state, mockLogger as any, mockConfig, messages)
 
-            // Tool part should be completely removed
-            expect(messages[0].parts.length).toBe(0)
+            // Tool part should be replaced with text placeholder for layout consistency
+            expect(messages[0].parts.length).toBe(1)
+            expect((messages[0].parts[0] as any).type).toBe("text")
+            expect((messages[0].parts[0] as any).text).toBe("[read() output pruned]")
         })
 
         it("should keep non-pruned tool parts", () => {
@@ -122,7 +124,7 @@ describe("prune", () => {
             expect(output).toBe(originalOutput)
         })
 
-        it("should not prune errored tools via pruneToolOutputs", () => {
+        it("should replace errored tools in prune list with placeholder", () => {
             const state = createMockState(["call_error"])
             const messages: WithParts[] = [
                 createMessage("msg_1", [
@@ -138,8 +140,10 @@ describe("prune", () => {
 
             prune(state, mockLogger as any, mockConfig, messages)
 
-            // Errored tools in prune list are still removed
-            expect(messages[0].parts.length).toBe(0)
+            // Errored tools in prune list are replaced with placeholder
+            expect(messages[0].parts.length).toBe(1)
+            expect((messages[0].parts[0] as any).type).toBe("text")
+            expect((messages[0].parts[0] as any).text).toBe("[read() output pruned]")
         })
     })
 

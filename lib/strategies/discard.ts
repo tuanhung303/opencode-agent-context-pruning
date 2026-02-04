@@ -5,16 +5,10 @@
 import type { PruneToolContext } from "./_types"
 import { SessionState, ToolParameterEntry, WithParts, ensureSessionInitialized } from "../state"
 import { saveSessionState } from "../state/persistence"
-import { sendUnifiedNotification, PruneReason } from "../ui/notification"
+import { sendUnifiedNotification, PruneReason, sendAttemptedNotification } from "../ui/notification"
 import { formatDiscardNotification } from "../ui/minimal-notifications"
 import { formatPruningStatus, dimText } from "../ui/pruning-status"
 import { calculateTokensSaved, getCurrentParams } from "./utils"
-import {
-    collectAllToolHashes,
-    collectAllMessageHashes,
-    collectAllReasoningHashes,
-} from "../messages/utils"
-import type { BulkTargetType } from "./_types"
 import type { Logger } from "../logger"
 import type { PluginConfig } from "../config"
 
@@ -95,6 +89,7 @@ export async function executeToolPrune(
             toolMetadata,
             reason,
             workingDirectory,
+            attemptedTargets: hashes,
             options: { simplified: true },
         },
         sessionId,
@@ -110,7 +105,7 @@ export async function executeToolPrune(
     // Build notification
     const tuiStatus = formatPruningStatus(prunedToolNames, [])
     const tuiNotification = tuiStatus ? dimText(tuiStatus) : ""
-    const minimalNotification = formatDiscardNotification(callIds.length, reason)
+    const minimalNotification = formatDiscardNotification(callIds.length, reason, hashes)
 
     return tuiNotification ? `${minimalNotification}\n${tuiNotification}` : minimalNotification
 }
@@ -123,7 +118,7 @@ export async function executeContextToolDiscard(
     toolCtx: { sessionID: string },
     hashes: string[],
 ): Promise<string> {
-    const { state, logger } = ctx
+    const { state, logger, config } = ctx
 
     const callIds: string[] = []
     const validHashes: string[] = []
@@ -143,6 +138,17 @@ export async function executeContextToolDiscard(
     }
 
     if (validHashes.length === 0) {
+        // Send no-op notification showing attempted hashes
+        const currentParams = getCurrentParams(state, [], logger)
+        await sendAttemptedNotification(
+            ctx.client,
+            logger,
+            config,
+            "discard",
+            hashes,
+            toolCtx.sessionID,
+            currentParams,
+        )
         return "No valid tool hashes to discard"
     }
 
@@ -191,26 +197,30 @@ export async function executeContextMessageDiscard(
             itemCount: discardedCount,
             tokensSaved: state.stats.pruneTokenCounter,
         }
+    }
 
-        // Send notification for consistent status display
-        const currentParams = getCurrentParams(state, [], logger)
-        await sendUnifiedNotification(
-            client,
-            logger,
-            config,
-            {
-                state,
-                pruneToolIds: [],
-                toolMetadata: new Map(),
-                pruneMessagePartIds: state.prune.messagePartIds.slice(-discardedCount),
-                reason: "manual",
-                workingDirectory: ctx.workingDirectory,
-                options: { simplified: true },
-            },
-            toolCtx.sessionID,
-            currentParams,
-        )
+    // Send notification for consistent status display
+    const currentParams = getCurrentParams(state, [], logger)
+    await sendUnifiedNotification(
+        client,
+        logger,
+        config,
+        {
+            state,
+            pruneToolIds: [],
+            toolMetadata: new Map(),
+            pruneMessagePartIds:
+                discardedCount > 0 ? state.prune.messagePartIds.slice(-discardedCount) : [],
+            reason: "manual",
+            workingDirectory: ctx.workingDirectory,
+            attemptedTargets: hashes,
+            options: { simplified: true },
+        },
+        toolCtx.sessionID,
+        currentParams,
+    )
 
+    if (discardedCount > 0) {
         commitStats(state)
     }
 
@@ -253,10 +263,6 @@ export async function executeContextReasoningDiscard(
         }
     }
 
-    if (validHashes.length === 0) {
-        return "No valid reasoning hashes to discard"
-    }
-
     // Update stats
     state.stats.pruneTokenCounter += tokensSaved
     state.stats.pruneMessageCounter += discardedCount
@@ -270,6 +276,10 @@ export async function executeContextReasoningDiscard(
 
     // Send notification for consistent status display
     const currentParams = getCurrentParams(state, [], logger)
+    // Build reasoning part IDs list for notification (using "msgId:partIndex" format)
+    const reasoningPartIds = validHashes
+        .map((hash) => state.hashRegistry.reasoning.get(hash))
+        .filter((id): id is string => id !== undefined)
     await sendUnifiedNotification(
         client,
         logger,
@@ -279,8 +289,10 @@ export async function executeContextReasoningDiscard(
             pruneToolIds: [],
             toolMetadata: new Map(),
             pruneMessagePartIds: [],
+            pruneReasoningPartIds: reasoningPartIds,
             reason: "manual",
             workingDirectory: ctx.workingDirectory,
+            attemptedTargets: hashes,
             options: { simplified: true },
         },
         toolCtx.sessionID,
@@ -294,175 +306,6 @@ export async function executeContextReasoningDiscard(
     )
 
     return `Discarded ${discardedCount} reasoning block(s), saved ~${tokensSaved} tokens`
-}
-
-// ============================================================================
-// Bulk Operations
-// ============================================================================
-
-/**
- * Execute bulk discard operation for tools, messages, or all eligible items.
- * Collects all eligible items based on bulkType and routes to appropriate discard functions.
- *
- * @param ctx - Prune tool context
- * @param toolCtx - Tool context with session ID
- * @param bulkType - Type of bulk operation: "bulk_tools", "bulk_messages", or "bulk_all"
- * @returns Status message describing what was discarded
- */
-export async function executeBulkDiscard(
-    ctx: PruneToolContext,
-    toolCtx: { sessionID: string },
-    bulkType: BulkTargetType,
-): Promise<string> {
-    const { state, logger, config } = ctx
-
-    const results: string[] = []
-
-    // Handle tools
-    if (bulkType === "bulk_tools" || bulkType === "bulk_all") {
-        const toolHashes = collectAllToolHashes(state, config)
-        if (toolHashes.length > 0) {
-            logger.info(`Bulk discard: collecting ${toolHashes.length} tool hashes`)
-            const toolResult = await executeContextToolDiscard(ctx, toolCtx, toolHashes)
-            results.push(toolResult)
-        } else {
-            results.push("No eligible tool outputs to discard")
-        }
-    }
-
-    // Handle messages
-    if (bulkType === "bulk_messages" || bulkType === "bulk_all") {
-        const messageHashes = collectAllMessageHashes(state)
-        if (messageHashes.length > 0) {
-            logger.info(`Bulk discard: collecting ${messageHashes.length} message hashes`)
-            // Directly prune message parts using collected hashes
-            let discardedCount = 0
-            let tokensSaved = 0
-            for (const hash of messageHashes) {
-                const partId = state.hashRegistry.messages.get(hash)
-                if (partId && !state.prune.messagePartIds.includes(partId)) {
-                    state.prune.messagePartIds.push(partId)
-                    logger.info(`Bulk discarded message part ${partId}`)
-                    discardedCount++
-                    tokensSaved += 500 // Estimate tokens per message
-                }
-            }
-            if (discardedCount > 0) {
-                // Update stats for bulk message discards
-                state.stats.pruneTokenCounter += tokensSaved
-                state.stats.pruneMessageCounter += discardedCount
-                state.stats.strategyStats.manualDiscard.message.count += discardedCount
-                state.stats.strategyStats.manualDiscard.message.tokens += tokensSaved
-
-                state.lastDiscardStats = {
-                    itemCount: discardedCount,
-                    tokensSaved: state.stats.pruneTokenCounter,
-                }
-
-                // Send notification for consistent status display
-                const currentParams = getCurrentParams(state, [], logger)
-                await sendUnifiedNotification(
-                    ctx.client,
-                    logger,
-                    config,
-                    {
-                        state,
-                        pruneToolIds: [],
-                        toolMetadata: new Map(),
-                        pruneMessagePartIds: state.prune.messagePartIds.slice(-discardedCount),
-                        reason: "manual",
-                        workingDirectory: ctx.workingDirectory,
-                        options: { simplified: true },
-                    },
-                    toolCtx.sessionID,
-                    currentParams,
-                )
-
-                commitStats(state)
-
-                saveSessionState(state, logger).catch((err: Error) =>
-                    logger.error("Failed to persist state", { error: err.message }),
-                )
-                results.push(`Discarded ${discardedCount} message(s)`)
-            }
-        } else {
-            results.push("No eligible message parts to discard")
-        }
-    }
-
-    // Handle reasoning/thinking blocks (bulk_all and bulk_thinking)
-    if (bulkType === "bulk_all" || bulkType === "bulk_thinking") {
-        const reasoningHashes = collectAllReasoningHashes(state)
-        if (reasoningHashes.length > 0) {
-            logger.info(`Bulk discard: collecting ${reasoningHashes.length} reasoning hashes`)
-            let discardedCount = 0
-            let tokensSaved = 0
-            const deletedHashes: string[] = []
-
-            for (const hash of reasoningHashes) {
-                const partId = state.hashRegistry.reasoning.get(hash)
-                if (partId && !state.prune.reasoningPartIds.includes(partId)) {
-                    state.prune.reasoningPartIds.push(partId)
-                    deletedHashes.push(hash)
-                    logger.info(`Bulk discarded reasoning part ${partId} via hash ${hash}`)
-                    discardedCount++
-                    tokensSaved += 2000 // Estimate tokens per reasoning block
-                }
-            }
-
-            if (discardedCount > 0) {
-                // Update stats for bulk reasoning discards
-                state.stats.pruneTokenCounter += tokensSaved
-                state.stats.pruneMessageCounter += discardedCount
-                state.stats.strategyStats.manualDiscard.thinking.count += discardedCount
-                state.stats.strategyStats.manualDiscard.thinking.tokens += tokensSaved
-
-                state.lastDiscardStats = {
-                    itemCount: discardedCount,
-                    tokensSaved: state.stats.pruneTokenCounter,
-                }
-
-                // Send notification for consistent status display
-                const currentParams = getCurrentParams(state, [], logger)
-                await sendUnifiedNotification(
-                    ctx.client,
-                    logger,
-                    config,
-                    {
-                        state,
-                        pruneToolIds: [],
-                        toolMetadata: new Map(),
-                        pruneMessagePartIds: [],
-                        reason: "manual",
-                        workingDirectory: ctx.workingDirectory,
-                        options: { simplified: true },
-                    },
-                    toolCtx.sessionID,
-                    currentParams,
-                )
-
-                commitStats(state)
-
-                saveSessionState(state, logger).catch((err: Error) =>
-                    logger.error("Failed to persist state", { error: err.message }),
-                )
-
-                const deletedList =
-                    deletedHashes.length > 3
-                        ? `${deletedHashes.slice(0, 3).join(", ")}... (${deletedHashes.length} total)`
-                        : deletedHashes.join(", ")
-                results.push(
-                    `Discarded ${discardedCount} thinking block(s), saved ~${tokensSaved} tokens [${deletedList}]`,
-                )
-            } else {
-                results.push("No eligible thinking blocks to discard")
-            }
-        } else {
-            results.push("No eligible thinking blocks to discard")
-        }
-    }
-
-    return results.join("; ")
 }
 
 // ============================================================================

@@ -12,19 +12,18 @@ import {
     executeContextToolDiscard,
     executeContextMessageDiscard,
     executeContextReasoningDiscard,
-    executeBulkDiscard,
 } from "./discard"
 import {
     executeContextToolDistill,
     executeContextMessageDistill,
-    executeBulkDistill,
+    executeContextReasoningDistill,
 } from "./distill"
 
 const CONTEXT_TOOL_SPEC = loadPrompt("context-spec")
 
 /**
  * Execute context operation (discard, distill) with unified interface.
- * Supports mixed targets: tool hashes and message patterns in single call.
+ * Supports mixed targets: tool hashes and message hashes in single call.
  */
 export async function executeContext(
     ctx: PruneToolContext,
@@ -58,11 +57,7 @@ export async function executeContext(
     const reasoningSummaries: string[] = []
     const messageHashes: string[] = []
     const messageSummaries: string[] = []
-    // Track bulk operations
-    const bulkTargets: Array<{
-        type: "bulk_tools" | "bulk_messages" | "bulk_thinking" | "bulk_all"
-        summary?: string
-    }> = []
+    const invalidTargets: string[] = []
 
     for (const tuple of targets) {
         const target = tuple[0]
@@ -95,17 +90,8 @@ export async function executeContext(
                 }
                 reasoningSummaries.push(summary)
             }
-        } else if (
-            targetType === "bulk_tools" ||
-            targetType === "bulk_messages" ||
-            targetType === "bulk_thinking" ||
-            targetType === "bulk_all"
-        ) {
-            // Bulk operations - validate summary requirement for distill
-            if (action === "distill" && !summary) {
-                throw new Error(`Summary required for distill action on bulk target: ${target}`)
-            }
-            bulkTargets.push({ type: targetType, summary })
+        } else {
+            invalidTargets.push(target)
         }
     }
 
@@ -114,27 +100,38 @@ export async function executeContext(
     let reasoningResult = ""
     let messageResult = ""
 
-    // Track bulk operation results
-    const bulkResults: string[] = []
-
     if (action === "discard") {
         if (toolHashes.length > 0) {
             toolResult = await executeContextToolDiscard(ctx, toolCtx, toolHashes)
         }
+        // THINKING MODE SAFETY: Auto-convert reasoning discard to distill with minimal placeholder.
+        // When thinking mode is enabled, the API requires reasoning_content to exist on tool-call messages.
+        // Discarding would remove it entirely, causing API validation errors.
+        // Distilling with "—" preserves the field structure while minimizing token usage.
         if (reasoningHashes.length > 0) {
-            reasoningResult = await executeContextReasoningDiscard(ctx, toolCtx, reasoningHashes)
+            logger.info(
+                `Auto-converting reasoning discard to distill (thinking mode safety): ${reasoningHashes.length} blocks`,
+            )
+            const minimalSummaries = reasoningHashes.map(() => "—")
+            reasoningResult = await executeContextReasoningDistill(
+                ctx,
+                toolCtx,
+                reasoningHashes.map((h, i) => [h, minimalSummaries[i]!] as [string, string]),
+            )
         }
         if (messageHashes.length > 0) {
             messageResult = await executeContextMessageDiscard(ctx, toolCtx, messageHashes)
         }
-        // Execute bulk discard operations
-        for (const bulkTarget of bulkTargets) {
-            const bulkResult = await executeBulkDiscard(ctx, toolCtx, bulkTarget.type)
-            bulkResults.push(bulkResult)
-        }
     } else if (action === "distill") {
         if (toolHashes.length > 0) {
             toolResult = await executeContextToolDistill(ctx, toolCtx, toolHashes, toolSummaries)
+        }
+        if (reasoningHashes.length > 0) {
+            reasoningResult = await executeContextReasoningDistill(
+                ctx,
+                toolCtx,
+                reasoningHashes.map((h, i) => [h, reasoningSummaries[i]!] as [string, string]),
+            )
         }
         if (messageHashes.length > 0) {
             messageResult = await executeContextMessageDistill(
@@ -143,20 +140,16 @@ export async function executeContext(
                 messageHashes.map((h, i) => [h, messageSummaries[i]!] as [string, string]),
             )
         }
-        // Execute bulk distill operations
-        for (const bulkTarget of bulkTargets) {
-            const bulkResult = await executeBulkDistill(
-                ctx,
-                toolCtx,
-                bulkTarget.type,
-                bulkTarget.summary || "",
-            )
-            bulkResults.push(bulkResult)
-        }
     }
 
     // Combine results
-    const results = [toolResult, reasoningResult, messageResult, ...bulkResults].filter(Boolean)
+    const results = [toolResult, reasoningResult, messageResult].filter(Boolean)
+
+    // Report invalid targets if any
+    if (invalidTargets.length > 0) {
+        results.push(`Invalid targets (not found in registry): ${invalidTargets.join(", ")}`)
+    }
+
     return results.join("\n") || `${action} completed: 0 items processed`
 }
 
@@ -174,20 +167,18 @@ export function createContextTool(ctx: PruneToolContext): ReturnType<typeof tool
                 .array(
                     tool.schema.union([
                         tool.schema.tuple([
-                            tool.schema.string().describe("Target identifier (hash or pattern)"),
+                            tool.schema.string().describe("Target hash (6 hex chars)"),
                         ]),
                         tool.schema.tuple([
-                            tool.schema.string().describe("Target identifier (hash or pattern)"),
+                            tool.schema.string().describe("Target hash (6 hex chars)"),
                             tool.schema.string().describe("Summary for distill action"),
                         ]),
                     ]),
                 )
                 .describe(
-                    "Array of [target] or [target, summary] tuples. Use [target] for discard, [target, summary] for distill. " +
-                        "Bulk patterns: use '[tools]' to target all tool outputs, '[messages]' for all assistant messages, " +
-                        "'[thinking]' for all reasoning/thinking blocks (highest value target, ~2000+ tokens each), " +
-                        "or '[*]'/'[all]' for all eligible items. " +
-                        "Example: [['[tools]', 'Research complete']] for bulk distill of all tool outputs.",
+                    "Array of [hash] or [hash, summary] tuples. Use [hash] for discard, [hash, summary] for distill. " +
+                        "Hash format: 6 hex characters (e.g., 'a1b2c3'). " +
+                        "Hashes are shown in tool outputs as <tool_hash>xxxxxx</tool_hash>.",
                 ),
         },
         async execute(args, toolCtx) {

@@ -7,8 +7,8 @@ ifneq (,$(wildcard .env))
 endif
 
 # Integration test defaults
-AGENT ?= build
-PROMPT ?= Run these one at a time: echo p1, echo p2, echo p3, echo p4, echo p5, echo p6, echo p7. Do NOT update todos. Report any reminder message you see.
+AGENT ?= オートマタ
+PROMPT ?= run the validation doc.
 
 # Default target
 help:
@@ -74,12 +74,12 @@ integration-test: link
 	@echo "🧪 Running integration test..."
 	@echo "The following tests must be performed by the agent:"
 	@echo "----------------------------------------------------"
-	@cat docs/TEST_PROMPT.md
+	@cat docs/VALIDATION_GUIDE.md
 	@echo "----------------------------------------------------"
 	@echo "Agent: $(AGENT)"
 	@echo "Prompt: $(PROMPT)"
 	@echo "---"
-	opencode run --agent $(AGENT) --continue "$(PROMPT)" 2>&1
+	npm run build && npm link && opencode run --agent $(AGENT) --continue "$(PROMPT)" 2>&1
 
 
 # Bump patch version and deploy (x.x.X)

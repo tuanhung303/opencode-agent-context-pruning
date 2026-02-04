@@ -1,3 +1,4 @@
+import { truncate } from "../utils/string"
 export type PruneReason =
     | "noise"
     | "completion"
@@ -200,7 +201,21 @@ export function formatNpmOutput(output: string, version?: string): string {
  * Format distill notification
  * 「 💧 distill ✓ 3 items 」
  */
-export function formatDistillNotification(operations: PruneOperation[]): string {
+export function formatDistillNotification(
+    operations: PruneOperation[],
+    attemptedTargets?: string[],
+): string {
+    if (operations.length === 0 && attemptedTargets && attemptedTargets.length > 0) {
+        const firstTarget = attemptedTargets[0]!
+        const truncated = firstTarget.length > 15 ? firstTarget.slice(0, 12) + "..." : firstTarget
+        const suffix = attemptedTargets.length > 1 ? ` (+${attemptedTargets.length - 1})` : ""
+        return formatMinimalNotification({
+            type: "distill",
+            status: "success",
+            message: truncated + suffix,
+        })
+    }
+
     return formatMinimalNotification({
         type: "distill",
         status: "success",
@@ -213,11 +228,57 @@ export function formatDistillNotification(operations: PruneOperation[]): string 
  * Format discard notification
  * 「 🗑️ discard ✓ 7 items 」
  */
-export function formatDiscardNotification(count: number, reason: PruneReason): string {
+export function formatDiscardNotification(
+    count: number,
+    reason: PruneReason,
+    attemptedTargets?: string[],
+): string {
+    if (count === 0 && attemptedTargets && attemptedTargets.length > 0) {
+        // Show attempted targets even when nothing was pruned
+        const firstTarget = attemptedTargets[0]!
+        const truncated = firstTarget.length > 15 ? firstTarget.slice(0, 12) + "..." : firstTarget
+        const suffix = attemptedTargets.length > 1 ? ` (+${attemptedTargets.length - 1})` : ""
+        return formatMinimalNotification({
+            type: "discard",
+            status: "success",
+            message: truncated + suffix,
+        })
+    }
+
     return formatMinimalNotification({
         type: "discard",
         status: "success",
         message: reason,
         count,
+    })
+}
+
+/**
+ * Format no-op notification showing attempted targets with 15-char truncation
+ * 「 🗑️ discard ✓ tool_name... 」
+ * 「 ✨ distill ✓ a quick bro... 」
+ */
+export function formatNoOpNotification(
+    type: "discard" | "distill",
+    attemptedTargets: string[],
+): string {
+    if (attemptedTargets.length === 0) {
+        return formatMinimalNotification({
+            type,
+            status: "success",
+            message: "0 items",
+            count: 0,
+        })
+    }
+
+    // Show first target truncated to 15 chars
+    const firstTarget = attemptedTargets[0]!
+    const truncated = truncate(firstTarget, 15)
+    const suffix = attemptedTargets.length > 1 ? ` (+${attemptedTargets.length - 1})` : ""
+
+    return formatMinimalNotification({
+        type,
+        status: "success",
+        message: truncated + suffix,
     })
 }

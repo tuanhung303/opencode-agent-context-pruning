@@ -116,13 +116,14 @@ context({ action: "discard", targets: [["[*]"]] }) // Nuclear option
 
 ## 📚 Documentation
 
-| Document                                                        | Purpose                      |
-| --------------------------------------------------------------- | ---------------------------- |
-| [Validation Guide](docs/VALIDATION_GUIDE.md)                    | 43 comprehensive test cases  |
-| [Test Harness](docs/TEST_HARNESS.md)                            | Ready-to-run test scripts    |
-| [Context Architecture](docs/CONTROLLED_CONTEXT_ARCHITECTURE.md) | Memory management strategies |
-| [Decision Tree](docs/PRUNING_DECISION_TREE.md)                  | Visual pruning flowcharts    |
-| [Limitations Report](docs/PRUNING_LIMITATIONS_REPORT.md)        | What cannot be pruned        |
+| Document                                                        | Purpose                                    |
+| --------------------------------------------------------------- | ------------------------------------------ |
+| [Validation Guide](docs/VALIDATION_GUIDE.md)                    | 43 comprehensive test cases                |
+| [Test Harness](docs/TEST_HARNESS.md)                            | Ready-to-run test scripts                  |
+| [Todo Write Testing Guide](docs/TODOWRITE_TESTING_GUIDE.md)     | Testing `todowrite` & stuck task detection |
+| [Context Architecture](docs/CONTROLLED_CONTEXT_ARCHITECTURE.md) | Memory management strategies               |
+| [Decision Tree](docs/PRUNING_DECISION_TREE.md)                  | Visual pruning flowcharts                  |
+| [Limitations Report](docs/PRUNING_LIMITATIONS_REPORT.md)        | What cannot be pruned                      |
 
 ---
 
@@ -200,16 +201,17 @@ edit({ filePath: "config.ts" }) // Supersedes write
 
 **Result**: Only the edit operation remains.
 
-### 3. Todo-Based Supersede
+### 3. Todo-Based Supersede (One-Todo-One-View)
 
 Todo operations automatically supersede previous todo states.
 
 ```typescript
-todowrite({ todos: [{ id: "1", status: "pending" }] }) // First
-todowrite({ todos: [{ id: "1", status: "in_progress" }] }) // Supersedes
+todowrite({ todos: [{ id: "1", status: "pending" }] }) // First - pruned
+todowrite({ todos: [{ id: "1", status: "in_progress" }] }) // Second - pruned
+todowrite({ todos: [{ id: "1", status: "completed" }] }) // Latest - retained
 ```
 
-**Result**: Only the latest todo state is retained.
+**Result**: Only the **latest** todo state is retained in context. Previous outputs are auto-pruned.
 
 ### 4. Source-URL Supersede
 
@@ -409,11 +411,31 @@ Monitors `todowrite` usage and prompts when tasks are neglected:
     "tools": {
         "todoReminder": {
             "enabled": true,
-            "initialTurns": 12, // Turns before first reminder
-            "repeatTurns": 6, // Interval between reminders
+            "initialTurns": 8, // First reminder after 8 turns without todo update
+            "repeatTurns": 4, // Subsequent reminders every 4 turns
+            "stuckTaskTurns": 12, // Threshold for stuck task detection
         },
     },
 }
+```
+
+**Reminder Behavior:**
+
+- **First reminder**: Fires after `initialTurns` (8) turns without `todowrite`
+- **Repeat reminders**: Fire every `repeatTurns` (4) turns thereafter
+- **Auto-reset**: Each `todowrite` call resets the counter to 0
+- **Deduplication**: Only ONE reminder exists in context at a time; new reminders replace old ones
+- **Stuck task detection**: Tasks in `in_progress` for `stuckTaskTurns` (12) are flagged with guidance
+- **Prunable outputs**: Reminder displays a list of prunable tool outputs to help with cleanup
+
+**Reminder Sequence:**
+
+```
+Turn 0:  todowrite() called (resets counter)
+Turn 8:  🔖 First reminder (if no todowrite since turn 0)
+Turn 12: 🔖 Repeat reminder
+Turn 16: 🔖 Repeat reminder
+...
 ```
 
 ### Automata Mode

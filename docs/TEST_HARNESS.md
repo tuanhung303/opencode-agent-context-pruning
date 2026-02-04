@@ -5,6 +5,8 @@
 **File**: `docs/test-harness.md`  
 **Purpose**: Ready-to-use testing patterns and validation scripts
 
+> 📖 **Related**: See [Todo Write Testing Guide](TODOWRITE_TESTING_GUIDE.md) for comprehensive `todowrite` tool testing patterns and stuck task detection validation.
+
 ---
 
 ## Quick Start: Copy-Paste Test Scripts

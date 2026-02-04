@@ -24,6 +24,7 @@ import { safeExecute } from "./safe-execute"
 import { sendUnifiedNotification } from "./ui/notification"
 import { getCurrentParams } from "./strategies/utils"
 import { saveSessionState } from "./state/persistence"
+import { isSyntheticMessage } from "./shared-utils"
 
 type Strategy = (
     state: SessionState,
@@ -91,7 +92,7 @@ export function createChatMessageTransformHandler(
         })
 
         // Detect new user message
-        const lastUserMessage = [...output.messages].reverse().find((m) => m.info.role === "user")
+        const lastUserMessage = [...output.messages].reverse().find((m) => m.info.role === "user" && !isSyntheticMessage(m))
         if (lastUserMessage && lastUserMessage.info.id !== state.lastUserMessageId) {
             state.lastUserMessageId = lastUserMessage.info.id
             logger.info(`New user message detected (id: ${lastUserMessage.info.id})`)

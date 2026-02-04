@@ -1000,35 +1000,7 @@ bash({ command: "echo 'success'" })
 
 ---
 
-#### ⛔ Test 41: User Code Block Truncation — NOT IMPLEMENTED
-
-**Status**: SKIP — Config exists but implementation not found in codebase.
-
-The `pruneUserCodeBlocks` config option is defined in `lib/config/schema.ts` but no corresponding implementation exists. Skip this test until the feature is implemented.
-
-**Config Reference**:
-
-```typescript
-pruneUserCodeBlocks: z.boolean().default(true) // Line 117 in schema.ts
-```
-
----
-
-#### ⛔ Test 42: Error Output Truncation — NOT IMPLEMENTED
-
-**Status**: SKIP — Config exists but implementation not found in codebase.
-
-The `truncateOldErrors` config option is defined in `lib/config/schema.ts` but no corresponding implementation exists. Skip this test until the feature is implemented.
-
-**Config Reference**:
-
-```typescript
-truncateOldErrors: z.boolean().default(true) // Line 123 in schema.ts
-```
-
----
-
-#### ✅ Test 43: Compaction Awareness
+#### ✅ Test 41: Compaction Awareness
 
 **Execution**:
 
@@ -1395,20 +1367,9 @@ Copy this ENTIRE JSON array into `todowrite()`:
         "status": "pending",
         "priority": "medium"
     },
+
     {
         "id": "t41",
-        "content": "TEST: User Code Block Truncation (large code block, 5+ turns, verify truncated)",
-        "status": "pending",
-        "priority": "medium"
-    },
-    {
-        "id": "t42",
-        "content": "TEST: Error Output Truncation (verbose error, 3+ turns, verify truncated)",
-        "status": "pending",
-        "priority": "low"
-    },
-    {
-        "id": "t43",
         "content": "TEST: Compaction Awareness (verify no double-processing)",
         "status": "pending",
         "priority": "medium"

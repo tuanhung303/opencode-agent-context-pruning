@@ -3,7 +3,7 @@ import type { SessionState, WithParts } from "./types"
 import type { Logger } from "../logger"
 import { loadSessionState } from "./persistence"
 import { isSubAgentSession } from "./utils"
-import { getLastUserMessage, isMessageCompacted } from "../shared-utils"
+import { getLastUserMessage, isMessageCompacted, isSyntheticMessage } from "../shared-utils"
 
 export const checkSession = async (
     client: OpenCodeClient,
@@ -315,8 +315,13 @@ function restoreTodoStateFromHistory(
             ) {
                 try {
                     const content = part.state.output
-                    const todos = JSON.parse(content)
-                    if (Array.isArray(todos)) {
+                    let todos: any[] | null = null
+                    if (typeof content === "string") {
+                        todos = JSON.parse(content)
+                    } else if (Array.isArray(content)) {
+                        todos = content
+                    }
+                    if (todos && Array.isArray(todos)) {
                         lastTodowriteTurn = currentTurn
                         lastTodos = todos
                     }
@@ -351,7 +356,7 @@ function findLastCompactionTimestamp(messages: WithParts[]): number {
 export function countTurns(state: SessionState, messages: WithParts[]): number {
     let turnCount = 0
     for (const msg of messages) {
-        if (isMessageCompacted(state, msg)) {
+        if (isMessageCompacted(state, msg) || isSyntheticMessage(msg)) {
             continue
         }
         const parts = Array.isArray(msg.parts) ? msg.parts : []

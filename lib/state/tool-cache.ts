@@ -567,8 +567,13 @@ function trackTodoInteractions(state: SessionState, messages: WithParts[], logge
                 // Parse todo state from result output
                 try {
                     const content = (part.state as any).output
-                    const todos = JSON.parse(content) as TodoItem[]
-                    if (Array.isArray(todos)) {
+                    let todos: TodoItem[] | null = null
+                    if (typeof content === "string") {
+                        todos = JSON.parse(content) as TodoItem[]
+                    } else if (Array.isArray(content)) {
+                        todos = content as TodoItem[]
+                    }
+                    if (todos && Array.isArray(todos)) {
                         latestTodos = todos
                     }
                 } catch {

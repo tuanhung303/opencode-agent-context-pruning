@@ -305,25 +305,10 @@ import type { TargetTypeResult } from "../strategies/_types"
 
 /**
  * Detect target type using state map lookups (no prefix-based detection).
- * Supports: tool_hash, message_hash, reasoning_hash, bulk patterns
+ * Supports: tool_hash, message_hash, reasoning_hash
  * Format: 6 hex chars (e.g., a1b2c3) for all hash types
- * Bulk patterns: [tools], [messages], [thinking], [*], [all]
  */
 export function detectTargetType(target: string, state: SessionState): TargetTypeResult {
-    // Match bulk patterns first
-    if (target === "[tools]") {
-        return "bulk_tools"
-    }
-    if (target === "[messages]") {
-        return "bulk_messages"
-    }
-    if (target === "[thinking]") {
-        return "bulk_thinking"
-    }
-    if (target === "[*]" || target === "[all]") {
-        return "bulk_all"
-    }
-
     // Lookup-based detection (no prefix required)
     if (state.hashRegistry.calls.has(target)) {
         return "tool_hash"
@@ -421,87 +406,4 @@ export function formatHashInventory(grouped: Record<string, string[]>): string {
     }
 
     return lines.join("\n")
-}
-
-/**
- * Collect all tool hashes eligible for bulk operations.
- * Respects turn protection (tools without hashes are excluded) and protected tools list.
- * Also excludes already pruned tools.
- *
- * @param state - Session state containing hash mappings
- * @param config - Plugin config for protected tools list
- * @returns Array of tool hashes eligible for bulk operations
- */
-export function collectAllToolHashes(state: SessionState, config: PluginConfig): string[] {
-    const allProtectedTools = config.tools.settings.protectedTools
-    const { prunedToolIds } = getPruneCache(state)
-    const hashes: string[] = []
-
-    for (const [hash, callId] of state.hashRegistry.calls.entries()) {
-        // Skip if already pruned
-        if (prunedToolIds.has(callId)) {
-            continue
-        }
-
-        // Look up tool metadata
-        const toolEntry = state.toolParameters.get(callId)
-        if (!toolEntry) {
-            continue
-        }
-
-        // Skip protected tools
-        if (allProtectedTools.includes(toolEntry.tool)) {
-            continue
-        }
-
-        hashes.push(hash)
-    }
-
-    return hashes
-}
-
-/**
- * Collect all assistant message part hashes eligible for bulk operations.
- * Returns all message hashes (xxxxxx format) that haven't been pruned.
- *
- * @param state - Session state containing message hash mappings
- * @returns Array of message hashes eligible for bulk operations
- */
-export function collectAllMessageHashes(state: SessionState): string[] {
-    const { prunedMessagePartIds } = getPruneCache(state)
-    const hashes: string[] = []
-
-    for (const [hash, partId] of state.hashRegistry.messages.entries()) {
-        // Skip if already pruned
-        if (prunedMessagePartIds.has(partId)) {
-            continue
-        }
-
-        hashes.push(hash)
-    }
-
-    return hashes
-}
-
-/**
- * Collect all reasoning/thinking block hashes eligible for bulk operations.
- * Returns all reasoning hashes that haven't been pruned.
- *
- * @param state - Session state containing reasoning hash mappings
- * @returns Array of reasoning hashes eligible for bulk operations
- */
-export function collectAllReasoningHashes(state: SessionState): string[] {
-    const { prunedReasoningPartIds } = getPruneCache(state)
-    const hashes: string[] = []
-
-    for (const [hash, partId] of state.hashRegistry.reasoning.entries()) {
-        // Skip if already pruned
-        if (prunedReasoningPartIds.has(partId)) {
-            continue
-        }
-
-        hashes.push(hash)
-    }
-
-    return hashes
 }

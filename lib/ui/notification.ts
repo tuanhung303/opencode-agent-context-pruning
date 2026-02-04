@@ -6,6 +6,7 @@ import {
     formatStatsHeader,
     formatTokenCount,
 } from "./utils"
+import { formatNoOpNotification } from "./minimal-notifications"
 import { PluginConfig } from "../config"
 
 export type PruneReason =
@@ -35,6 +36,8 @@ export interface NotificationContext {
     workingDirectory: string
     distillation?: string[]
     pruneMessagePartIds?: string[]
+    pruneReasoningPartIds?: string[]
+    attemptedTargets?: string[]
     options?: {
         simplified?: boolean
     }
@@ -58,6 +61,7 @@ function buildDetailedMessage(ctx: NotificationContext, showDistillation: boolea
         workingDirectory,
         distillation,
         pruneMessagePartIds = [],
+        pruneReasoningPartIds = [],
         options,
     } = ctx
     const simplified = options?.simplified ?? false
@@ -68,7 +72,12 @@ function buildDetailedMessage(ctx: NotificationContext, showDistillation: boolea
     const hasPruningActivity =
         state.stats.pruneTokenCounter > 0 || (distillation && distillation.length > 0)
 
-    if (hasPruningActivity && (pruneToolIds.length > 0 || pruneMessagePartIds.length > 0)) {
+    if (
+        hasPruningActivity &&
+        (pruneToolIds.length > 0 ||
+            pruneMessagePartIds.length > 0 ||
+            pruneReasoningPartIds.length > 0)
+    ) {
         const pruneTokenCounterStr = `▼ ${formatTokenCount(state.stats.pruneTokenCounter)}`
         const reasonLabel = reason ? ` — ${PRUNE_REASON_LABELS[reason]}` : ""
         message += `\n\n▣ Pruning (${pruneTokenCounterStr})${reasonLabel}`
@@ -86,6 +95,10 @@ function buildDetailedMessage(ctx: NotificationContext, showDistillation: boolea
         if (pruneMessagePartIds.length > 0) {
             message += `\n  - ${pruneMessagePartIds.length} assistant message part(s)`
         }
+
+        if (pruneReasoningPartIds.length > 0) {
+            message += `\n  - ${pruneReasoningPartIds.length} thinking block(s)`
+        }
     }
 
     return (message + formatDistilled(showDistillation ? distillation : undefined)).trim()
@@ -99,12 +112,19 @@ export async function sendUnifiedNotification(
     sessionId: string,
     params: any,
 ): Promise<boolean> {
-    const { pruneToolIds, pruneMessagePartIds = [], state, reason, distillation } = ctx
+    const {
+        pruneToolIds,
+        pruneMessagePartIds = [],
+        pruneReasoningPartIds = [],
+        state,
+        reason,
+        distillation,
+    } = ctx
 
-    const hasPruned = pruneToolIds.length > 0 || pruneMessagePartIds.length > 0
-    if (!hasPruned) {
-        return false
-    }
+    const hasPruned =
+        pruneToolIds.length > 0 ||
+        pruneMessagePartIds.length > 0 ||
+        pruneReasoningPartIds.length > 0
 
     if (config.pruneNotification === "off") {
         return false
@@ -117,6 +137,28 @@ export async function sendUnifiedNotification(
             ? buildMinimalMessage(state, distillation, showDistillation)
             : buildDetailedMessage(ctx, showDistillation)
 
+    await sendIgnoredMessage(client, sessionId, message, params, logger)
+    return true
+}
+
+/**
+ * Send notification for attempted pruning (no-op cases)
+ * Always shows notification even when nothing was actually pruned
+ */
+export async function sendAttemptedNotification(
+    client: any,
+    logger: Logger,
+    config: PluginConfig,
+    type: "discard" | "distill",
+    attemptedTargets: string[],
+    sessionId: string,
+    params: any,
+): Promise<boolean> {
+    if (config.pruneNotification === "off") {
+        return false
+    }
+
+    const message = formatNoOpNotification(type, attemptedTargets)
     await sendIgnoredMessage(client, sessionId, message, params, logger)
     return true
 }

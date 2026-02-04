@@ -42,9 +42,28 @@ export const filterStepMarkers = (
 
 const PRUNED_TOOL_ERROR_INPUT_REPLACEMENT = "[input removed due to failed tool call]"
 const PRUNED_QUESTION_INPUT_REPLACEMENT = "[questions removed - see output for user's answers]"
-const PRUNED_MESSAGE_PART_REPLACEMENT = "[Assistant message part removed to save context]"
-const PRUNED_REASONING_REPLACEMENT = "[Reasoning redacted to save context]"
 const PRUNED_FILE_PART_REPLACEMENT = "[File attachment masked to save context]"
+
+/** Preview length for pruned content placeholders */
+const PREVIEW_LENGTH = 20
+const PRUNED_SUFFIX = "...[pruned]"
+
+/**
+ * Create a pruned placeholder with content preview for traceability.
+ * Format: "The quick brown fox...[pruned]"
+ */
+function createPrunedPlaceholder(originalText: string): string {
+    const preview = originalText.slice(0, PREVIEW_LENGTH).replace(/\n/g, " ")
+    return `${preview}${PRUNED_SUFFIX}`
+}
+
+/**
+ * Create a pruned tool placeholder showing tool name for layout consistency.
+ * Format: "[read() output pruned]" or "[glob() output pruned]"
+ */
+function createPrunedToolPlaceholder(toolName: string): string {
+    return `[${toolName}() output pruned]`
+}
 // Hash tag names for trailing format
 const TOOL_HASH_TAG = "tool_hash"
 const MESSAGE_HASH_TAG = "message_hash"
@@ -489,41 +508,39 @@ export const prune = (
         const messageId = msg.info.id
         const isAssistant = msg.info.role === "assistant"
 
-        // Filter out pruned tool parts entirely
-        if (prunedToolIds.size > 0) {
-            const originalLength = parts.length
-            msg.parts = parts.filter((part) => {
-                if (part.type === "tool" && part.callID && prunedToolIds.has(part.callID)) {
-                    logger.debug(`Removed pruned tool part ${part.callID} (${part.tool})`)
-                    return false
-                }
-                return true
-            })
-            const removedCount = originalLength - msg.parts.length
-            if (removedCount > 0) {
-                logger.debug(`Removed ${removedCount} tool parts`)
-            }
-            // Continue with remaining parts for message/reasoning pruning
-        }
-
         for (let partIndex = 0; partIndex < parts.length; partIndex++) {
             const part = parts[partIndex]
             if (!part) continue
 
-            // Handle assistant text parts
+            // Handle pruned tool parts - replace with placeholder for layout consistency
+            if (part.type === "tool" && part.callID && prunedToolIds.has(part.callID)) {
+                const toolName = part.tool || "tool"
+                const placeholder = createPrunedToolPlaceholder(toolName)
+                // Replace the tool part with a text placeholder part
+                parts[partIndex] = {
+                    type: "text" as const,
+                    text: placeholder,
+                } as any
+                logger.debug(`Pruned tool part ${part.callID} (${toolName})`)
+                continue
+            }
+
+            // Handle assistant text parts - keep preview for traceability
             if (isAssistant && part.type === "text" && prunedMessagePartIds.size > 0) {
                 const partId = `${messageId}:${partIndex}`
                 if (prunedMessagePartIds.has(partId)) {
-                    part.text = PRUNED_MESSAGE_PART_REPLACEMENT
+                    const originalText = part.text || ""
+                    part.text = createPrunedPlaceholder(originalText)
                     logger.debug(`Pruned assistant message part ${partId}`)
                 }
             }
 
-            // Handle reasoning parts
+            // Handle reasoning parts - keep preview for traceability
             if (isAssistant && part.type === "reasoning" && prunedReasoningPartIds.size > 0) {
                 const partId = `${messageId}:${partIndex}`
                 if (prunedReasoningPartIds.has(partId)) {
-                    part.text = PRUNED_REASONING_REPLACEMENT
+                    const originalText = part.text || ""
+                    part.text = createPrunedPlaceholder(originalText)
                     logger.debug(`Pruned reasoning part ${partId}`)
                 }
             }

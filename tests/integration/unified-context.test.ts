@@ -59,6 +59,7 @@ describe("Unified Context Tool Integration", () => {
             prune: {
                 toolIds: [],
                 messagePartIds: [],
+                reasoningPartIds: [],
             },
             toolParameters: new Map(),
             hashRegistry: {
@@ -173,14 +174,14 @@ describe("Unified Context Tool Integration", () => {
         expect(mockState.prune.messagePartIds).toContain("msg_1:0")
     })
 
-    it("should discard all tools using bulk pattern [tools]", async () => {
-        // Setup multiple tools in state (task is protected, so use other tools)
+    it("should discard multiple tools by individual hashes", async () => {
+        // Setup multiple tools in state
         mockState.hashRegistry.calls.set("abc123", "call_1")
         mockState.hashRegistry.calls.set("def456", "call_2")
         mockState.hashRegistry.calls.set("567890", "call_3")
         mockState.hashRegistry.callIds.set("call_1", "abc123")
         mockState.hashRegistry.callIds.set("call_2", "def456")
-        mockState.hashRegistry.callIds.set("call_3", "w_56789")
+        mockState.hashRegistry.callIds.set("call_3", "567890")
         mockState.toolParameters.set("call_1", { tool: "read", turn: 1, parameters: {} } as any)
         mockState.toolParameters.set("call_2", { tool: "grep", turn: 2, parameters: {} } as any)
         mockState.toolParameters.set("call_3", { tool: "write", turn: 3, parameters: {} } as any)
@@ -196,7 +197,7 @@ describe("Unified Context Tool Integration", () => {
         const result = await tool.execute(
             {
                 action: "discard",
-                targets: [["[tools]"]],
+                targets: [["abc123"], ["def456"], ["567890"]],
             },
             mockToolCtx,
         )
@@ -207,14 +208,11 @@ describe("Unified Context Tool Integration", () => {
         expect(mockState.prune.toolIds).toContain("call_3")
     })
 
-    it("should distill all tools using bulk pattern [tools] with summary", async () => {
-        // Setup multiple tools in state
+    it("should reject protected tools", async () => {
+        // Setup a protected tool
         mockState.hashRegistry.calls.set("abc123", "call_1")
-        mockState.hashRegistry.calls.set("def456", "call_2")
         mockState.hashRegistry.callIds.set("call_1", "abc123")
-        mockState.hashRegistry.callIds.set("call_2", "def456")
-        mockState.toolParameters.set("call_1", { tool: "read", turn: 1, parameters: {} } as any)
-        mockState.toolParameters.set("call_2", { tool: "grep", turn: 2, parameters: {} } as any)
+        mockState.toolParameters.set("call_1", { tool: "task", turn: 1, parameters: {} } as any)
 
         const tool = createContextTool({
             client: mockClient,
@@ -224,28 +222,18 @@ describe("Unified Context Tool Integration", () => {
             workingDirectory: "/test",
         })
 
-        const result = await tool.execute(
-            {
-                action: "distill",
-                targets: [["[tools]", "Research complete"]],
-            },
-            mockToolCtx,
-        )
-
-        expect(result).toContain("distill")
-        expect(mockState.prune.toolIds).toContain("call_1")
-        expect(mockState.prune.toolIds).toContain("call_2")
+        await expect(
+            tool.execute(
+                {
+                    action: "discard",
+                    targets: [["abc123"]],
+                },
+                mockToolCtx,
+            ),
+        ).rejects.toThrow("protected tool")
     })
 
-    it("should exclude protected tools from bulk operations", async () => {
-        // Setup tools including a protected one
-        mockState.hashRegistry.calls.set("abc123", "call_1")
-        mockState.hashRegistry.calls.set("t_def34", "call_2") // task is protected
-        mockState.hashRegistry.callIds.set("call_1", "abc123")
-        mockState.hashRegistry.callIds.set("call_2", "t_def34")
-        mockState.toolParameters.set("call_1", { tool: "read", turn: 1, parameters: {} } as any)
-        mockState.toolParameters.set("call_2", { tool: "task", turn: 2, parameters: {} } as any)
-
+    it("should report invalid targets not found in registry", async () => {
         const tool = createContextTool({
             client: mockClient,
             state: mockState,
@@ -257,41 +245,11 @@ describe("Unified Context Tool Integration", () => {
         const result = await tool.execute(
             {
                 action: "discard",
-                targets: [["[tools]"]],
+                targets: [["nonexistent"]],
             },
             mockToolCtx,
         )
 
-        expect(result).toContain("discard")
-        expect(mockState.prune.toolIds).toContain("call_1")
-        expect(mockState.prune.toolIds).not.toContain("call_2") // Protected tool excluded
-    })
-
-    it("should handle bulk all pattern [*] for discard", async () => {
-        // Setup tools and messages
-        mockState.hashRegistry.calls.set("abc123", "call_1")
-        mockState.hashRegistry.callIds.set("call_1", "abc123")
-        mockState.toolParameters.set("call_1", { tool: "read", turn: 1, parameters: {} } as any)
-        mockState.hashRegistry.messages.set("a_xyz12", "msg_1:0")
-
-        const tool = createContextTool({
-            client: mockClient,
-            state: mockState,
-            logger: mockLogger,
-            config: mockConfig,
-            workingDirectory: "/test",
-        })
-
-        const result = await tool.execute(
-            {
-                action: "discard",
-                targets: [["[*]"]],
-            },
-            mockToolCtx,
-        )
-
-        expect(result).toContain("discard")
-        expect(mockState.prune.toolIds).toContain("call_1")
-        expect(mockState.prune.messagePartIds).toContain("msg_1:0")
+        expect(result).toContain("No valid tool hashes to discard")
     })
 })

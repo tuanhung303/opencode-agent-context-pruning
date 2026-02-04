@@ -5,16 +5,10 @@
 import type { PruneToolContext } from "./_types"
 import { SessionState, ToolParameterEntry, WithParts, ensureSessionInitialized } from "../state"
 import { saveSessionState } from "../state/persistence"
-import { sendUnifiedNotification } from "../ui/notification"
+import { sendUnifiedNotification, sendAttemptedNotification } from "../ui/notification"
 import { formatDiscardNotification } from "../ui/minimal-notifications"
 import { formatPruningStatus, dimText } from "../ui/pruning-status"
 import { calculateTokensSaved, getCurrentParams } from "./utils"
-import {
-    collectAllToolHashes,
-    collectAllMessageHashes,
-    collectAllReasoningHashes,
-} from "../messages/utils"
-import type { BulkTargetType } from "./_types"
 import type { Logger } from "../logger"
 
 /**
@@ -91,6 +85,7 @@ export async function executeToolDistill(
             reason: "distillation",
             workingDirectory,
             distillation,
+            attemptedTargets: hashes,
             options: { simplified: true },
         },
         sessionId,
@@ -106,7 +101,7 @@ export async function executeToolDistill(
     // Build notification
     const tuiStatus = formatPruningStatus(prunedToolNames, distillation)
     const tuiNotification = tuiStatus ? dimText(tuiStatus) : ""
-    const minimalNotification = formatDiscardNotification(callIds.length, "distillation")
+    const minimalNotification = formatDiscardNotification(callIds.length, "distillation", hashes)
 
     return tuiNotification ? `${minimalNotification}\n${tuiNotification}` : minimalNotification
 }
@@ -120,7 +115,7 @@ export async function executeContextToolDistill(
     hashes: string[],
     distillation: string[],
 ): Promise<string> {
-    const { state, logger } = ctx
+    const { state, logger, config } = ctx
 
     const callIds: string[] = []
     const validHashes: string[] = []
@@ -148,6 +143,17 @@ export async function executeContextToolDistill(
     }
 
     if (validHashes.length === 0) {
+        // Send no-op notification showing attempted hashes
+        const currentParams = getCurrentParams(state, [], logger)
+        await sendAttemptedNotification(
+            ctx.client,
+            logger,
+            config,
+            "distill",
+            hashes,
+            toolCtx.sessionID,
+            currentParams,
+        )
         return "No valid tool hashes to distill"
     }
 
@@ -179,11 +185,126 @@ export async function executeContextMessageDistill(
         }
     }
 
+    const currentParams = getCurrentParams(state, [], logger)
+    const hashes = entries.map((e) => e[0])
+
+    await sendUnifiedNotification(
+        ctx.client,
+        logger,
+        ctx.config,
+        {
+            state,
+            pruneToolIds: [],
+            toolMetadata: new Map(),
+            pruneMessagePartIds:
+                distilledCount > 0 ? state.prune.messagePartIds.slice(-distilledCount) : [],
+            reason: "distillation",
+            workingDirectory: ctx.workingDirectory,
+            attemptedTargets: hashes,
+            options: { simplified: true },
+        },
+        _toolCtx.sessionID,
+        currentParams,
+    )
+
     saveSessionState(state, logger).catch((err: Error) =>
         logger.error("Failed to persist state", { error: err.message }),
     )
 
     return `Distilled ${distilledCount} message(s)`
+}
+
+/**
+ * Distill reasoning/thinking parts by hash.
+ * Used for thinking mode safety: converts discard to distill with minimal placeholder.
+ * Note: Updates manualDiscard.thinking stats (not distillation) for proper notification display.
+ */
+export async function executeContextReasoningDistill(
+    ctx: PruneToolContext,
+    toolCtx: { sessionID: string },
+    entries: Array<[string, string]>,
+): Promise<string> {
+    const { state, logger, config, client } = ctx
+    const sessionId = toolCtx.sessionID
+
+    let distilledCount = 0
+    let tokensSaved = 0
+    const processedHashes: string[] = []
+
+    for (const [hash, _summary] of entries) {
+        const partId = state.hashRegistry.reasoning.get(hash)
+        if (partId) {
+            if (!state.prune.reasoningPartIds.includes(partId)) {
+                state.prune.reasoningPartIds.push(partId)
+                processedHashes.push(hash)
+                distilledCount++
+                tokensSaved += 2000 // Estimate tokens per reasoning block
+                logger.info(`Distilled reasoning part ${partId} via hash ${hash}`)
+            } else {
+                logger.debug(`Hash ${hash} already pruned, skipping`)
+            }
+        } else {
+            logger.warn(`Unknown reasoning hash: ${hash}`)
+        }
+    }
+
+    if (distilledCount === 0) {
+        return "No valid reasoning hashes to distill"
+    }
+
+    // Update stats - use manualDiscard.thinking for notification display (shows 🧠 icon)
+    state.stats.pruneTokenCounter += tokensSaved
+    state.stats.pruneMessageCounter += distilledCount
+    state.stats.strategyStats.manualDiscard.thinking.count += distilledCount
+    state.stats.strategyStats.manualDiscard.thinking.tokens += tokensSaved
+
+    state.lastDiscardStats = {
+        itemCount: distilledCount,
+        tokensSaved: state.stats.pruneTokenCounter,
+    }
+
+    // Send notification for consistent status display
+    const currentParams = getCurrentParams(state, [], logger)
+    // Build reasoning part IDs list for notification (using "msgId:partIndex" format)
+    const reasoningPartIds = processedHashes
+        .map((hash) => state.hashRegistry.reasoning.get(hash))
+        .filter((id): id is string => id !== undefined)
+    await sendUnifiedNotification(
+        client,
+        logger,
+        config,
+        {
+            state,
+            pruneToolIds: [],
+            toolMetadata: new Map(),
+            pruneMessagePartIds: [],
+            pruneReasoningPartIds: reasoningPartIds,
+            reason: "manual",
+            workingDirectory: ctx.workingDirectory,
+        },
+        sessionId,
+        currentParams,
+    )
+
+    // Commit stats
+    state.stats.totalPruneTokens += state.stats.pruneTokenCounter
+    state.stats.pruneTokenCounter = 0
+    state.stats.totalPruneMessages += state.stats.pruneMessageCounter
+    state.stats.pruneMessageCounter = 0
+
+    saveSessionState(state, logger).catch((err: Error) =>
+        logger.error("Failed to persist state", { error: err.message }),
+    )
+
+    // Build minimal notification like tool discards
+    const minimalNotification = formatDiscardNotification(distilledCount, "manual")
+    const hashList =
+        processedHashes.length > 3
+            ? `${processedHashes.slice(0, 3).join(", ")}... (${processedHashes.length} total)`
+            : processedHashes.join(", ")
+    const details = `pruned: ${hashList}`
+
+    return `${minimalNotification}\n${dimText(details)}`
 }
 
 // ============================================================================
@@ -222,129 +343,6 @@ function validateCallIds(
             )
         }
     }
-}
-
-// ============================================================================
-// Bulk Operations
-// ============================================================================
-
-/**
- * Execute bulk distill operation for tools, messages, or all eligible items.
- * Collects all eligible items based on bulkType and applies a single summary to all.
- *
- * @param ctx - Prune tool context
- * @param toolCtx - Tool context with session ID
- * @param bulkType - Type of bulk operation: "bulk_tools", "bulk_messages", or "bulk_all"
- * @param summary - Single summary to apply to all distilled items
- * @returns Status message describing what was distilled
- */
-export async function executeBulkDistill(
-    ctx: PruneToolContext,
-    toolCtx: { sessionID: string },
-    bulkType: BulkTargetType,
-    summary: string,
-): Promise<string> {
-    const { state, logger, config } = ctx
-
-    if (!summary) {
-        throw new Error("Summary is required for bulk distill operations")
-    }
-
-    const results: string[] = []
-
-    // Handle tools
-    if (bulkType === "bulk_tools" || bulkType === "bulk_all") {
-        const toolHashes = collectAllToolHashes(state, config)
-        if (toolHashes.length > 0) {
-            logger.info(`Bulk distill: collecting ${toolHashes.length} tool hashes`)
-            // Create array of same summary repeated for each hash
-            const distillations = toolHashes.map(() => summary)
-            const toolResult = await executeContextToolDistill(
-                ctx,
-                toolCtx,
-                toolHashes,
-                distillations,
-            )
-            results.push(toolResult)
-        } else {
-            results.push("No eligible tool outputs to distill")
-        }
-    }
-
-    // Handle messages
-    if (bulkType === "bulk_messages" || bulkType === "bulk_all") {
-        const messageHashes = collectAllMessageHashes(state)
-        if (messageHashes.length > 0) {
-            logger.info(`Bulk distill: collecting ${messageHashes.length} message hashes`)
-            // Directly distill message parts using collected hashes
-            let distilledCount = 0
-            for (const hash of messageHashes) {
-                const partId = state.hashRegistry.messages.get(hash)
-                if (partId && !state.prune.messagePartIds.includes(partId)) {
-                    state.prune.messagePartIds.push(partId)
-                    logger.info(`Bulk distilled message part ${partId}`)
-                    distilledCount++
-                }
-            }
-            if (distilledCount > 0) {
-                saveSessionState(state, logger).catch((err: Error) =>
-                    logger.error("Failed to persist state", { error: err.message }),
-                )
-                results.push(`Distilled ${distilledCount} message(s)`)
-            }
-        } else {
-            results.push("No eligible message parts to distill")
-        }
-    }
-
-    // Handle reasoning/thinking blocks (many-to-one distill)
-    if (bulkType === "bulk_thinking" || bulkType === "bulk_all") {
-        const reasoningHashes = collectAllReasoningHashes(state)
-        if (reasoningHashes.length > 0) {
-            logger.info(`Bulk distill: collecting ${reasoningHashes.length} reasoning hashes`)
-            // Many-to-one: remove all thinking blocks, create single summary
-            let distilledCount = 0
-            let tokensSaved = 0
-            const deletedHashes: string[] = []
-
-            for (const hash of reasoningHashes) {
-                const partId = state.hashRegistry.reasoning.get(hash)
-                if (partId && !state.prune.reasoningPartIds.includes(partId)) {
-                    state.prune.reasoningPartIds.push(partId)
-                    deletedHashes.push(hash)
-                    logger.info(`Bulk distilled reasoning part ${partId} via hash ${hash}`)
-                    distilledCount++
-                    tokensSaved += 2000 // Estimate tokens per reasoning block
-                }
-            }
-
-            if (distilledCount > 0) {
-                // Update stats for bulk reasoning distill
-                state.stats.pruneTokenCounter += tokensSaved
-                state.stats.pruneMessageCounter += distilledCount
-                state.stats.strategyStats.manualDiscard.thinking.count += distilledCount
-                state.stats.strategyStats.manualDiscard.thinking.tokens += tokensSaved
-
-                saveSessionState(state, logger).catch((err: Error) =>
-                    logger.error("Failed to persist state", { error: err.message }),
-                )
-
-                const deletedList =
-                    deletedHashes.length > 3
-                        ? `${deletedHashes.slice(0, 3).join(", ")}... (${deletedHashes.length} total)`
-                        : deletedHashes.join(", ")
-                results.push(
-                    `Distilled ${distilledCount} thinking block(s) into single summary, saved ~${tokensSaved} tokens [merged: ${deletedList}]`,
-                )
-            } else {
-                results.push("No eligible thinking blocks to distill")
-            }
-        } else {
-            results.push("No eligible thinking blocks to distill")
-        }
-    }
-
-    return results.join("; ")
 }
 
 // ============================================================================

@@ -5,8 +5,8 @@ Manage conversation context. Remove noise, preserve essentials.
 
 | Action | Purpose | Format |
 |--------|---------|--------|
-| discard | Remove content entirely | [["target"], ...] |
-| distill | Replace with summary | [["target", "summary"], ...] |
+| discard | Remove content entirely | [["hash"], ...] |
+| distill | Replace with summary | [["hash", "summary"], ...] |
 
 ## Targets
 
@@ -17,17 +17,6 @@ Manage conversation context. Remove noise, preserve essentials.
 | Thinking block | 6 hex chars | \`123abc\` |
 
 All hashes are auto-detected from state registry. No prefixes needed.
-
-## Bulk Patterns
-
-| Pattern | Targets | When to Use |
-|---------|---------|-------------|
-| \`[tools]\` | All tool outputs | After research/exploration |
-| \`[messages]\` | All assistant text parts | Conversation cleanup |
-| \`[thinking]\` | All reasoning blocks | After analysis complete |
-| \`[*]\` or \`[all]\` | Everything eligible | Phase transitions |
-
-Bulk operations respect turn protection and protected tools list.
 
 ## High-Value Targets
 
@@ -42,37 +31,14 @@ Prefer \`distill\` over \`discard\` to preserve decision rationale.
 
 ## Examples
 
-Individual discard:
+Discard multiple tools:
   context({ action: "discard", targets: [["a1b2c3"], ["d4e5f6"]] })
 
-Individual distill:
+Distill a thinking block:
   context({ action: "distill", targets: [["abc123", "Auth: use JWT with 24h expiry"]] })
 
-Bulk discard tools:
-  context({ action: "discard", targets: [["[tools]"]] })
-
-Bulk discard thinking:
-  context({ action: "discard", targets: [["[thinking]"]] })
-
-Bulk distill thinking (collapses all to one summary):
-  context({ action: "distill", targets: [["[thinking]", "Decided: Strategy A over B due to perf"]] })
-
-Mixed targets:
-  context({ action: "discard", targets: [["a1b2c3"], ["[thinking]"]] })
-
-## Standard Operating Procedures
-
-After RESEARCH phase:
-  context({ action: "discard", targets: [["[tools]"]] })
-
-After ANALYZE phase:
-  context({ action: "distill", targets: [["[thinking]", "Key findings: ..."]] })
-
-After IMPLEMENT phase:
-  context({ action: "discard", targets: [["[*]"]] })
-
-During REFLECT:
-  Review remaining context, prune stale items
+Mixed targets (tools + thinking):
+  context({ action: "discard", targets: [["a1b2c3"], ["def456"]] })
 
 ## Distill Best Practices
 
@@ -87,9 +53,8 @@ Good: "Chose JWT over sessions: stateless, scales better. Rejected OAuth: overki
 ## Rules
 
 1. **Batch** — Multiple targets in one call
-2. **Mix** — Combine hashes and bulk patterns freely
-3. **Every phase** — Prune after research, analyze, implement
-4. **Silent** — Never mention pruning to users
+2. **Every phase** — Prune after research, analyze, implement
+3. **Silent** — Never mention pruning to users
 
 ## Hash Format
 

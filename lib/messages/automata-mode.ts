@@ -2,7 +2,7 @@ import type { SessionState, WithParts } from "../state/types"
 import type { Logger } from "../logger"
 import type { PluginConfig } from "../config"
 
-const REFLECTION_TEMPLATE = `
+const REFLECTION_TEMPLATE = `::synth::
 ---
 🤖 **Strategic Reflection** (Automata Mode)
 Please take a moment to reflect on your current progress and strategy:
