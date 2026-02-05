@@ -30,8 +30,9 @@ Use \`todowrite\` to split the task or update its status.
 
 // Regex to match the reminder block (with any number of turns and optional prunable hashes)
 // Updated to match optional ::synth:: prefix
+// Note: Using [^\n]+ for hash lines to avoid catastrophic backtracking
 const REMINDER_REGEX =
-    /(?:^|\n)(?:::synth::\n)?---\n## 🔖 Checkpoint\n\nI've noticed your todo list hasn't been updated for \d+ turns\. Before continuing:\n\n### 1\. Reflect — What changed\? Any new risks or blockers\?\n### 2\. Update — Call `todowrite` to sync progress\n### 3\. Prune — Call `context` to discard\/distill noise\n(?:\n\*\*Prunable Outputs:\*\*\n(?:[a-z]+: [a-z]_[a-f0-9, _]+\n?)+\n)?\n?(?:### ⚠️ Stuck Task Detected\n\nI've noticed a task has been in progress for \d+ turns\. If you're finding it difficult to complete, consider:\n- Breaking it into smaller, more specific subtasks\n- Identifying blockers or dependencies that need resolution first\n- Marking it as blocked and moving to another task\n\nUse `todowrite` to split the task or update its status\.\n)?---\n?/g
+    /(?:^|\n)(?:::synth::\n)?---\n## 🔖 Checkpoint\n\nI've noticed your todo list hasn't been updated for \d+ turns\. Before continuing:\n\n### 1\. Reflect — What changed\? Any new risks or blockers\?\n### 2\. Update — Call `todowrite` to sync progress\n### 3\. Prune — Call `context` to discard\/distill noise\n(?:\n\*\*Prunable Outputs:\*\*\n(?:[a-z]+: [^\n]+\n)+)?\n?(?:### ⚠️ Stuck Task Detected\n\nI've noticed a task has been in progress for \d+ turns\. If you're finding it difficult to complete, consider:\n- Breaking it into smaller, more specific subtasks\n- Identifying blockers or dependencies that need resolution first\n- Marking it as blocked and moving to another task\n\nUse `todowrite` to split the task or update its status\.\n)?---\n?/g
 
 /**
  * Remove any todo reminder from messages.
