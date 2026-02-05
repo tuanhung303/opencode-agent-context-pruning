@@ -323,6 +323,61 @@ export function detectTargetType(target: string, state: SessionState): TargetTyp
 }
 
 /**
+ * Resolve a hash to a human-readable display name for status bar notifications.
+ * For tool hashes: returns tool name (e.g., "read", "bash")
+ * For message hashes: returns "message part"
+ * For reasoning hashes: returns "thinking block"
+ * Falls back to raw hash if resolution fails.
+ *
+ * @param hash - The 6-char hash to resolve
+ * @param state - Session state containing hash registry and tool parameters
+ * @param workingDirectory - Optional working directory for path shortening (reserved for future use)
+ * @param targetType - Optional hint for target type when hash lookup fails
+ * @returns Human-readable display name or raw hash as fallback
+ */
+export function resolveTargetDisplayName(
+    hash: string,
+    state?: SessionState,
+    workingDirectory?: string,
+    targetType?: "tool" | "message" | "reasoning",
+): string {
+    // If no state provided, return raw hash
+    if (!state) {
+        return hash
+    }
+
+    // Try tool hash first (most common case)
+    const callId = state.hashRegistry.calls.get(hash)
+    if (callId) {
+        const toolEntry = state.toolParameters.get(callId)
+        if (toolEntry) {
+            return toolEntry.tool
+        }
+    }
+
+    // Try message hash
+    if (state.hashRegistry.messages.has(hash)) {
+        return "message part"
+    }
+
+    // Try reasoning hash
+    if (state.hashRegistry.reasoning.has(hash)) {
+        return "thinking block"
+    }
+
+    // Use targetType hint if provided
+    if (targetType === "message") {
+        return "message part"
+    }
+    if (targetType === "reasoning") {
+        return "thinking block"
+    }
+
+    // Fallback to raw hash
+    return hash
+}
+
+/**
  * Pluralize a tool name for display.
  * read → reads, grep → greps, glob → globs, task → tasks, etc.
  */

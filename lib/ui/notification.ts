@@ -59,6 +59,7 @@ function buildMinimalMessage(
     targetType?: "tool" | "message" | "reasoning",
     itemizedPruned?: ItemizedPrunedItem[],
     itemizedDistilled?: ItemizedDistilledItem[],
+    workingDirectory?: string,
 ): string {
     const statsMessage = formatStatsHeader(state.stats.strategyStats)
 
@@ -78,6 +79,8 @@ function buildMinimalMessage(
             isDistill ? "distill" : "discard",
             attemptedTargets,
             targetType,
+            state,
+            workingDirectory,
         )
         // Extract just the details part after the box
         const details = actionMessage.replace(/^「 .*? 」- /, "").trim()
@@ -179,6 +182,7 @@ export async function sendUnifiedNotification(
                   ctx.targetType,
                   ctx.itemizedPruned,
                   ctx.itemizedDistilled,
+                  ctx.workingDirectory,
               )
             : buildDetailedMessage(ctx, showDistillation)
 
@@ -199,12 +203,20 @@ export async function sendAttemptedNotification(
     sessionId: string,
     params: any,
     targetType?: "tool" | "message" | "reasoning",
+    state?: SessionState,
+    workingDirectory?: string,
 ): Promise<boolean> {
     if (config.pruneNotification === "off") {
         return false
     }
 
-    const message = formatNoOpNotification(type, attemptedTargets, targetType)
+    const message = formatNoOpNotification(
+        type,
+        attemptedTargets,
+        targetType,
+        state,
+        workingDirectory,
+    )
     await sendIgnoredMessage(client, sessionId, message, params, logger)
     return true
 }

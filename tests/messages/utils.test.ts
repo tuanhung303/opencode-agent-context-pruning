@@ -10,6 +10,7 @@ import {
     generateToolHash,
     groupHashesByToolName,
     formatHashInventory,
+    resolveTargetDisplayName,
 } from "../../lib/messages/utils"
 import type { WithParts } from "../../lib/state"
 import { createSessionState } from "../../lib/state"
@@ -471,5 +472,76 @@ describe("formatHashInventory", () => {
 
         expect(lines[0]).toContain("reads:")
         expect(lines[1]).toContain("unknowns:")
+    })
+})
+
+describe("resolveTargetDisplayName", () => {
+    const createMockState = () => {
+        const state = createSessionState()
+        return state
+    }
+
+    it("should resolve tool hash to tool name", () => {
+        const state = createMockState()
+        state.hashRegistry.calls.set("abc123", "call-id-1")
+        state.toolParameters.set("call-id-1", {
+            tool: "read",
+            parameters: { filePath: "/test.ts" },
+            turn: 1,
+        })
+
+        const result = resolveTargetDisplayName("abc123", state)
+        expect(result).toBe("read")
+    })
+
+    it("should resolve message hash to 'message part'", () => {
+        const state = createMockState()
+        state.hashRegistry.messages.set("def456", "msg-id-1:0")
+
+        const result = resolveTargetDisplayName("def456", state)
+        expect(result).toBe("message part")
+    })
+
+    it("should resolve reasoning hash to 'thinking block'", () => {
+        const state = createMockState()
+        state.hashRegistry.reasoning.set("ghi789", "msg-id-2:1")
+
+        const result = resolveTargetDisplayName("ghi789", state)
+        expect(result).toBe("thinking block")
+    })
+
+    it("should fall back to raw hash for unknown hash", () => {
+        const state = createMockState()
+
+        const result = resolveTargetDisplayName("xyz999", state)
+        expect(result).toBe("xyz999")
+    })
+
+    it("should fall back to raw hash when state is undefined", () => {
+        const result = resolveTargetDisplayName("abc123", undefined)
+        expect(result).toBe("abc123")
+    })
+
+    it("should use targetType hint for message when hash not found", () => {
+        const state = createMockState()
+
+        const result = resolveTargetDisplayName("unknown", state, undefined, "message")
+        expect(result).toBe("message part")
+    })
+
+    it("should use targetType hint for reasoning when hash not found", () => {
+        const state = createMockState()
+
+        const result = resolveTargetDisplayName("unknown", state, undefined, "reasoning")
+        expect(result).toBe("thinking block")
+    })
+
+    it("should fall back to hash when tool hash exists but no metadata", () => {
+        const state = createMockState()
+        state.hashRegistry.calls.set("abc123", "call-id-1")
+        // No toolParameters entry for call-id-1
+
+        const result = resolveTargetDisplayName("abc123", state)
+        expect(result).toBe("abc123")
     })
 })
