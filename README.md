@@ -280,7 +280,7 @@ Priority: Defaults → Global → Config Dir → Project
 
 ```jsonc
 {
-    "$schema": "https://raw.githubusercontent.com/opencode-acp/opencode-acp/master/acp.schema.json",
+    "$schema": "https://raw.githubusercontent.com/tuanhung303/opencode-agent-context-pruning/master/acp.schema.json",
     "enabled": true,
     "autoPruneAfterTool": false,
     "pruneNotification": "minimal",
