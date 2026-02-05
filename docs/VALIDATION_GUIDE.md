@@ -1269,58 +1269,6 @@ Copy this ENTIRE JSON array into `todowrite()`:
 
 ---
 
-## 📊 Report Template
-
-After completing tests, create `docs/test_report_YYYYMMDD.md`:
-
-```markdown
-# ACP Validation Report
-
-**Date**: YYYY-MM-DD  
-**Agent**: Rei-Agent  
-**Tests**: 43 total
-
-## Summary
-
-| Metric  | Count |
-| ------- | ----- |
-| Planned | 43    |
-| Passed  | X     |
-| Failed  | X     |
-| Skipped | X     |
-
-## Results by Category
-
-| Category                     | Tests | Passed | Failed | Skipped |
-| ---------------------------- | ----- | ------ | ------ | ------- |
-| Core Operations (t1-t12)     | 12    | X      | X      | X       |
-| Auto-Supersede (t13-t20)     | 8     | X      | X      | X       |
-| Stuck Task (t21-t25)         | 5     | X      | X      | X       |
-| Reminders (t26-t28)          | 3     | X      | X      | X       |
-| Thinking/Messages (t29-t32)  | 4     | X      | X      | X       |
-| Aggressive Pruning (t33-t43) | 11    | X      | X      | X       |
-
-## Hash Registry
-
-| Test | Tool | Hash   | Pruned |
-| ---- | ---- | ------ | ------ |
-| t1   | read | 44136f | ✅     |
-| t4   | glob | 01cb91 | ✅     |
-| ...  | ...  | ...    | ...    |
-
-## Skipped Tests
-
-| Test | Reason   |
-| ---- | -------- |
-| tX   | [Reason] |
-
-## Notes
-
-[Any observations, bugs, or recommendations]
-```
-
----
-
 ## 🎓 Pro Tips
 
 1. **Hash Capture**: Always note tool hashes immediately after execution
@@ -1329,7 +1277,24 @@ After completing tests, create `docs/test_report_YYYYMMDD.md`:
 4. **Simulate Turns**: Use loops to simulate passage of time
 5. **Code Inspection**: When runtime test not possible, read source code
 6. **Todo Tracking**: Keep todo list updated as you progress
-7. **Trail Logging**: Document in `docs/test_trail.md` as you go
+
+---
+
+## ⚠️ Test Output Rules
+
+**DO NOT create separate test report files.** Test artifacts are gitignored:
+
+```gitignore
+# These are excluded from version control
+docs/test_trail.md
+docs/test_report_*.md
+```
+
+**When running validation tests:**
+
+- Report results directly in conversation (not in files)
+- Clean up test files (`test-file.txt`, `other-file.txt`, `large-test.txt`) after completion
+- Do NOT commit test trails or reports
 
 ---
 
