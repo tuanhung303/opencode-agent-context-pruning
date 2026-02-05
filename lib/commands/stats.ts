@@ -39,14 +39,38 @@ function formatStatsMessage(
     // Strategy effectiveness
     lines.push("Strategy Effectiveness:")
     lines.push("─".repeat(60))
+
+    // Calculate auto-supersede totals
+    const autoSupersede = strategyStats.autoSupersede
+    const autoSupersedeTotal = {
+        count:
+            autoSupersede.hash.count +
+            autoSupersede.file.count +
+            autoSupersede.todo.count +
+            autoSupersede.context.count,
+        tokens:
+            autoSupersede.hash.tokens +
+            autoSupersede.file.tokens +
+            autoSupersede.todo.tokens +
+            autoSupersede.context.tokens,
+    }
+
+    // Calculate manual discard totals (new nested structure)
+    const manualDiscard = strategyStats.manualDiscard
+    const manualDiscardTotal = {
+        count:
+            manualDiscard.message.count + manualDiscard.thinking.count + manualDiscard.tool.count,
+        tokens:
+            manualDiscard.message.tokens +
+            manualDiscard.thinking.tokens +
+            manualDiscard.tool.tokens,
+    }
+
     const strategies = [
-        { name: "Deduplication", data: strategyStats.deduplication },
-        { name: "Supersede Writes", data: strategyStats.supersedeWrites },
-        { name: "Purge Errors", data: strategyStats.purgeErrors },
-        { name: "Manual Discard", data: strategyStats.manualDiscard },
-        { name: "Distillation", data: strategyStats.distillation },
-        { name: "Truncation", data: strategyStats.truncation },
-        { name: "Thinking Compress", data: strategyStats.thinkingCompression },
+        { name: "Auto-Supersede", data: autoSupersedeTotal, breakdown: "autoSupersede" },
+        { name: "Purge Errors", data: strategyStats.purgeErrors, breakdown: null },
+        { name: "Manual Discard", data: manualDiscardTotal, breakdown: "manualDiscard" },
+        { name: "Distillation", data: strategyStats.distillation, breakdown: null },
     ]
 
     // Sort by token savings (descending)
@@ -58,6 +82,49 @@ function formatStatsMessage(
             lines.push(
                 `  ${strat.name.padEnd(18)} ${strat.data.count.toString().padStart(3)} prunes, ~${formatTokenCount(strat.data.tokens)} saved${star}`,
             )
+
+            // Show sub-breakdown for Auto-Supersede
+            if (strat.breakdown === "autoSupersede") {
+                if (autoSupersede.hash.count > 0) {
+                    lines.push(
+                        `    🔄 hash          ${autoSupersede.hash.count.toString().padStart(3)} prunes, ~${formatTokenCount(autoSupersede.hash.tokens)}`,
+                    )
+                }
+                if (autoSupersede.file.count > 0) {
+                    lines.push(
+                        `    📁 file          ${autoSupersede.file.count.toString().padStart(3)} prunes, ~${formatTokenCount(autoSupersede.file.tokens)}`,
+                    )
+                }
+                if (autoSupersede.todo.count > 0) {
+                    lines.push(
+                        `    ✅ todo          ${autoSupersede.todo.count.toString().padStart(3)} prunes, ~${formatTokenCount(autoSupersede.todo.tokens)}`,
+                    )
+                }
+                if (autoSupersede.context.count > 0) {
+                    lines.push(
+                        `    🔧 context       ${autoSupersede.context.count.toString().padStart(3)} prunes, ~${formatTokenCount(autoSupersede.context.tokens)}`,
+                    )
+                }
+            }
+
+            // Show sub-breakdown for Manual Discard
+            if (strat.breakdown === "manualDiscard") {
+                if (manualDiscard.message.count > 0) {
+                    lines.push(
+                        `    💬 message       ${manualDiscard.message.count.toString().padStart(3)} prunes, ~${formatTokenCount(manualDiscard.message.tokens)}`,
+                    )
+                }
+                if (manualDiscard.thinking.count > 0) {
+                    lines.push(
+                        `    🧠 thinking      ${manualDiscard.thinking.count.toString().padStart(3)} prunes, ~${formatTokenCount(manualDiscard.thinking.tokens)}`,
+                    )
+                }
+                if (manualDiscard.tool.count > 0) {
+                    lines.push(
+                        `    ⚙️ tool          ${manualDiscard.tool.count.toString().padStart(3)} prunes, ~${formatTokenCount(manualDiscard.tool.tokens)}`,
+                    )
+                }
+            }
         }
     }
     lines.push("")

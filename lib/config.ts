@@ -11,15 +11,11 @@ export {
 
 export type {
     PluginConfig,
-    Deduplication,
     DiscardTool,
     DistillTool,
     ToolSettings,
     TodoReminder,
     Tools,
     Commands,
-    SupersedeWrites,
     PurgeErrors,
-    Truncation,
-    ThinkingCompression,
 } from "./config/index.js"

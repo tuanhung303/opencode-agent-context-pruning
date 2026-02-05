@@ -1,28 +1,219 @@
 import type { SessionState, WithParts } from "../state"
+import type { Part } from "@opencode-ai/sdk/v2"
 import type { Logger } from "../logger"
 import type { PluginConfig } from "../config"
 import { isMessageCompacted } from "../shared-utils"
-
-const PRUNED_TOOL_ERROR_INPUT_REPLACEMENT = "[input removed due to failed tool call]"
-const PRUNED_QUESTION_INPUT_REPLACEMENT = "[questions removed - see output for user's answers]"
-const PRUNED_MESSAGE_PART_REPLACEMENT = "[Assistant message part removed to save context]"
+import { generatePartHash } from "../utils/hash"
+import { getPruneCache } from "../state/utils"
 
 /**
- * Generates a short hash for message parts.
- * Format: a_xxxxx (a = assistant text)
+ * Filter out step-start and step-finish parts from messages.
+ * These are structural markers that consume tokens but provide no semantic value.
+ * Should be called during context rendering when pruneStepMarkers is enabled.
  */
-function generateMessagePartHash(): string {
-    const chars = "abcdefghijklmnopqrstuvwxyz0123456789"
-    let hash = ""
-    for (let i = 0; i < 5; i++) {
-        hash += chars.charAt(Math.floor(Math.random() * chars.length))
+export const filterStepMarkers = (
+    messages: WithParts[],
+    config: PluginConfig,
+    logger: Logger,
+): void => {
+    if (!config.strategies.aggressivePruning?.pruneStepMarkers) {
+        return
     }
-    return `a_${hash}`
+
+    let totalRemoved = 0
+    for (const msg of messages) {
+        const parts = Array.isArray(msg.parts) ? msg.parts : []
+        const originalLength = parts.length
+
+        msg.parts = parts.filter((part) => {
+            if (part.type === "step-start" || part.type === "step-finish") {
+                return false
+            }
+            return true
+        })
+
+        totalRemoved += originalLength - msg.parts.length
+    }
+
+    if (totalRemoved > 0) {
+        logger.debug(`Filtered ${totalRemoved} step marker parts`)
+    }
+}
+
+// Reserved for future use - keeping for API consistency
+const _PRUNED_TOOL_ERROR_INPUT_REPLACEMENT = "[input removed due to failed tool call]"
+const _PRUNED_QUESTION_INPUT_REPLACEMENT = "[questions removed - see output for user's answers]"
+const _PRUNED_FILE_PART_REPLACEMENT = "[File attachment masked to save context]"
+void _PRUNED_TOOL_ERROR_INPUT_REPLACEMENT
+void _PRUNED_QUESTION_INPUT_REPLACEMENT
+void _PRUNED_FILE_PART_REPLACEMENT
+
+/** Preview length for pruned content placeholders */
+const PREVIEW_LENGTH = 20
+const PRUNED_SUFFIX = "...[pruned]"
+
+/**
+ * Create a pruned placeholder with content preview for traceability.
+ * Format: "The quick brown fox...[pruned]"
+ */
+function createPrunedPlaceholder(originalText: string): string {
+    const preview = originalText.slice(0, PREVIEW_LENGTH).replace(/\n/g, " ")
+    return `${preview}${PRUNED_SUFFIX}`
+}
+
+/**
+ * Create a pruned tool placeholder showing tool name for layout consistency.
+ * Format: "[read() output pruned]" or "[glob() output pruned]"
+ */
+function createPrunedToolPlaceholder(toolName: string): string {
+    return `[${toolName}() output pruned]`
+}
+// Hash tag names for trailing format
+const TOOL_HASH_TAG = "tool_hash"
+const MESSAGE_HASH_TAG = "message_hash"
+const THINKING_HASH_TAG = "thinking_hash"
+
+/** Create trailing hash tag */
+const createHashTag = (tagName: string, hash: string): string =>
+    `\n<${tagName}>${hash}</${tagName}>`
+
+/** Check if content already has trailing hash tag */
+const hasTrailingHashTag = (content: string, tagName: string): boolean => {
+    const regex = new RegExp(`<${tagName}>[a-f0-9]{6}</${tagName}>$`, "i")
+    return regex.test(content)
+}
+
+/**
+ * Check if a part is a file attachment part.
+ * File parts contain binary or large data that can be masked.
+ */
+function isFilePart(part: Part): boolean {
+    return (
+        part.type === "file" ||
+        (part.type === "tool" &&
+            part.state?.status === "completed" &&
+            (part.state as any).attachments !== undefined)
+    )
+}
+
+/**
+ * Create a breadcrumb for a file part.
+ * Returns a short summary like "[File: image.png, 12KB]" or "[2 attachments]"
+ */
+function createFilePartBreadcrumb(part: Part): string {
+    if (part.type === "file") {
+        const filePart = part as any
+        const name = filePart.name || filePart.url || "unnamed"
+        const size = filePart.size ? `${Math.round(filePart.size / 1024)}KB` : "unknown size"
+        return `[File: ${name}, ${size}]`
+    }
+
+    if (part.type === "tool" && (part.state as any)?.attachments) {
+        const attachments = (part.state as any).attachments
+        const count = Array.isArray(attachments) ? attachments.length : 1
+        return `[${count} file attachment${count > 1 ? "s" : ""}]`
+    }
+
+    return "[file]"
+}
+
+/**
+ * Mask file parts in messages to save context.
+ * Replaces file attachments with breadcrumbs.
+ * Should be called during context rendering when pruneFiles is enabled.
+ */
+export const maskFileParts = (
+    messages: WithParts[],
+    config: PluginConfig,
+    logger: Logger,
+    state: SessionState,
+): void => {
+    if (!config.strategies.aggressivePruning?.pruneFiles) {
+        return
+    }
+
+    let totalMasked = 0
+    for (const msg of messages) {
+        const parts = Array.isArray(msg.parts) ? msg.parts : []
+        for (let i = 0; i < parts.length; i++) {
+            const part = parts[i]
+            if (part && isFilePart(part)) {
+                const breadcrumb = createFilePartBreadcrumb(part)
+                const hash = generatePartHash(JSON.stringify(part))
+
+                // Store the masked part hash in registry
+                state.hashRegistry.fileParts.set(hash, breadcrumb)
+
+                // Replace with breadcrumb part
+                parts[i] = {
+                    type: "text" as const,
+                    text: breadcrumb,
+                } as any
+
+                totalMasked++
+            }
+        }
+    }
+
+    if (totalMasked > 0) {
+        logger.debug(`Masked ${totalMasked} file parts`)
+    }
+}
+
+/** Keys to preserve when stripping tool inputs (metadata only) */
+const INPUT_METADATA_KEYS: Record<string, string[]> = {
+    read: ["filePath", "offset", "limit"],
+    write: ["filePath"],
+    edit: ["filePath"],
+    glob: ["pattern", "path"],
+    grep: ["pattern", "path", "include"],
+    bash: ["command", "description", "workdir"],
+    webfetch: ["url", "format"],
+    websearch: ["query"],
+    task: ["description", "subagent_type"],
+    skill: ["name"],
+    todowrite: [],
+    todoread: [],
+}
+
+/**
+ * Strip tool input to metadata-only object.
+ * Removes verbose content like file contents, keeping only key identifiers.
+ * @internal Reserved for future use in input stripping strategies
+ */
+function _stripInputToMetadata(
+    tool: string,
+    input: Record<string, unknown>,
+): Record<string, unknown> {
+    const keysToKeep = INPUT_METADATA_KEYS[tool] || Object.keys(input).slice(0, 3)
+    const stripped: Record<string, unknown> = {}
+
+    for (const key of keysToKeep) {
+        if (input[key] !== undefined) {
+            const value = input[key]
+            if (typeof value === "string" && value.length > 100) {
+                stripped[key] = value.slice(0, 97) + "..."
+            } else {
+                stripped[key] = value
+            }
+        }
+    }
+
+    return stripped
+}
+void _stripInputToMetadata
+
+/**
+ * Generates a deterministic hash for message parts.
+ * Format: xxxxxx (6 hex chars from SHA256 of content)
+ */
+function generateMessagePartHash(content: string): string {
+    return generatePartHash(content)
 }
 
 /**
  * Injects hash identifiers into tool outputs for hash-based discarding.
- * Format: x_xxxxx\n<original output>
+ * Format: xxxxxx\n<original output> (6 hex chars from SHA256, no prefix)
  *
  * This allows agents to reference tools by their stable hash when discarding,
  * eliminating the need for a separate prunable-tools list.
@@ -61,19 +252,25 @@ export const injectHashesIntoToolOutputs = (
                 continue
             }
 
-            const hash = state.callIdToHash.get(part.callID)
+            // Skip if already compacted by OpenCode (check time.compacted field)
+            if (part.state.time?.compacted) {
+                continue
+            }
+
+            const hash = state.hashRegistry.callIds.get(part.callID)
             if (!hash) {
                 continue
             }
 
-            // Skip if already has hash prefix (format: x_xxxxx where x is tool prefix)
-            if (part.state.output && /^[a-z]_[a-z0-9]{5}/i.test(part.state.output)) {
+            // Skip if already has hash prefix (format: xxxxxx - 6 hex chars)
+            // Skip if already has trailing hash tag
+            if (part.state.output && hasTrailingHashTag(part.state.output, TOOL_HASH_TAG)) {
                 continue
             }
 
-            // Prepend hash to output
+            // Append trailing hash tag
             if (part.state.output) {
-                part.state.output = `${hash}\n${part.state.output}`
+                part.state.output = `${part.state.output}${createHashTag(TOOL_HASH_TAG, hash)}`
                 logger.debug(`Injected hash ${hash} into ${part.tool} output`)
             }
         }
@@ -82,7 +279,7 @@ export const injectHashesIntoToolOutputs = (
 
 /**
  * Injects hash identifiers into assistant text parts for hash-based discarding.
- * Format: a_xxxxx\n<original text>
+ * Format: xxxxxx\n<original text> (6 hex chars from SHA256, no prefix)
  *
  * This allows agents to discard their own verbose explanations or outdated responses.
  * Only injects into text parts that are substantial (>100 chars) and not already hashed.
@@ -93,13 +290,6 @@ export const injectHashesIntoAssistantMessages = (
     messages: WithParts[],
     logger: Logger,
 ): void => {
-    // Skip if feature is disabled
-    if (!config.tools?.settings?.enableAssistantMessagePruning) {
-        return
-    }
-
-    const minTextLength = config.tools?.settings?.minAssistantTextLength ?? 100
-
     for (const msg of messages) {
         if (isMessageCompacted(state, msg)) {
             continue
@@ -124,13 +314,8 @@ export const injectHashesIntoAssistantMessages = (
                 continue
             }
 
-            // Skip short text parts
-            if (part.text.length < minTextLength) {
-                continue
-            }
-
-            // Skip if already has hash prefix (format: a_xxxxx)
-            if (/^a_[a-z0-9]{5}/i.test(part.text)) {
+            // Skip if already has trailing hash tag
+            if (hasTrailingHashTag(part.text, MESSAGE_HASH_TAG)) {
                 continue
             }
 
@@ -142,18 +327,156 @@ export const injectHashesIntoAssistantMessages = (
             }
 
             // Check if we already have a hash for this part
-            let hash = state.messagePartToHash.get(partId)
+            let hash = state.hashRegistry.messagePartIds.get(partId)
             if (!hash) {
-                // Generate new hash
-                hash = generateMessagePartHash()
-                state.hashToMessagePart.set(hash, partId)
-                state.messagePartToHash.set(partId, hash)
+                // Generate new hash from content with collision handling
+                const baseHash = generateMessagePartHash(part.text)
+                let finalHash = baseHash
+                let seq = 2
+                while (state.hashRegistry.messages.has(finalHash)) {
+                    finalHash = `${baseHash}_${seq}`
+                    seq++
+                }
+                hash = finalHash
+                state.hashRegistry.messages.set(hash, partId)
+                state.hashRegistry.messagePartIds.set(partId, hash)
                 logger.debug(`Generated hash ${hash} for assistant text part ${partId}`)
             }
 
-            // Prepend hash to text
-            part.text = `${hash}\n${part.text}`
-            logger.debug(`Injected hash ${hash} into assistant text part`)
+            // Hash registered in registry - no injection into visible text
+            // Individual hash lookup works via registry
+            logger.debug(`Registered hash ${hash} for assistant text part (no injection)`)
+        }
+    }
+}
+
+/**
+ * Generates a deterministic hash for reasoning parts.
+ * Format: xxxxxx (6 hex chars from SHA256 of content)
+ */
+function generateReasoningPartHash(content: string): string {
+    return generatePartHash(content)
+}
+
+/**
+ * Injects hash identifiers into reasoning blocks for hash-based discarding.
+ * Format: xxxxxx\n<original reasoning> (6 hex chars from SHA256, no prefix)
+ *
+ * This allows agents to discard their own thinking/reasoning blocks when they're
+ * no longer needed, saving significant tokens in long conversations.
+ */
+export const injectHashesIntoReasoningBlocks = (
+    state: SessionState,
+    config: PluginConfig,
+    messages: WithParts[],
+    logger: Logger,
+): void => {
+    // Skip if feature is disabled
+    if (!config.tools?.settings?.enableReasoningPruning) {
+        return
+    }
+
+    for (const msg of messages) {
+        if (isMessageCompacted(state, msg)) {
+            continue
+        }
+
+        // Only process assistant messages
+        if (msg.info.role !== "assistant") {
+            continue
+        }
+
+        const messageId = msg.info.id
+        const parts = Array.isArray(msg.parts) ? msg.parts : []
+
+        for (let partIndex = 0; partIndex < parts.length; partIndex++) {
+            const part = parts[partIndex]
+            if (!part) {
+                continue
+            }
+
+            // Only process reasoning parts
+            if (part.type !== "reasoning" || !part.text) {
+                continue
+            }
+
+            // Skip if already has trailing hash tag
+            if (hasTrailingHashTag(part.text, THINKING_HASH_TAG)) {
+                continue
+            }
+
+            const partId = `${messageId}:${partIndex}`
+
+            // Skip if already pruned
+            if (state.prune.reasoningPartIds.includes(partId)) {
+                continue
+            }
+
+            // Check if we already have a hash for this part
+            let hash = state.hashRegistry.reasoningPartIds.get(partId)
+            if (!hash) {
+                // Generate new hash from content with collision handling
+                const baseHash = generateReasoningPartHash(part.text)
+                let finalHash = baseHash
+                let seq = 2
+                while (state.hashRegistry.reasoning.has(finalHash)) {
+                    finalHash = `${baseHash}_${seq}`
+                    seq++
+                }
+                hash = finalHash
+                state.hashRegistry.reasoning.set(hash, partId)
+                state.hashRegistry.reasoningPartIds.set(partId, hash)
+                logger.debug(`Generated hash ${hash} for reasoning part ${partId}`)
+            }
+
+            // Append trailing hash tag
+            part.text = `${part.text}${createHashTag(THINKING_HASH_TAG, hash)}`
+            logger.debug(`Injected hash ${hash} into reasoning part`)
+        }
+    }
+}
+
+/**
+ * Ensures reasoning_content is synced on all assistant messages with tool calls.
+ * CRITICAL for thinking mode API compatibility (DeepSeek, Kimi, etc.)
+ *
+ * When thinking mode is enabled, APIs require reasoning_content to exist on ALL
+ * assistant messages that have tool calls. This function ensures the field is
+ * populated from reasoning parts, regardless of whether pruning is active.
+ */
+export const ensureReasoningContentSync = (
+    state: SessionState,
+    messages: WithParts[],
+    logger: Logger,
+): void => {
+    for (const msg of messages) {
+        if (isMessageCompacted(state, msg)) {
+            continue
+        }
+
+        // Only process assistant messages
+        if (msg.info.role !== "assistant") {
+            continue
+        }
+
+        const parts = Array.isArray(msg.parts) ? msg.parts : []
+
+        // Check if message has tool calls
+        const hasToolCalls = parts.some((p: any) => p.type === "tool" && p.callID)
+        if (!hasToolCalls) {
+            continue
+        }
+
+        // Skip if reasoning_content already exists
+        if ((msg.info as any).reasoning_content) {
+            continue
+        }
+
+        // Find reasoning content from parts
+        const reasoningPart = parts.find((p: any) => p.type === "reasoning" && p.text)
+        if (reasoningPart && (reasoningPart as any).text) {
+            ;(msg.info as any).reasoning_content = (reasoningPart as any).text
+            logger.debug(`Synced reasoning_content for assistant message: ${msg.info.id}`)
         }
     }
 }
@@ -164,8 +487,9 @@ export const injectHashesIntoAssistantMessages = (
  *
  * This preserves key metadata so the agent can understand what was pruned
  * without needing to re-read the content.
+ * @internal Reserved for future use in breadcrumb generation
  */
-const createPrunedOutputBreadcrumb = (
+const _createPrunedOutputBreadcrumb = (
     tool: string,
     input: Record<string, unknown> | undefined,
     status: string,
@@ -207,6 +531,7 @@ const createPrunedOutputBreadcrumb = (
 
     return `[Output removed to save context - information superseded or no longer needed]\n${tool}(${paramsStr}) → ${status}`
 }
+void _createPrunedOutputBreadcrumb
 
 export const prune = (
     state: SessionState,
@@ -214,12 +539,15 @@ export const prune = (
     config: PluginConfig,
     messages: WithParts[],
 ): void => {
-    // Convert to Set for O(1) lookup instead of O(n) array.includes()
-    const prunedToolIds = new Set(state.prune.toolIds)
-    const prunedMessagePartIds = new Set(state.prune.messagePartIds)
+    // Use cached Sets for O(1) lookup
+    const { prunedToolIds, prunedMessagePartIds, prunedReasoningPartIds } = getPruneCache(state)
 
     // Early exit if nothing to prune
-    if (prunedToolIds.size === 0 && prunedMessagePartIds.size === 0) {
+    if (
+        prunedToolIds.size === 0 &&
+        prunedMessagePartIds.size === 0 &&
+        prunedReasoningPartIds.size === 0
+    ) {
         return
     }
 
@@ -233,48 +561,70 @@ export const prune = (
         const messageId = msg.info.id
         const isAssistant = msg.info.role === "assistant"
 
+        // Track if this message has/had tool calls (for thinking mode API compatibility)
+        let messageHasToolCalls = false
+        let reasoningContent: string | undefined
+
         for (let partIndex = 0; partIndex < parts.length; partIndex++) {
             const part = parts[partIndex]
             if (!part) continue
 
-            // Handle tool parts
-            if (part.type === "tool" && part.callID && prunedToolIds.has(part.callID)) {
-                const status = part.state?.status
-
-                if (status === "completed") {
-                    if (part.tool === "question") {
-                        // Prune question inputs
-                        if (part.state.input?.questions !== undefined) {
-                            part.state.input.questions = PRUNED_QUESTION_INPUT_REPLACEMENT
-                        }
-                    } else {
-                        // Prune tool outputs
-                        part.state.output = createPrunedOutputBreadcrumb(
-                            part.tool,
-                            part.state.input,
-                            status,
-                        )
-                    }
-                } else if (status === "error") {
-                    // Prune error inputs
-                    const input = part.state.input
-                    if (input && typeof input === "object") {
-                        for (const key of Object.keys(input)) {
-                            if (typeof input[key] === "string") {
-                                input[key] = PRUNED_TOOL_ERROR_INPUT_REPLACEMENT
-                            }
-                        }
-                    }
-                }
+            // Track tool calls (internal format uses "tool" with callID)
+            if (part.type === "tool" && (part as any).callID) {
+                messageHasToolCalls = true
             }
 
-            // Handle assistant text parts
+            // Capture reasoning content for later use
+            if (isAssistant && part.type === "reasoning" && part.text) {
+                reasoningContent = part.text
+            }
+
+            // Handle pruned tool parts - replace with placeholder for layout consistency
+            if (part.type === "tool" && part.callID && prunedToolIds.has(part.callID)) {
+                const toolName = part.tool || "tool"
+                const placeholder = createPrunedToolPlaceholder(toolName)
+                // Replace the tool part with a text placeholder part
+                parts[partIndex] = {
+                    type: "text" as const,
+                    text: placeholder,
+                } as any
+                logger.debug(`Pruned tool part ${part.callID} (${toolName})`)
+                continue
+            }
+
+            // Handle assistant text parts - keep preview for traceability
             if (isAssistant && part.type === "text" && prunedMessagePartIds.size > 0) {
                 const partId = `${messageId}:${partIndex}`
                 if (prunedMessagePartIds.has(partId)) {
-                    part.text = PRUNED_MESSAGE_PART_REPLACEMENT
+                    const originalText = part.text || ""
+                    part.text = createPrunedPlaceholder(originalText)
                     logger.debug(`Pruned assistant message part ${partId}`)
                 }
+            }
+
+            // Handle reasoning parts - keep preview for traceability
+            // CRITICAL: Also sync msg.info.reasoning_content for thinking mode API compatibility
+            if (isAssistant && part.type === "reasoning" && prunedReasoningPartIds.size > 0) {
+                const partId = `${messageId}:${partIndex}`
+                if (prunedReasoningPartIds.has(partId)) {
+                    const originalText = part.text || ""
+                    const placeholder = createPrunedPlaceholder(originalText)
+                    part.text = placeholder
+                    reasoningContent = placeholder // Update captured content
+                    logger.debug(`Pruned reasoning part ${partId}`)
+                }
+            }
+        }
+
+        // CRITICAL: Ensure reasoning_content is set on assistant messages with tool calls
+        // When thinking mode is enabled, API requires reasoning_content on ALL assistant messages
+        // that have tool calls. This must be done AFTER processing all parts.
+        if (isAssistant && messageHasToolCalls && reasoningContent) {
+            if (!(msg.info as any).reasoning_content) {
+                ;(msg.info as any).reasoning_content = reasoningContent
+                logger.debug(
+                    `Set reasoning_content on assistant message with tool calls: ${messageId}`,
+                )
             }
         }
     }

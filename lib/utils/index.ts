@@ -19,3 +19,5 @@ export {
 } from "./array"
 
 export { truncate, formatTokenCount, shortenPath, firstChar } from "./string"
+
+export { generatePartHash } from "./hash"

@@ -3,17 +3,15 @@
  */
 
 import type { PruneToolContext } from "./_types"
-import type { SessionState, ToolParameterEntry, WithParts } from "../state"
-import type { Logger } from "../logger"
-import type { PluginConfig } from "../config"
-import type { PruneReason } from "../ui/notification"
-import { ensureSessionInitialized } from "../state"
+import { SessionState, ToolParameterEntry, WithParts, ensureSessionInitialized } from "../state"
 import { saveSessionState } from "../state/persistence"
-import { sendUnifiedNotification } from "../ui/notification"
+import { sendUnifiedNotification, PruneReason, sendAttemptedNotification } from "../ui/notification"
+import type { ItemizedPrunedItem } from "../ui/pruning-status"
 import { formatDiscardNotification } from "../ui/minimal-notifications"
 import { formatPruningStatus, dimText } from "../ui/pruning-status"
 import { calculateTokensSaved, getCurrentParams } from "./utils"
-import { findMessagesByPattern, storePatternMapping } from "../messages/pattern-match"
+import type { Logger } from "../logger"
+import type { PluginConfig } from "../config"
 
 interface DiscardOptions {
     toolName: string
@@ -40,7 +38,9 @@ export async function executeToolPrune(
 
     if (!callIds || callIds.length === 0) {
         logger.debug(`${toolName} tool called but no valid call IDs resolved`)
-        throw new Error(`No valid hashes provided. Use hashes from tool outputs (e.g., r_a1b2c).`)
+        throw new Error(
+            `No valid hashes provided. Use 6-char hashes from tool outputs (e.g., a1b2c3).`,
+        )
     }
 
     const messagesResponse = await client.session.messages({
@@ -57,14 +57,19 @@ export async function executeToolPrune(
     // Add to prune lists
     state.prune.toolIds.push(...callIds)
 
-    // Collect metadata
+    // Collect metadata and build itemized data
     const toolMetadata = new Map<string, ToolParameterEntry>()
     const prunedToolNames: string[] = []
+    const itemizedPruned: ItemizedPrunedItem[] = []
     for (const callId of callIds) {
         const toolParameters = state.toolParameters.get(callId)
         if (toolParameters) {
             toolMetadata.set(callId, toolParameters)
             prunedToolNames.push(toolParameters.tool)
+            itemizedPruned.push({
+                type: "tool",
+                name: toolParameters.tool,
+            })
         }
     }
 
@@ -84,16 +89,18 @@ export async function executeToolPrune(
         client,
         logger,
         config,
-        state,
+        {
+            state,
+            pruneToolIds: callIds,
+            toolMetadata,
+            reason,
+            workingDirectory,
+            attemptedTargets: hashes,
+            options: { simplified: true },
+            itemizedPruned,
+        },
         sessionId,
-        callIds,
-        toolMetadata,
-        reason,
         currentParams,
-        workingDirectory,
-        undefined,
-        { simplified: true },
-        [],
     )
 
     commitStats(state)
@@ -105,7 +112,7 @@ export async function executeToolPrune(
     // Build notification
     const tuiStatus = formatPruningStatus(prunedToolNames, [])
     const tuiNotification = tuiStatus ? dimText(tuiStatus) : ""
-    const minimalNotification = formatDiscardNotification(callIds.length, reason)
+    const minimalNotification = formatDiscardNotification(callIds.length, reason, hashes, "tool")
 
     return tuiNotification ? `${minimalNotification}\n${tuiNotification}` : minimalNotification
 }
@@ -118,13 +125,22 @@ export async function executeContextToolDiscard(
     toolCtx: { sessionID: string },
     hashes: string[],
 ): Promise<string> {
-    const { state, logger } = ctx
+    const { client, state, logger, config } = ctx
+    const sessionId = toolCtx.sessionID
+
+    // Always fetch messages for proper state sync (required for thinking mode API compatibility)
+    const messagesResponse = await client.session.messages({
+        path: { id: sessionId },
+    })
+    const messages: WithParts[] = (messagesResponse.data || messagesResponse) as WithParts[]
+
+    await ensureSessionInitialized(client, state, sessionId, logger, messages)
 
     const callIds: string[] = []
     const validHashes: string[] = []
 
     for (const hash of hashes) {
-        const callId = state.hashToCallId.get(hash)
+        const callId = state.hashRegistry.calls.get(hash)
         if (callId) {
             if (!state.prune.toolIds.includes(callId)) {
                 callIds.push(callId)
@@ -138,7 +154,21 @@ export async function executeContextToolDiscard(
     }
 
     if (validHashes.length === 0) {
-        return "No valid tool hashes to discard"
+        // Send no-op notification showing attempted hashes
+        const currentParams = getCurrentParams(state, messages, logger)
+        await sendAttemptedNotification(
+            client,
+            logger,
+            config,
+            "discard",
+            hashes,
+            sessionId,
+            currentParams,
+            "tool",
+        )
+        // Return notification in the response too
+        const minimalNotification = formatDiscardNotification(0, "manual", hashes, "tool")
+        return `${minimalNotification}\nNo valid tool hashes to discard`
     }
 
     return executeToolPrune(ctx, toolCtx, callIds, validHashes, {
@@ -148,50 +178,197 @@ export async function executeContextToolDiscard(
 }
 
 /**
- * Discard messages by pattern.
+ * Discard message parts by hash.
  */
 export async function executeContextMessageDiscard(
     ctx: PruneToolContext,
-    _toolCtx: { sessionID: string },
-    patterns: string[],
-    messages: WithParts[],
+    toolCtx: { sessionID: string },
+    hashes: string[],
 ): Promise<string> {
-    const { state, logger } = ctx
+    const { state, logger, config, client } = ctx
+    const sessionId = toolCtx.sessionID
 
-    const allMatches: Array<{
-        messageId: string
-        partIndex: number
-        content: string
-        pattern: string
-    }> = []
+    // Always fetch messages for proper state sync (required for thinking mode API compatibility)
+    const messagesResponse = await client.session.messages({
+        path: { id: sessionId },
+    })
+    const messages: WithParts[] = (messagesResponse.data || messagesResponse) as WithParts[]
 
-    for (const pattern of patterns) {
-        const matches = findMessagesByPattern(messages, pattern)
-        for (const match of matches) {
-            allMatches.push({ ...match, pattern })
-        }
-    }
-
-    if (allMatches.length === 0) {
-        return "No matching messages found"
-    }
+    await ensureSessionInitialized(client, state, sessionId, logger, messages)
 
     let discardedCount = 0
-    for (const match of allMatches) {
-        const partId = `${match.messageId}:${match.partIndex}`
-        if (!state.prune.messagePartIds.includes(partId)) {
-            state.prune.messagePartIds.push(partId)
-            storePatternMapping(match.pattern, match.content, partId, state)
-            logger.info(`Discarded message part ${partId} via pattern`)
-            discardedCount++
+    let tokensSaved = 0
+    const itemizedPruned: ItemizedPrunedItem[] = []
+
+    for (const hash of hashes) {
+        const partId = state.hashRegistry.messages.get(hash)
+        if (partId) {
+            if (!state.prune.messagePartIds.includes(partId)) {
+                state.prune.messagePartIds.push(partId)
+                logger.info(`Discarded message part ${partId} via hash ${hash}`)
+                discardedCount++
+                // Estimate tokens saved (rough estimate based on typical message size)
+                tokensSaved += 500
+                itemizedPruned.push({
+                    type: "message",
+                    name: `message part`,
+                })
+            }
+        } else {
+            logger.warn(`Unknown message hash: ${hash}`)
         }
+    }
+
+    if (discardedCount > 0) {
+        // Update stats for message discards
+        state.stats.pruneTokenCounter += tokensSaved
+        state.stats.pruneMessageCounter += discardedCount
+        state.stats.strategyStats.manualDiscard.message.count += discardedCount
+        state.stats.strategyStats.manualDiscard.message.tokens += tokensSaved
+
+        state.lastDiscardStats = {
+            itemCount: discardedCount,
+            tokensSaved: state.stats.pruneTokenCounter,
+        }
+    }
+
+    // Send notification for consistent status display
+    const currentParams = getCurrentParams(state, messages, logger)
+    await sendUnifiedNotification(
+        client,
+        logger,
+        config,
+        {
+            state,
+            pruneToolIds: [],
+            toolMetadata: new Map(),
+            pruneMessagePartIds:
+                discardedCount > 0 ? state.prune.messagePartIds.slice(-discardedCount) : [],
+            reason: "manual",
+            workingDirectory: ctx.workingDirectory,
+            attemptedTargets: hashes,
+            options: { simplified: true },
+            itemizedPruned: discardedCount > 0 ? itemizedPruned : [],
+        },
+        toolCtx.sessionID,
+        currentParams,
+    )
+
+    if (discardedCount > 0) {
+        commitStats(state)
     }
 
     saveSessionState(state, logger).catch((err: Error) =>
         logger.error("Failed to persist state", { error: err.message }),
     )
 
-    return `Discarded ${discardedCount} message(s)`
+    // Return formatted notification
+    const minimalNotification = formatDiscardNotification(
+        discardedCount,
+        "manual",
+        hashes,
+        "message",
+    )
+    return minimalNotification
+}
+
+/**
+ * Discard reasoning parts by hash.
+ */
+export async function executeContextReasoningDiscard(
+    ctx: PruneToolContext,
+    toolCtx: { sessionID: string },
+    hashes: string[],
+): Promise<string> {
+    const { state, logger, config, client } = ctx
+    const sessionId = toolCtx.sessionID
+
+    // Always fetch messages for proper state sync (required for thinking mode API compatibility)
+    const messagesResponse = await client.session.messages({
+        path: { id: sessionId },
+    })
+    const messages: WithParts[] = (messagesResponse.data || messagesResponse) as WithParts[]
+
+    await ensureSessionInitialized(client, state, sessionId, logger, messages)
+
+    let discardedCount = 0
+    let tokensSaved = 0
+    const validHashes: string[] = []
+    const itemizedPruned: ItemizedPrunedItem[] = []
+
+    for (const hash of hashes) {
+        const partId = state.hashRegistry.reasoning.get(hash)
+        if (partId) {
+            if (!state.prune.reasoningPartIds.includes(partId)) {
+                state.prune.reasoningPartIds.push(partId)
+                validHashes.push(hash)
+                discardedCount++
+                // Estimate tokens saved (rough estimate based on typical reasoning block size)
+                tokensSaved += 2000
+                logger.info(`Discarded reasoning part ${partId} via hash ${hash}`)
+                itemizedPruned.push({
+                    type: "reasoning",
+                    name: `thinking block`,
+                })
+            } else {
+                logger.debug(`Hash ${hash} already pruned, skipping`)
+            }
+        } else {
+            logger.warn(`Unknown reasoning hash: ${hash}`)
+        }
+    }
+
+    // Update stats
+    state.stats.pruneTokenCounter += tokensSaved
+    state.stats.pruneMessageCounter += discardedCount
+    state.stats.strategyStats.manualDiscard.thinking.count += discardedCount
+    state.stats.strategyStats.manualDiscard.thinking.tokens += tokensSaved
+
+    state.lastDiscardStats = {
+        itemCount: discardedCount,
+        tokensSaved: state.stats.pruneTokenCounter,
+    }
+
+    // Send notification for consistent status display
+    const currentParams = getCurrentParams(state, messages, logger)
+    // Build reasoning part IDs list for notification (using "msgId:partIndex" format)
+    const reasoningPartIds = validHashes
+        .map((hash) => state.hashRegistry.reasoning.get(hash))
+        .filter((id): id is string => id !== undefined)
+    await sendUnifiedNotification(
+        client,
+        logger,
+        config,
+        {
+            state,
+            pruneToolIds: [],
+            toolMetadata: new Map(),
+            pruneMessagePartIds: [],
+            pruneReasoningPartIds: reasoningPartIds,
+            reason: "manual",
+            workingDirectory: ctx.workingDirectory,
+            attemptedTargets: hashes,
+            options: { simplified: true },
+            itemizedPruned: discardedCount > 0 ? itemizedPruned : [],
+        },
+        toolCtx.sessionID,
+        currentParams,
+    )
+
+    commitStats(state)
+
+    saveSessionState(state, logger).catch((err: Error) =>
+        logger.error("Failed to persist state", { error: err.message }),
+    )
+
+    // Return formatted notification
+    const minimalNotification = formatDiscardNotification(
+        discardedCount,
+        "manual",
+        hashes,
+        "reasoning",
+    )
+    return minimalNotification
 }
 
 // ============================================================================
@@ -207,14 +384,14 @@ function validateCallIds(
     for (const callId of callIds) {
         const metadata = state.toolParameters.get(callId)
         if (!metadata) {
-            const hash = state.callIdToHash.get(callId) || "unknown"
+            const hash = state.hashRegistry.callIds.get(callId) || "unknown"
             logger.debug("Rejecting prune request - call ID not in cache", { callId, hash })
             throw new Error(`Invalid hash provided. The tool may have already been discarded.`)
         }
 
         const allProtectedTools = config.tools.settings.protectedTools
         if (allProtectedTools.includes(metadata.tool)) {
-            const hash = state.callIdToHash.get(callId) || "unknown"
+            const hash = state.hashRegistry.callIds.get(callId) || "unknown"
             logger.debug("Rejecting prune request - protected tool", {
                 callId,
                 hash,
@@ -239,8 +416,8 @@ function updateStats(
     state.stats.pruneMessageCounter += count
 
     if (reason === "manual") {
-        state.stats.strategyStats.manualDiscard.count += count
-        state.stats.strategyStats.manualDiscard.tokens += tokensSaved
+        state.stats.strategyStats.manualDiscard.tool.count += count
+        state.stats.strategyStats.manualDiscard.tool.tokens += tokensSaved
     }
 
     state.lastDiscardStats = {

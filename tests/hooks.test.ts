@@ -17,8 +17,6 @@ vi.mock("../lib/strategies", () => ({
     deduplicate: vi.fn(),
     supersedeWrites: vi.fn(),
     purgeErrors: vi.fn(),
-    truncateLargeOutputs: vi.fn(),
-    compressThinkingBlocks: vi.fn(),
 }))
 
 vi.mock("../lib/messages", () => ({
@@ -31,6 +29,7 @@ vi.mock("../lib/messages", () => ({
 vi.mock("../lib/state", () => ({
     checkSession: vi.fn(),
     ensureSessionInitialized: vi.fn(),
+    syncSessionState: vi.fn(),
 }))
 
 vi.mock("../lib/state/tool-cache", () => ({
@@ -62,6 +61,8 @@ const createMockClient = (): OpenCodeClient => ({
         messages: vi.fn().mockResolvedValue({
             data: [],
         }),
+        get: vi.fn().mockResolvedValue({ data: {} }),
+        prompt: vi.fn().mockResolvedValue({ data: {} }),
     },
 })
 
@@ -69,21 +70,16 @@ const createMockConfig = (): PluginConfig => ({
     enabled: true,
     debug: false,
     pruneNotification: "minimal",
-    autoPruneAfterTool: true,
     commands: {
         enabled: true,
         protectedTools: [],
-    },
-    turnProtection: {
-        enabled: false,
-        turns: 4,
     },
     protectedFilePatterns: [],
     tools: {
         settings: {
             protectedTools: [],
             enableAssistantMessagePruning: true,
-            minAssistantTextLength: 100,
+            enableReasoningPruning: true,
         },
         discard: {
             enabled: true,
@@ -96,6 +92,7 @@ const createMockConfig = (): PluginConfig => ({
             enabled: true,
             initialTurns: 8,
             repeatTurns: 4,
+            stuckTaskTurns: 12,
         },
         automataMode: {
             enabled: false,
@@ -103,30 +100,10 @@ const createMockConfig = (): PluginConfig => ({
         },
     },
     strategies: {
-        deduplication: {
-            enabled: true,
-            protectedTools: [],
-        },
-        supersedeWrites: {
-            enabled: false,
-        },
         purgeErrors: {
             enabled: true,
             turns: 4,
             protectedTools: [],
-        },
-        truncation: {
-            enabled: true,
-            maxTokens: 2000,
-            headRatio: 0.4,
-            tailRatio: 0.4,
-            minTurnsOld: 2,
-            targetTools: ["read", "grep", "glob", "bash"],
-        },
-        thinkingCompression: {
-            enabled: true,
-            minTurnsOld: 3,
-            maxTokens: 500,
         },
     },
 })
@@ -137,6 +114,7 @@ const createMockState = (): SessionState => ({
     prune: {
         toolIds: [],
         messagePartIds: [],
+        reasoningPartIds: [],
     },
     stats: {
         pruneTokenCounter: 0,
@@ -144,13 +122,19 @@ const createMockState = (): SessionState => ({
         pruneMessageCounter: 0,
         totalPruneMessages: 0,
         strategyStats: {
-            deduplication: { count: 0, tokens: 0 },
-            supersedeWrites: { count: 0, tokens: 0 },
+            autoSupersede: {
+                hash: { count: 0, tokens: 0 },
+                file: { count: 0, tokens: 0 },
+                todo: { count: 0, tokens: 0 },
+                context: { count: 0, tokens: 0 },
+            },
             purgeErrors: { count: 0, tokens: 0 },
-            manualDiscard: { count: 0, tokens: 0 },
+            manualDiscard: {
+                message: { count: 0, tokens: 0 },
+                thinking: { count: 0, tokens: 0 },
+                tool: { count: 0, tokens: 0 },
+            },
             distillation: { count: 0, tokens: 0 },
-            truncation: { count: 0, tokens: 0 },
-            thinkingCompression: { count: 0, tokens: 0 },
         },
     },
     toolParameters: new Map(),
@@ -159,22 +143,35 @@ const createMockState = (): SessionState => ({
     currentTurn: 0,
     lastDiscardStats: null,
     lastUserMessageId: null,
-    hashToCallId: new Map(),
-    callIdToHash: new Map(),
+    hashRegistry: {
+        calls: new Map(),
+        callIds: new Map(),
+        messages: new Map(),
+        messagePartIds: new Map(),
+        reasoning: new Map(),
+        reasoningPartIds: new Map(),
+    },
     discardHistory: [],
-    hashToMessagePart: new Map(),
-    messagePartToHash: new Map(),
-    softPrunedTools: new Map(),
-    softPrunedMessageParts: new Map(),
-    softPrunedMessages: new Map(),
-    patternToContent: new Map(),
-    lastTodoTurn: 0,
-    lastReminderTurn: 0,
-    lastTodowriteCallId: null,
+    cursors: {
+        todo: {
+            lastTurn: 0,
+            lastReminderTurn: 0,
+            lastWriteCallId: null,
+            lastReadCallId: null,
+        },
+        context: {
+            lastCallId: null,
+        },
+        automata: {
+            enabled: false,
+            lastTurn: 0,
+            lastReflectionTurn: 0,
+        },
+        files: {
+            pathToCallIds: new Map(),
+        },
+    },
     todos: [],
-    automataEnabled: false,
-    lastAutomataTurn: 0,
-    lastReflectionTurn: 0,
 })
 
 describe("createSystemPromptHandler", () => {
@@ -264,7 +261,7 @@ describe("createChatMessageTransformHandler", () => {
     })
 
     it("should check session on message transform", async () => {
-        const { checkSession } = await import("../lib/state/index.js")
+        const { syncSessionState } = await import("../lib/state/index.js")
         const handler = createChatMessageTransformHandler(
             mockClient,
             mockState,
@@ -275,9 +272,10 @@ describe("createChatMessageTransformHandler", () => {
 
         await handler({}, output)
 
-        expect(checkSession).toHaveBeenCalledWith(
+        expect(syncSessionState).toHaveBeenCalledWith(
             mockClient,
             mockState,
+            mockConfig,
             mockLogger as unknown as import("../lib/logger.js").Logger,
             output.messages,
         )
@@ -285,7 +283,7 @@ describe("createChatMessageTransformHandler", () => {
 
     it("should skip processing for sub-agents", async () => {
         mockState.isSubAgent = true
-        const { checkSession } = await import("../lib/state/index.js")
+        const { syncSessionState } = await import("../lib/state/index.js")
         const handler = createChatMessageTransformHandler(
             mockClient,
             mockState,
@@ -296,7 +294,7 @@ describe("createChatMessageTransformHandler", () => {
 
         await handler({}, output)
 
-        expect(checkSession).toHaveBeenCalled()
+        expect(syncSessionState).toHaveBeenCalled()
         // Should not process further for sub-agents
     })
 

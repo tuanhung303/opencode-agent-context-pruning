@@ -11,7 +11,6 @@ const createMockConfig = (): PluginConfig =>
             settings: {
                 protectedTools: [],
                 enableAssistantMessagePruning: true,
-                minAssistantTextLength: 100,
             },
         },
         protectedFilePatterns: [],
@@ -40,8 +39,6 @@ const createMockState = (): SessionState =>
                 purgeErrors: { count: 0, tokens: 0 },
                 manualDiscard: { count: 0, tokens: 0 },
                 distillation: { count: 0, tokens: 0 },
-                truncation: { count: 0, tokens: 0 },
-                thinkingCompression: { count: 0, tokens: 0 },
             },
         },
         lastDiscardStats: null,
@@ -162,10 +159,6 @@ describe("tools strategy", () => {
 
         it("should have assistant message pruning enabled", () => {
             expect(mockConfig.tools.settings.enableAssistantMessagePruning).toBe(true)
-        })
-
-        it("should have minimum assistant text length configured", () => {
-            expect(mockConfig.tools.settings.minAssistantTextLength).toBeGreaterThan(0)
         })
     })
 

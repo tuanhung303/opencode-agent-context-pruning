@@ -71,12 +71,10 @@ describe("createSessionState", () => {
         const state = createSessionState()
 
         expect(state.toolParameters.size).toBe(0)
-        expect(state.hashToCallId.size).toBe(0)
-        expect(state.callIdToHash.size).toBe(0)
-        expect(state.hashToMessagePart.size).toBe(0)
-        expect(state.messagePartToHash.size).toBe(0)
-        expect(state.softPrunedTools.size).toBe(0)
-        expect(state.softPrunedMessageParts.size).toBe(0)
+        expect(state.hashRegistry.calls.size).toBe(0)
+        expect(state.hashRegistry.callIds.size).toBe(0)
+        expect(state.hashRegistry.messages.size).toBe(0)
+        expect(state.hashRegistry.messagePartIds.size).toBe(0)
     })
 
     it("should initialize stats to zero", () => {
@@ -91,13 +89,14 @@ describe("createSessionState", () => {
     it("should initialize all strategy stats", () => {
         const state = createSessionState()
 
-        expect(state.stats.strategyStats.deduplication.count).toBe(0)
-        expect(state.stats.strategyStats.supersedeWrites.count).toBe(0)
+        expect(state.stats.strategyStats.autoSupersede.hash.count).toBe(0)
+        expect(state.stats.strategyStats.autoSupersede.file.count).toBe(0)
+        expect(state.stats.strategyStats.autoSupersede.todo.count).toBe(0)
         expect(state.stats.strategyStats.purgeErrors.count).toBe(0)
-        expect(state.stats.strategyStats.manualDiscard.count).toBe(0)
+        expect(state.stats.strategyStats.manualDiscard.message.count).toBe(0)
+        expect(state.stats.strategyStats.manualDiscard.thinking.count).toBe(0)
+        expect(state.stats.strategyStats.manualDiscard.tool.count).toBe(0)
         expect(state.stats.strategyStats.distillation.count).toBe(0)
-        expect(state.stats.strategyStats.truncation.count).toBe(0)
-        expect(state.stats.strategyStats.thinkingCompression.count).toBe(0)
     })
 })
 
@@ -235,45 +234,19 @@ describe("session state hash maps", () => {
     })
 
     it("should track hash to call ID mappings", () => {
-        mockState.hashToCallId.set("r_abc123", "call_1")
-        mockState.callIdToHash.set("call_1", "r_abc123")
+        mockState.hashRegistry.calls.set("r_abc123", "call_1")
+        mockState.hashRegistry.callIds.set("call_1", "r_abc123")
 
-        expect(mockState.hashToCallId.get("r_abc123")).toBe("call_1")
-        expect(mockState.callIdToHash.get("call_1")).toBe("r_abc123")
+        expect(mockState.hashRegistry.calls.get("r_abc123")).toBe("call_1")
+        expect(mockState.hashRegistry.callIds.get("call_1")).toBe("r_abc123")
     })
 
     it("should track message part hash mappings", () => {
-        mockState.hashToMessagePart.set("a_xyz789", "msg_1:0")
-        mockState.messagePartToHash.set("msg_1:0", "a_xyz789")
+        mockState.hashRegistry.messages.set("a_xyz789", "msg_1:0")
+        mockState.hashRegistry.messagePartIds.set("msg_1:0", "a_xyz789")
 
-        expect(mockState.hashToMessagePart.get("a_xyz789")).toBe("msg_1:0")
-        expect(mockState.messagePartToHash.get("msg_1:0")).toBe("a_xyz789")
-    })
-
-    it("should track soft pruned tools", () => {
-        mockState.softPrunedTools.set("call_1", {
-            originalOutput: "original content",
-            tool: "read",
-            parameters: {},
-            prunedAt: Date.now(),
-            hash: "r_abc123",
-        })
-
-        expect(mockState.softPrunedTools.has("call_1")).toBe(true)
-        expect(mockState.softPrunedTools.get("call_1")?.originalOutput).toBe("original content")
-    })
-
-    it("should track soft pruned message parts", () => {
-        mockState.softPrunedMessageParts.set("msg_1:0", {
-            originalText: "original text",
-            messageId: "msg_1",
-            partIndex: 0,
-            prunedAt: Date.now(),
-            hash: "a_xyz789",
-        })
-
-        expect(mockState.softPrunedMessageParts.has("msg_1:0")).toBe(true)
-        expect(mockState.softPrunedMessageParts.get("msg_1:0")?.originalText).toBe("original text")
+        expect(mockState.hashRegistry.messages.get("a_xyz789")).toBe("msg_1:0")
+        expect(mockState.hashRegistry.messagePartIds.get("msg_1:0")).toBe("a_xyz789")
     })
 })
 
@@ -301,10 +274,10 @@ describe("session stats", () => {
     })
 
     it("should track strategy-specific stats", () => {
-        mockState.stats.strategyStats.deduplication.count += 1
-        mockState.stats.strategyStats.deduplication.tokens += 50
+        mockState.stats.strategyStats.autoSupersede.hash.count += 1
+        mockState.stats.strategyStats.autoSupersede.hash.tokens += 50
 
-        expect(mockState.stats.strategyStats.deduplication.count).toBe(1)
-        expect(mockState.stats.strategyStats.deduplication.tokens).toBe(50)
+        expect(mockState.stats.strategyStats.autoSupersede.hash.count).toBe(1)
+        expect(mockState.stats.strategyStats.autoSupersede.hash.tokens).toBe(50)
     })
 })

@@ -3,7 +3,7 @@ import type { SessionState, WithParts } from "./types"
 import type { Logger } from "../logger"
 import { loadSessionState } from "./persistence"
 import { isSubAgentSession } from "./utils"
-import { getLastUserMessage, isMessageCompacted } from "../shared-utils"
+import { getLastUserMessage, isMessageCompacted, isSyntheticMessage } from "../shared-utils"
 
 export const checkSession = async (
     client: OpenCodeClient,
@@ -49,6 +49,7 @@ export function createSessionState(): SessionState {
         prune: {
             toolIds: [],
             messagePartIds: [],
+            reasoningPartIds: [],
         },
         stats: {
             pruneTokenCounter: 0,
@@ -56,13 +57,23 @@ export function createSessionState(): SessionState {
             pruneMessageCounter: 0,
             totalPruneMessages: 0,
             strategyStats: {
-                deduplication: { count: 0, tokens: 0 },
-                supersedeWrites: { count: 0, tokens: 0 },
+                autoSupersede: {
+                    hash: { count: 0, tokens: 0 },
+                    file: { count: 0, tokens: 0 },
+                    todo: { count: 0, tokens: 0 },
+                    context: { count: 0, tokens: 0 },
+                    url: { count: 0, tokens: 0 },
+                    stateQuery: { count: 0, tokens: 0 },
+                    snapshot: { count: 0, tokens: 0 },
+                    retry: { count: 0, tokens: 0 },
+                },
                 purgeErrors: { count: 0, tokens: 0 },
-                manualDiscard: { count: 0, tokens: 0 },
+                manualDiscard: {
+                    message: { count: 0, tokens: 0 },
+                    thinking: { count: 0, tokens: 0 },
+                    tool: { count: 0, tokens: 0 },
+                },
                 distillation: { count: 0, tokens: 0 },
-                truncation: { count: 0, tokens: 0 },
-                thinkingCompression: { count: 0, tokens: 0 },
             },
         },
         toolParameters: new Map(),
@@ -71,74 +82,106 @@ export function createSessionState(): SessionState {
         currentTurn: 0,
         lastDiscardStats: null,
         lastUserMessageId: null,
-        hashToCallId: new Map(),
-        callIdToHash: new Map(),
+        hashRegistry: {
+            calls: new Map(),
+            callIds: new Map(),
+            messages: new Map(),
+            messagePartIds: new Map(),
+            reasoning: new Map(),
+            reasoningPartIds: new Map(),
+            fileParts: new Map(),
+        },
         discardHistory: [],
-        hashToMessagePart: new Map(),
-        messagePartToHash: new Map(),
-        softPrunedTools: new Map(),
-        softPrunedMessageParts: new Map(),
-        softPrunedMessages: new Map(),
-        patternToContent: new Map(),
-        // Todo reminder tracking
-        lastTodoTurn: 0,
-        lastReminderTurn: 0,
-        lastTodowriteCallId: null,
+        cursors: {
+            todo: {
+                lastTurn: 0,
+                lastReminderTurn: 0,
+                lastWriteCallId: null,
+                lastReadCallId: null,
+            },
+            context: {
+                lastCallId: null,
+            },
+            automata: {
+                enabled: false,
+                lastTurn: 0,
+                lastReflectionTurn: 0,
+            },
+            files: {
+                pathToCallIds: new Map(),
+            },
+            urls: {
+                urlToCallIds: new Map(),
+            },
+            stateQueries: {
+                queryToCallIds: new Map(),
+            },
+            snapshots: {
+                allCallIds: new Set(),
+                latestCallId: null,
+            },
+            retries: {
+                pendingRetries: new Map(),
+            },
+        },
         todos: [],
-        // Automata Mode tracking
-        automataEnabled: false,
-        lastAutomataTurn: 0,
-        lastReflectionTurn: 0,
     }
 }
 
 export function resetSessionState(state: SessionState): void {
-    state.sessionId = null
-    state.isSubAgent = false
-    state.prune = {
-        toolIds: [],
-        messagePartIds: [],
-    }
-    state.stats = {
-        pruneTokenCounter: 0,
-        totalPruneTokens: 0,
-        pruneMessageCounter: 0,
-        totalPruneMessages: 0,
-        strategyStats: {
-            deduplication: { count: 0, tokens: 0 },
-            supersedeWrites: { count: 0, tokens: 0 },
-            purgeErrors: { count: 0, tokens: 0 },
-            manualDiscard: { count: 0, tokens: 0 },
-            distillation: { count: 0, tokens: 0 },
-            truncation: { count: 0, tokens: 0 },
-            thinkingCompression: { count: 0, tokens: 0 },
-        },
-    }
+    const fresh = createSessionState()
+    Object.assign(state, fresh)
     state.toolParameters.clear()
-    state.lastToolPrune = false
-    state.lastCompaction = 0
-    state.currentTurn = 0
-    state.variant = undefined
-    state.lastDiscardStats = null
-    state.lastUserMessageId = null
-    // Hash-based discard system
-    state.hashToCallId.clear()
-    state.callIdToHash.clear()
-    state.discardHistory = []
-    // Soft prune cache for restore capability
-    state.softPrunedTools.clear()
-    state.softPrunedMessageParts.clear()
-    state.softPrunedMessages.clear()
-    state.patternToContent.clear()
-    // Todo reminder tracking
-    state.lastTodoTurn = 0
-    state.lastReminderTurn = 0
-    state.lastTodowriteCallId = null
-    state.todos = []
-    // Automata Mode tracking
-    state.automataEnabled = false
-    state.lastAutomataTurn = 0
-    state.lastReflectionTurn = 0
+}
+
+/**
+ * Migrate strategyStats from old flat manualDiscard to new nested structure.
+ * Handles backward compatibility with persisted sessions.
+ */
+function migrateStrategyStats(persisted: any): SessionState["stats"]["strategyStats"] {
+    const defaultStats: SessionState["stats"]["strategyStats"] = {
+        autoSupersede: {
+            hash: { count: 0, tokens: 0 },
+            file: { count: 0, tokens: 0 },
+            todo: { count: 0, tokens: 0 },
+            context: { count: 0, tokens: 0 },
+            url: { count: 0, tokens: 0 },
+            stateQuery: { count: 0, tokens: 0 },
+            snapshot: { count: 0, tokens: 0 },
+            retry: { count: 0, tokens: 0 },
+        },
+        purgeErrors: { count: 0, tokens: 0 },
+        manualDiscard: {
+            message: { count: 0, tokens: 0 },
+            thinking: { count: 0, tokens: 0 },
+            tool: { count: 0, tokens: 0 },
+        },
+        distillation: { count: 0, tokens: 0 },
+    }
+
+    if (!persisted) {
+        return defaultStats
+    }
+
+    // Check if manualDiscard is old flat format (has 'count' property directly)
+    const isOldFormat = persisted.manualDiscard && typeof persisted.manualDiscard.count === "number"
+
+    return {
+        autoSupersede: persisted.autoSupersede || defaultStats.autoSupersede,
+        purgeErrors: persisted.purgeErrors || defaultStats.purgeErrors,
+        manualDiscard: isOldFormat
+            ? {
+                  // Migrate old flat format: assign all to 'tool' category
+                  message: { count: 0, tokens: 0 },
+                  thinking: { count: 0, tokens: 0 },
+                  tool: {
+                      count: persisted.manualDiscard.count,
+                      tokens: persisted.manualDiscard.tokens,
+                  },
+              }
+            : persisted.manualDiscard || defaultStats.manualDiscard,
+        distillation: persisted.distillation || defaultStats.distillation,
+    }
 }
 
 export async function ensureSessionInitialized(
@@ -170,51 +213,65 @@ export async function ensureSessionInitialized(
         return
     }
 
+    // Since state structure changed significantly, we reset if version mismatch
+    // (Implied by the user's acceptance to reset on first run after upgrade)
+    if (!persisted.cursors && (persisted.lastTodoTurn !== undefined || persisted.hashToCallId)) {
+        logger.info("Detected legacy session state structure - resetting for upgrade")
+        return
+    }
+
     state.prune = {
-        toolIds: persisted.prune.toolIds || [],
-        messagePartIds: persisted.prune.messagePartIds || [],
+        toolIds: persisted.prune?.toolIds || [],
+        messagePartIds: persisted.prune?.messagePartIds || [],
+        reasoningPartIds: persisted.prune?.reasoningPartIds || [],
     }
     state.stats = {
         pruneTokenCounter: persisted.stats?.pruneTokenCounter || 0,
         totalPruneTokens: persisted.stats?.totalPruneTokens || 0,
         pruneMessageCounter: persisted.stats?.pruneMessageCounter || 0,
         totalPruneMessages: persisted.stats?.totalPruneMessages || 0,
-        strategyStats: persisted.stats?.strategyStats || {
-            deduplication: { count: 0, tokens: 0 },
-            supersedeWrites: { count: 0, tokens: 0 },
-            purgeErrors: { count: 0, tokens: 0 },
-            manualDiscard: { count: 0, tokens: 0 },
-            distillation: { count: 0, tokens: 0 },
-            truncation: { count: 0, tokens: 0 },
-            thinkingCompression: { count: 0, tokens: 0 },
-        },
+        strategyStats: migrateStrategyStats(persisted.stats?.strategyStats),
     }
+
     // Restore hash-based discard system (convert objects back to Maps)
-    if (persisted.hashToCallId) {
-        state.hashToCallId = new Map(Object.entries(persisted.hashToCallId))
+    if (persisted.hashRegistry) {
+        state.hashRegistry.calls = new Map(Object.entries(persisted.hashRegistry.calls || {}))
+        state.hashRegistry.callIds = new Map(Object.entries(persisted.hashRegistry.callIds || {}))
+        state.hashRegistry.messages = new Map(Object.entries(persisted.hashRegistry.messages || {}))
+        state.hashRegistry.messagePartIds = new Map(
+            Object.entries(persisted.hashRegistry.messagePartIds || {}),
+        )
+        state.hashRegistry.reasoning = new Map(
+            Object.entries(persisted.hashRegistry.reasoning || {}),
+        )
+        state.hashRegistry.reasoningPartIds = new Map(
+            Object.entries(persisted.hashRegistry.reasoningPartIds || {}),
+        )
+        state.hashRegistry.fileParts = new Map(
+            Object.entries(persisted.hashRegistry.fileParts || {}),
+        )
     }
-    if (persisted.callIdToHash) {
-        state.callIdToHash = new Map(Object.entries(persisted.callIdToHash))
-    }
+
     if (persisted.discardHistory) {
         state.discardHistory = persisted.discardHistory
     }
-    // Restore assistant message hash maps
-    if (persisted.hashToMessagePart) {
-        state.hashToMessagePart = new Map(Object.entries(persisted.hashToMessagePart))
+
+    // Restore cursors
+    if (persisted.cursors) {
+        state.cursors.todo = persisted.cursors.todo || state.cursors.todo
+        state.cursors.context = persisted.cursors.context || state.cursors.context
+        state.cursors.automata = persisted.cursors.automata || state.cursors.automata
+        if (persisted.cursors.files?.pathToCallIds) {
+            state.cursors.files.pathToCallIds = new Map(
+                Object.entries(persisted.cursors.files.pathToCallIds).map(([k, v]) => [
+                    k,
+                    new Set(v as string[]),
+                ]),
+            )
+        }
     }
-    if (persisted.messagePartToHash) {
-        state.messagePartToHash = new Map(Object.entries(persisted.messagePartToHash))
-    }
-    // Restore todo reminder state
-    state.lastTodoTurn = persisted.lastTodoTurn ?? 0
-    state.lastReminderTurn = persisted.lastReminderTurn ?? 0
-    state.lastTodowriteCallId = persisted.lastTodowriteCallId ?? null
+
     state.todos = persisted.todos ?? []
-    // Restore automata mode state
-    state.automataEnabled = persisted.automataEnabled ?? false
-    state.lastAutomataTurn = persisted.lastAutomataTurn ?? 0
-    state.lastReflectionTurn = persisted.lastReflectionTurn ?? 0
 
     // Scan message history to sync todo state if needed
     restoreTodoStateFromHistory(state, messages, logger)
@@ -230,7 +287,7 @@ function restoreTodoStateFromHistory(
     logger: Logger,
 ): void {
     // Only restore if we don't have persisted todo state
-    if (state.todos.length > 0 && state.lastTodoTurn > 0) {
+    if (state.todos.length > 0 && state.cursors.todo.lastTurn > 0) {
         logger.debug("Using persisted todo state, skipping history scan")
         return
     }
@@ -258,8 +315,13 @@ function restoreTodoStateFromHistory(
             ) {
                 try {
                     const content = part.state.output
-                    const todos = JSON.parse(content)
-                    if (Array.isArray(todos)) {
+                    let todos: any[] | null = null
+                    if (typeof content === "string") {
+                        todos = JSON.parse(content)
+                    } else if (Array.isArray(content)) {
+                        todos = content
+                    }
+                    if (todos && Array.isArray(todos)) {
                         lastTodowriteTurn = currentTurn
                         lastTodos = todos
                     }
@@ -271,10 +333,10 @@ function restoreTodoStateFromHistory(
     }
 
     if (lastTodowriteTurn > 0) {
-        state.lastTodoTurn = lastTodowriteTurn
+        state.cursors.todo.lastTurn = lastTodowriteTurn
         state.todos = lastTodos
         // Reset reminder cycle since we found a recent todowrite
-        state.lastReminderTurn = 0
+        state.cursors.todo.lastReminderTurn = 0
         logger.info(
             `Restored todo state from history - last todowrite at turn ${lastTodowriteTurn} with ${lastTodos.length} todos`,
         )
@@ -294,7 +356,7 @@ function findLastCompactionTimestamp(messages: WithParts[]): number {
 export function countTurns(state: SessionState, messages: WithParts[]): number {
     let turnCount = 0
     for (const msg of messages) {
-        if (isMessageCompacted(state, msg)) {
+        if (isMessageCompacted(state, msg) || isSyntheticMessage(msg)) {
             continue
         }
         const parts = Array.isArray(msg.parts) ? msg.parts : []

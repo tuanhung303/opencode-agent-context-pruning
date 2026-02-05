@@ -5,12 +5,196 @@ import { isMessageCompacted } from "../shared-utils"
 import { generateToolHash } from "../messages/utils"
 import { removeTodoReminder } from "../messages/todo-reminder"
 import { removeAutomataReflection } from "../messages/automata-mode"
+import { countTokens } from "../strategies/utils"
 
 const MAX_TOOL_CACHE_SIZE = 1000
+
+/** Tools that operate on files and support file-based supersede */
+const _FILE_TOOLS = ["read", "write", "edit", "glob", "grep"] as const
+type _FileTool = (typeof _FILE_TOOLS)[number]
+void (_FILE_TOOLS as readonly string[])
+void (undefined as unknown as _FileTool)
+
+/** State query commands that should only keep the latest execution */
+const STATE_QUERY_PATTERNS = [
+    /^ls\s/,
+    /^ls$/,
+    /^find\s/,
+    /^pwd$/,
+    /^git\s+status/,
+    /^git\s+branch/,
+    /^git\s+log/,
+    /^tree\s/,
+    /^tree$/,
+] as const
+
+/** Keys to preserve when stripping tool inputs (metadata only) */
+const INPUT_METADATA_KEYS: Record<string, string[]> = {
+    read: ["filePath", "offset", "limit"],
+    write: ["filePath"],
+    edit: ["filePath"],
+    glob: ["pattern", "path"],
+    grep: ["pattern", "path", "include"],
+    bash: ["command", "description", "workdir"],
+    webfetch: ["url", "format"],
+    websearch: ["query"],
+    task: ["description", "subagent_type"],
+    skill: ["name"],
+    todowrite: [], // Keep empty - output has the data
+    todoread: [],
+}
+
+/**
+ * Strip tool input to metadata-only object.
+ * Removes verbose content like file contents, keeping only key identifiers.
+ */
+function stripInputToMetadata(
+    tool: string,
+    input: Record<string, unknown>,
+): Record<string, unknown> {
+    const keysToKeep = INPUT_METADATA_KEYS[tool] || Object.keys(input).slice(0, 3)
+    const stripped: Record<string, unknown> = {}
+
+    for (const key of keysToKeep) {
+        if (input[key] !== undefined) {
+            const value = input[key]
+            // Truncate long string values
+            if (typeof value === "string" && value.length > 100) {
+                stripped[key] = value.slice(0, 97) + "..."
+            } else {
+                stripped[key] = value
+            }
+        }
+    }
+
+    return stripped
+}
+
+/**
+ * Extract a unique file key from tool parameters for file-based supersede.
+ * Returns null for non-file tools.
+ */
+function extractFileKey(tool: string, params: Record<string, unknown>): string | null {
+    if (tool === "read" || tool === "write" || tool === "edit") {
+        return (params.filePath as string) ?? null
+    }
+    if (tool === "glob") {
+        const pattern = (params.pattern as string) ?? ""
+        const path = (params.path as string) ?? ""
+        return `glob:${path}:${pattern}`
+    }
+    if (tool === "grep") {
+        const pattern = (params.pattern as string) ?? ""
+        const path = (params.path as string) ?? ""
+        const include = (params.include as string) ?? ""
+        return `grep:${path}:${pattern}:${include}`
+    }
+    return null
+}
+
+/**
+ * Extract URL key from webfetch/websearch params for URL-based supersede.
+ * Returns null for non-URL tools.
+ */
+function extractUrlKey(tool: string, params: Record<string, unknown>): string | null {
+    if (tool === "webfetch") {
+        return (params.url as string) ?? null
+    }
+    if (tool === "websearch" || tool === "ddg-search_search" || tool === "google_search") {
+        return `search:${(params.query as string) ?? ""}`
+    }
+    return null
+}
+
+/**
+ * Check if a bash command matches a state query pattern.
+ * Returns true if the command is a state query that should supersede previous identical calls.
+ */
+function isStateQueryCommand(command: string): boolean {
+    return STATE_QUERY_PATTERNS.some((pattern) => pattern.test(command))
+}
+
+/**
+ * Extract a normalized key from a bash state query command.
+ * Returns null if not a state query.
+ */
+function extractStateQueryKey(params: Record<string, unknown>): string | null {
+    const command = (params.command as string) ?? ""
+    if (!isStateQueryCommand(command)) {
+        return null
+    }
+    // Normalize: take first word + key arguments
+    const parts = command.split(/\s+/)
+    const cmd = parts[0]
+    // For git commands, include subcommand
+    if (cmd === "git" && parts[1]) {
+        return `bash:${cmd}:${parts[1]}`
+    }
+    return `bash:${cmd}`
+}
+
+/**
+ * Check if a tool is a write operation (supersedes reads)
+ */
+function isWriteTool(tool: string): boolean {
+    return tool === "write" || tool === "edit"
+}
+
+/**
+ * Mark a tool call as superseded (soft prune).
+ * Returns estimated tokens saved.
+ * CRITICAL: Also strips state.input to metadata-only to fix input leak.
+ */
+function supersedeToolCall(
+    state: SessionState,
+    callId: string,
+    messages: WithParts[],
+    logger: Logger,
+    reason: string,
+): number {
+    // Find the tool part and estimate tokens
+    let tokensSaved = 0
+    for (const msg of messages) {
+        if (isMessageCompacted(state, msg)) continue
+        const parts = Array.isArray(msg.parts) ? msg.parts : []
+        for (const part of parts) {
+            if (part.type === "tool" && part.callID === callId) {
+                // Estimate tokens from input + output
+                const inputStr = JSON.stringify(part.state?.input ?? {})
+                const outputStr =
+                    part.state?.status === "completed" ? ((part.state as any).output ?? "") : ""
+                tokensSaved = countTokens(inputStr) + countTokens(outputStr)
+
+                // Clear the output to free memory
+                if (part.state?.status === "completed") {
+                    ;(part.state as any).output = `[auto-superseded: ${reason}]`
+                }
+
+                // FIX INPUT LEAK: Strip input to metadata-only
+                if (part.state?.input) {
+                    part.state.input = stripInputToMetadata(
+                        part.tool,
+                        part.state.input as Record<string, unknown>,
+                    )
+                }
+
+                // Add to prune list so it gets filtered out
+                if (!state.prune.toolIds.includes(callId)) {
+                    state.prune.toolIds.push(callId)
+                }
+
+                logger.debug(`Superseded tool ${callId}: ${reason}, ~${tokensSaved} tokens`)
+                return tokensSaved
+            }
+        }
+    }
+    return tokensSaved
+}
 
 /**
  * Sync tool parameters from OpenCode's session.messages() API.
  * Also generates stable hashes for each tool call.
+ * Implements auto-supersede: hash-based, file-based, and todo-based.
  */
 export async function syncToolCache(
     state: SessionState,
@@ -39,22 +223,12 @@ export async function syncToolCache(
                     continue
                 }
 
-                const turnProtectionEnabled = config.turnProtection.enabled
-                const turnProtectionTurns = config.turnProtection.turns
-                const isProtectedByTurn =
-                    turnProtectionEnabled &&
-                    turnProtectionTurns > 0 &&
-                    state.currentTurn - turnCounter < turnProtectionTurns
-
                 state.lastToolPrune =
                     (part.tool === "discard" || part.tool === "distill") &&
                     part.state.status === "completed"
 
+                // Skip if already cached
                 if (state.toolParameters.has(part.callID)) {
-                    continue
-                }
-
-                if (isProtectedByTurn) {
                     continue
                 }
 
@@ -65,23 +239,261 @@ export async function syncToolCache(
                     // Generate hash for this tool call
                     const baseHash = generateToolHash(part.tool, part.state?.input ?? {})
 
-                    // Handle collision: if hash exists for a different callID, append sequence number
-                    let finalHash = baseHash
+                    // === HASH-BASED SUPERSEDE ===
+                    // If same hash exists for a different callID, supersede the OLD one
                     if (
-                        state.hashToCallId.has(baseHash) &&
-                        state.hashToCallId.get(baseHash) !== part.callID
+                        state.hashRegistry.calls.has(baseHash) &&
+                        state.hashRegistry.calls.get(baseHash) !== part.callID
                     ) {
-                        let seq = 2
-                        while (state.hashToCallId.has(`${baseHash}_${seq}`)) {
-                            seq++
+                        const oldCallId = state.hashRegistry.calls.get(baseHash)!
+
+                        // Only supersede if old call is completed and not in current turn
+                        const oldParams = state.toolParameters.get(oldCallId)
+                        if (
+                            oldParams &&
+                            oldParams.status === "completed" &&
+                            oldParams.turn < turnCounter
+                        ) {
+                            const tokensSaved = supersedeToolCall(
+                                state,
+                                oldCallId,
+                                messages,
+                                logger,
+                                "hash duplicate",
+                            )
+                            state.stats.strategyStats.autoSupersede.hash.count++
+                            state.stats.strategyStats.autoSupersede.hash.tokens += tokensSaved
+                            logger.info(
+                                `[auto-supersede] 🔄 hash ${baseHash.slice(0, 7)}: ${oldCallId} → ${part.callID}`,
+                            )
+
+                            // Clean up old mappings
+                            state.hashRegistry.calls.delete(baseHash)
+                            state.hashRegistry.callIds.delete(oldCallId)
                         }
-                        finalHash = `${baseHash}_${seq}`
-                        logger.warn(`Hash collision detected for ${part.tool}, using ${finalHash}`)
                     }
 
-                    // Store bidirectional mapping
-                    state.hashToCallId.set(finalHash, part.callID)
-                    state.callIdToHash.set(part.callID, finalHash)
+                    // Store bidirectional mapping for new call
+                    state.hashRegistry.calls.set(baseHash, part.callID)
+                    state.hashRegistry.callIds.set(part.callID, baseHash)
+
+                    // === FILE-BASED SUPERSEDE (ONE-FILE-ONE-VIEW) ===
+                    // Any file operation supersedes ALL previous operations on the same file
+                    const fileKey = extractFileKey(part.tool, part.state?.input ?? {})
+                    if (fileKey && part.state?.status === "completed") {
+                        const aggressiveFilePrune =
+                            config.strategies.aggressivePruning?.aggressiveFilePrune ?? true
+
+                        // One-file-one-view: ANY file op supersedes all previous (not just write→read)
+                        const existingCallIds = state.cursors.files.pathToCallIds.get(fileKey)
+                        if (existingCallIds) {
+                            for (const oldCallId of existingCallIds) {
+                                if (oldCallId === part.callID) continue
+                                const oldParams = state.toolParameters.get(oldCallId)
+                                if (
+                                    oldParams &&
+                                    oldParams.status === "completed" &&
+                                    oldParams.turn < turnCounter
+                                ) {
+                                    // In aggressive mode, any file op supersedes
+                                    // In legacy mode, only write/edit supersedes
+                                    if (aggressiveFilePrune || isWriteTool(part.tool)) {
+                                        const tokensSaved = supersedeToolCall(
+                                            state,
+                                            oldCallId,
+                                            messages,
+                                            logger,
+                                            `file superseded by ${part.tool}`,
+                                        )
+                                        state.stats.strategyStats.autoSupersede.file.count++
+                                        state.stats.strategyStats.autoSupersede.file.tokens +=
+                                            tokensSaved
+                                        logger.info(
+                                            `[auto-supersede] 📁 file ${fileKey}: ${oldParams.tool} ${oldCallId} superseded by ${part.tool}`,
+                                        )
+                                    }
+                                }
+                            }
+                            // Clear old entries when superseding
+                            if (aggressiveFilePrune || isWriteTool(part.tool)) {
+                                existingCallIds.clear()
+                            }
+                        }
+
+                        // Track this call for the file
+                        if (!state.cursors.files.pathToCallIds.has(fileKey)) {
+                            state.cursors.files.pathToCallIds.set(fileKey, new Set())
+                        }
+                        state.cursors.files.pathToCallIds.get(fileKey)!.add(part.callID)
+                    }
+
+                    // === URL-BASED SUPERSEDE ===
+                    // Supersede older webfetch/websearch calls for the same URL/query
+                    const urlKey = extractUrlKey(part.tool, part.state?.input ?? {})
+                    if (urlKey && part.state?.status === "completed") {
+                        const pruneSourceUrls =
+                            config.strategies.aggressivePruning?.pruneSourceUrls ?? true
+                        const existingUrlCallIds = state.cursors.urls.urlToCallIds.get(urlKey)
+
+                        if (pruneSourceUrls && existingUrlCallIds) {
+                            for (const oldCallId of existingUrlCallIds) {
+                                if (oldCallId === part.callID) continue
+                                const oldParams = state.toolParameters.get(oldCallId)
+                                if (
+                                    oldParams &&
+                                    oldParams.status === "completed" &&
+                                    oldParams.turn < turnCounter
+                                ) {
+                                    const tokensSaved = supersedeToolCall(
+                                        state,
+                                        oldCallId,
+                                        messages,
+                                        logger,
+                                        `URL superseded by ${part.tool}`,
+                                    )
+                                    state.stats.strategyStats.autoSupersede.url.count++
+                                    state.stats.strategyStats.autoSupersede.url.tokens +=
+                                        tokensSaved
+                                    logger.info(
+                                        `[auto-supersede] 🔗 URL ${urlKey.slice(0, 50)}: ${oldParams.tool} ${oldCallId} superseded by ${part.tool}`,
+                                    )
+                                }
+                            }
+                            existingUrlCallIds.clear()
+                        }
+
+                        // Track this call for the URL
+                        if (!state.cursors.urls.urlToCallIds.has(urlKey)) {
+                            state.cursors.urls.urlToCallIds.set(urlKey, new Set())
+                        }
+                        state.cursors.urls.urlToCallIds.get(urlKey)!.add(part.callID)
+                    }
+
+                    // === STATE QUERY SUPERSEDE ===
+                    // Keep only the latest state query (ls, find, git status, etc.)
+                    if (part.tool === "bash" && part.state?.status === "completed") {
+                        const stateQuerySupersede =
+                            config.strategies.aggressivePruning?.stateQuerySupersede ?? true
+                        const stateQueryKey = extractStateQueryKey(
+                            part.state?.input as Record<string, unknown>,
+                        )
+
+                        if (stateQuerySupersede && stateQueryKey) {
+                            const existingQueryCallIds =
+                                state.cursors.stateQueries.queryToCallIds.get(stateQueryKey)
+                            if (existingQueryCallIds) {
+                                for (const oldCallId of existingQueryCallIds) {
+                                    if (oldCallId === part.callID) continue
+                                    const oldParams = state.toolParameters.get(oldCallId)
+                                    if (
+                                        oldParams &&
+                                        oldParams.status === "completed" &&
+                                        oldParams.turn < turnCounter
+                                    ) {
+                                        const tokensSaved = supersedeToolCall(
+                                            state,
+                                            oldCallId,
+                                            messages,
+                                            logger,
+                                            `state query superseded by ${part.tool}`,
+                                        )
+                                        state.stats.strategyStats.autoSupersede.stateQuery.count++
+                                        state.stats.strategyStats.autoSupersede.stateQuery.tokens +=
+                                            tokensSaved
+                                        logger.info(
+                                            `[auto-supersede] 📊 query ${stateQueryKey}: ${oldParams.tool} ${oldCallId} superseded`,
+                                        )
+                                    }
+                                }
+                                existingQueryCallIds.clear()
+                            }
+
+                            // Track this call
+                            if (!state.cursors.stateQueries.queryToCallIds.has(stateQueryKey)) {
+                                state.cursors.stateQueries.queryToCallIds.set(
+                                    stateQueryKey,
+                                    new Set(),
+                                )
+                            }
+                            state.cursors.stateQueries.queryToCallIds
+                                .get(stateQueryKey)!
+                                .add(part.callID)
+                        }
+                    }
+
+                    // === SNAPSHOT AUTO-SUPERSEDE ===
+                    // Keep only the latest snapshot
+                    if (part.tool === "snapshot" && part.state?.status === "completed") {
+                        const pruneSnapshots =
+                            config.strategies.aggressivePruning?.pruneSnapshots ?? true
+                        const allSnapshotIds = state.cursors.snapshots.allCallIds
+
+                        if (pruneSnapshots) {
+                            for (const oldCallId of allSnapshotIds) {
+                                if (oldCallId === part.callID) continue
+                                const oldParams = state.toolParameters.get(oldCallId)
+                                if (
+                                    oldParams &&
+                                    oldParams.status === "completed" &&
+                                    oldParams.turn < turnCounter
+                                ) {
+                                    const tokensSaved = supersedeToolCall(
+                                        state,
+                                        oldCallId,
+                                        messages,
+                                        logger,
+                                        "snapshot superseded by newer snapshot",
+                                    )
+                                    state.stats.strategyStats.autoSupersede.snapshot.count++
+                                    state.stats.strategyStats.autoSupersede.snapshot.tokens +=
+                                        tokensSaved
+                                    logger.info(
+                                        `[auto-supersede] 📸 snapshot ${oldCallId} superseded by ${part.callID}`,
+                                    )
+                                }
+                            }
+                            allSnapshotIds.clear()
+                        }
+
+                        allSnapshotIds.add(part.callID)
+                        state.cursors.snapshots.latestCallId = part.callID
+                    }
+
+                    // === RETRY AUTO-PRUNE ===
+                    // Detect tool error→retry sequences and prune failed attempts
+                    const pruneRetryParts =
+                        config.strategies.aggressivePruning?.pruneRetryParts ?? true
+                    if (pruneRetryParts && part.state?.status === "completed") {
+                        const toolHash = baseHash
+                        const pendingRetries = state.cursors.retries.pendingRetries.get(toolHash)
+
+                        if (pendingRetries && pendingRetries.length > 0) {
+                            // This is a successful retry - prune all failed attempts
+                            for (const failedCallId of pendingRetries) {
+                                if (failedCallId === part.callID) continue
+                                const tokensSaved = supersedeToolCall(
+                                    state,
+                                    failedCallId,
+                                    messages,
+                                    logger,
+                                    "retry succeeded - pruning failed attempt",
+                                )
+                                state.stats.strategyStats.autoSupersede.retry.count++
+                                state.stats.strategyStats.autoSupersede.retry.tokens += tokensSaved
+                                logger.info(
+                                    `[auto-supersede] 🔄 retry ${failedCallId} pruned after successful ${part.callID}`,
+                                )
+                            }
+                            state.cursors.retries.pendingRetries.delete(toolHash)
+                        }
+                    } else if (pruneRetryParts && part.state?.status === "error") {
+                        // Track failed attempts for potential retry pruning
+                        const toolHash = baseHash
+                        if (!state.cursors.retries.pendingRetries.has(toolHash)) {
+                            state.cursors.retries.pendingRetries.set(toolHash, [])
+                        }
+                        state.cursors.retries.pendingRetries.get(toolHash)!.push(part.callID)
+                    }
                 }
 
                 state.toolParameters.set(part.callID, {
@@ -92,18 +504,21 @@ export async function syncToolCache(
                     turn: turnCounter,
                 })
 
-                const hash = state.callIdToHash.get(part.callID) || "(protected)"
+                const hash = state.hashRegistry.callIds.get(part.callID) || "(protected)"
                 logger.info(`Cached tool id: ${part.callID} hash: ${hash} (turn ${turnCounter})`)
             }
         }
 
         logger.info(
-            `Synced cache - size: ${state.toolParameters.size}, hashes: ${state.hashToCallId.size}, currentTurn: ${state.currentTurn}`,
+            `Synced cache - size: ${state.toolParameters.size}, hashes: ${state.hashRegistry.calls.size}, currentTurn: ${state.currentTurn}`,
         )
         trimToolParametersCache(state)
 
-        // Track todowrite interactions after tool cache sync
+        // Track todowrite/todoread interactions after tool cache sync (includes todo supersede)
         trackTodoInteractions(state, messages, logger)
+
+        // Track context tool interactions for auto-supersede
+        trackContextInteractions(state, messages, logger)
     } catch (error) {
         logger.warn("Failed to sync tool parameters from OpenCode", {
             error: error instanceof Error ? error.message : String(error),
@@ -112,16 +527,22 @@ export async function syncToolCache(
 }
 
 /**
- * Track todowrite tool interactions to update todo reminder state.
+ * Track todowrite/todoread tool interactions to update todo reminder state.
  * Called after tool cache sync to detect todo list updates.
- * Only processes NEW todowrite calls (not already seen).
+ * Implements todo-based supersede: clears old todowrite AND todoread calls.
  */
 function trackTodoInteractions(state: SessionState, messages: WithParts[], logger: Logger): void {
-    // Find the most recent todowrite call that we haven't processed yet
+    // Find the most recent todowrite and todoread calls
     let latestTodowriteCallId: string | null = null
     let latestTodowriteTurn = 0
     let latestTodos: TodoItem[] | null = null
+    let latestTodoreadCallId: string | null = null
+    let latestTodoreadTurn = 0
     let turnCounter = 0
+
+    // Collect all todowrite and todoread call IDs for supersede
+    const allTodowriteCallIds: Array<{ callId: string; turn: number }> = []
+    const allTodoreadCallIds: Array<{ callId: string; turn: number }> = []
 
     for (const msg of messages) {
         if (isMessageCompacted(state, msg)) {
@@ -135,42 +556,87 @@ function trackTodoInteractions(state: SessionState, messages: WithParts[], logge
                 continue
             }
 
-            // Check for tool parts from todowrite that are completed
-            if (
-                part.type === "tool" &&
-                part.tool === "todowrite" &&
-                part.state?.status === "completed" &&
-                part.callID
-            ) {
-                // Track this as the latest todowrite
+            if (part.type !== "tool" || !part.callID) {
+                continue
+            }
+
+            // Track todowrite calls
+            if (part.tool === "todowrite" && part.state?.status === "completed") {
+                allTodowriteCallIds.push({ callId: part.callID, turn: turnCounter })
                 latestTodowriteCallId = part.callID
                 latestTodowriteTurn = turnCounter
 
                 // Parse todo state from result output
                 try {
-                    const content = part.state.output
-                    const todos = JSON.parse(content) as TodoItem[]
-                    if (Array.isArray(todos)) {
+                    const content = (part.state as any).output
+                    let todos: TodoItem[] | null = null
+                    if (typeof content === "string") {
+                        todos = JSON.parse(content) as TodoItem[]
+                    } else if (Array.isArray(content)) {
+                        todos = content as TodoItem[]
+                    }
+                    if (todos && Array.isArray(todos)) {
                         latestTodos = todos
                     }
                 } catch {
                     // Ignore parse errors
                 }
             }
+
+            // Track todoread calls
+            if (part.tool === "todoread" && part.state?.status === "completed") {
+                allTodoreadCallIds.push({ callId: part.callID, turn: turnCounter })
+                latestTodoreadCallId = part.callID
+                latestTodoreadTurn = turnCounter
+            }
         }
     }
 
-    // Only update state if we found a todowrite AND it's different from what we've seen
-    if (latestTodowriteCallId && latestTodowriteCallId !== state.lastTodowriteCallId) {
+    // === TODO-BASED SUPERSEDE ===
+    // Supersede all old todowrite calls except the latest
+    if (latestTodowriteCallId && latestTodowriteCallId !== state.cursors.todo.lastWriteCallId) {
+        for (const { callId, turn } of allTodowriteCallIds) {
+            if (callId === latestTodowriteCallId) continue
+            if (state.prune.toolIds.includes(callId)) continue // Already pruned
+
+            const tokensSaved = supersedeToolCall(
+                state,
+                callId,
+                messages,
+                logger,
+                "newer todowrite exists",
+            )
+            if (tokensSaved > 0) {
+                state.stats.strategyStats.autoSupersede.todo.count++
+                state.stats.strategyStats.autoSupersede.todo.tokens += tokensSaved
+                logger.info(
+                    `[auto-supersede] ✅ todo: pruned old todowrite ${callId} (turn ${turn})`,
+                )
+            }
+        }
+
         logger.info(
             `Detected NEW todowrite (callId: ${latestTodowriteCallId}) at turn ${latestTodowriteTurn}`,
         )
 
-        state.lastTodowriteCallId = latestTodowriteCallId
-        state.lastTodoTurn = latestTodowriteTurn
-        state.lastReminderTurn = 0 // Reset reminder cycle
+        state.cursors.todo.lastWriteCallId = latestTodowriteCallId
+        state.cursors.todo.lastTurn = latestTodowriteTurn
+        state.cursors.todo.lastReminderTurn = 0 // Reset reminder cycle
 
         if (latestTodos) {
+            // Track in_progress transitions for stuck task detection
+            for (const newTodo of latestTodos) {
+                if (newTodo.status === "in_progress") {
+                    const oldTodo = state.todos.find((t) => t.id === newTodo.id)
+                    if (oldTodo?.status === "in_progress" && oldTodo.inProgressSince) {
+                        // Already in_progress → preserve existing timestamp
+                        newTodo.inProgressSince = oldTodo.inProgressSince
+                    } else {
+                        // Newly in_progress → set timestamp to current turn
+                        newTodo.inProgressSince = latestTodowriteTurn
+                    }
+                }
+            }
             state.todos = latestTodos
             logger.info(`Updated todo list with ${latestTodos.length} items`)
         }
@@ -179,12 +645,111 @@ function trackTodoInteractions(state: SessionState, messages: WithParts[], logge
         removeTodoReminder(state, messages, logger)
         removeAutomataReflection(state, messages, logger)
     }
+
+    // Supersede all old todoread calls except the latest
+    if (latestTodoreadCallId && latestTodoreadCallId !== state.cursors.todo.lastReadCallId) {
+        for (const { callId, turn } of allTodoreadCallIds) {
+            if (callId === latestTodoreadCallId) continue
+            if (state.prune.toolIds.includes(callId)) continue // Already pruned
+
+            const tokensSaved = supersedeToolCall(
+                state,
+                callId,
+                messages,
+                logger,
+                "newer todoread exists",
+            )
+            if (tokensSaved > 0) {
+                state.stats.strategyStats.autoSupersede.todo.count++
+                state.stats.strategyStats.autoSupersede.todo.tokens += tokensSaved
+                logger.info(
+                    `[auto-supersede] ✅ todo: pruned old todoread ${callId} (turn ${turn})`,
+                )
+            }
+        }
+
+        state.cursors.todo.lastReadCallId = latestTodoreadCallId
+        logger.info(
+            `Detected NEW todoread (callId: ${latestTodoreadCallId}) at turn ${latestTodoreadTurn}`,
+        )
+    }
+}
+
+/**
+ * Track context tool interactions for auto-supersede.
+ * Supersedes all old context calls except the latest.
+ */
+function trackContextInteractions(
+    state: SessionState,
+    messages: WithParts[],
+    logger: Logger,
+): void {
+    let latestContextCallId: string | null = null
+    let latestContextTurn = 0
+    let turnCounter = 0
+
+    // Collect all context call IDs for supersede
+    const allContextCallIds: Array<{ callId: string; turn: number }> = []
+
+    for (const msg of messages) {
+        if (isMessageCompacted(state, msg)) {
+            continue
+        }
+
+        const parts = Array.isArray(msg.parts) ? msg.parts : []
+        for (const part of parts) {
+            if (part.type === "step-start") {
+                turnCounter++
+                continue
+            }
+
+            if (part.type !== "tool" || !part.callID) {
+                continue
+            }
+
+            // Track context calls
+            if (part.tool === "context" && part.state?.status === "completed") {
+                allContextCallIds.push({ callId: part.callID, turn: turnCounter })
+                latestContextCallId = part.callID
+                latestContextTurn = turnCounter
+            }
+        }
+    }
+
+    // === CONTEXT-BASED SUPERSEDE ===
+    // Supersede all old context calls except the latest
+    if (latestContextCallId && latestContextCallId !== state.cursors.context.lastCallId) {
+        for (const { callId, turn } of allContextCallIds) {
+            if (callId === latestContextCallId) continue
+            if (state.prune.toolIds.includes(callId)) continue // Already pruned
+
+            const tokensSaved = supersedeToolCall(
+                state,
+                callId,
+                messages,
+                logger,
+                "newer context exists",
+            )
+            if (tokensSaved > 0) {
+                state.stats.strategyStats.autoSupersede.context.count++
+                state.stats.strategyStats.autoSupersede.context.tokens += tokensSaved
+                logger.info(
+                    `[auto-supersede] 🔧 context: pruned old context ${callId} (turn ${turn})`,
+                )
+            }
+        }
+
+        state.cursors.context.lastCallId = latestContextCallId
+        logger.info(
+            `Detected NEW context (callId: ${latestContextCallId}) at turn ${latestContextTurn}`,
+        )
+    }
 }
 
 /**
  * Trim the tool parameters cache to prevent unbounded memory growth.
  * Uses FIFO eviction - removes oldest entries first.
- * Also cleans up corresponding hash mappings to prevent memory leaks.
+ * Also cleans up corresponding hash mappings and cursor references to prevent memory leaks.
  */
 export function trimToolParametersCache(state: SessionState): void {
     if (state.toolParameters.size <= MAX_TOOL_CACHE_SIZE) {
@@ -200,10 +765,79 @@ export function trimToolParametersCache(state: SessionState): void {
         state.toolParameters.delete(callId)
 
         // Clean up hash mappings for evicted entries
-        const hash = state.callIdToHash.get(callId)
+        const hash = state.hashRegistry.callIds.get(callId)
         if (hash) {
-            state.hashToCallId.delete(hash)
-            state.callIdToHash.delete(callId)
+            state.hashRegistry.calls.delete(hash)
+            state.hashRegistry.callIds.delete(callId)
+        }
+
+        // Clean up cursor references to prevent dangling pointers
+        // Files cursor: remove from all path-to-callId mappings
+        for (const [path, callIds] of state.cursors.files.pathToCallIds) {
+            if (callIds.has(callId)) {
+                callIds.delete(callId)
+                if (callIds.size === 0) {
+                    state.cursors.files.pathToCallIds.delete(path)
+                }
+            }
+        }
+
+        // URLs cursor: remove from all url-to-callId mappings
+        for (const [url, callIds] of state.cursors.urls.urlToCallIds) {
+            if (callIds.has(callId)) {
+                callIds.delete(callId)
+                if (callIds.size === 0) {
+                    state.cursors.urls.urlToCallIds.delete(url)
+                }
+            }
+        }
+
+        // State queries cursor: remove from all query-to-callId mappings
+        for (const [query, callIds] of state.cursors.stateQueries.queryToCallIds) {
+            if (callIds.has(callId)) {
+                callIds.delete(callId)
+                if (callIds.size === 0) {
+                    state.cursors.stateQueries.queryToCallIds.delete(query)
+                }
+            }
+        }
+
+        // Snapshots cursor: remove from Set and clear latestCallId if needed
+        if (state.cursors.snapshots.allCallIds.has(callId)) {
+            state.cursors.snapshots.allCallIds.delete(callId)
+            if (state.cursors.snapshots.latestCallId === callId) {
+                // Find the next latest snapshot (most recent in Set)
+                const remainingSnapshots = Array.from(state.cursors.snapshots.allCallIds)
+                const nextLatest: string | null =
+                    remainingSnapshots.length > 0
+                        ? (remainingSnapshots[remainingSnapshots.length - 1] ?? null)
+                        : null
+                state.cursors.snapshots.latestCallId = nextLatest
+            }
+        }
+
+        // Context cursor: clear lastCallId if it was evicted
+        if (state.cursors.context.lastCallId === callId) {
+            state.cursors.context.lastCallId = null
+        }
+
+        // Todo cursor: clear last write/read call IDs if they were evicted
+        if (state.cursors.todo.lastWriteCallId === callId) {
+            state.cursors.todo.lastWriteCallId = null
+        }
+        if (state.cursors.todo.lastReadCallId === callId) {
+            state.cursors.todo.lastReadCallId = null
+        }
+
+        // Retries cursor: remove from all pending retry arrays
+        for (const [toolHash, failedCallIds] of state.cursors.retries.pendingRetries) {
+            const index = failedCallIds.indexOf(callId)
+            if (index !== -1) {
+                failedCallIds.splice(index, 1)
+                if (failedCallIds.length === 0) {
+                    state.cursors.retries.pendingRetries.delete(toolHash)
+                }
+            }
         }
     }
 }
