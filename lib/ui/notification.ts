@@ -156,10 +156,11 @@ export async function sendUnifiedNotification(
         distillation,
     } = ctx
 
-    const hasPruned =
+    const _hasPruned =
         pruneToolIds.length > 0 ||
         pruneMessagePartIds.length > 0 ||
         pruneReasoningPartIds.length > 0
+    void _hasPruned // Reserved for future conditional notification logic
 
     if (config.pruneNotification === "off") {
         return false

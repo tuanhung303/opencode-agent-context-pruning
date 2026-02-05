@@ -2,7 +2,6 @@ import { createHash } from "crypto"
 import { isMessageCompacted } from "../shared-utils"
 import type { SessionState, WithParts } from "../state"
 import type { UserMessage } from "@opencode-ai/sdk/v2"
-import type { PluginConfig } from "../config"
 import { getPruneCache } from "../state/utils"
 
 const SYNTHETIC_MESSAGE_ID = "msg_01234567890123456789012345"

@@ -1,7 +1,7 @@
 # Agentic Context Pruning (ACP)
 
 [![npm version](https://img.shields.io/npm/v/@tuanhung303/opencode-acp.svg)](https://www.npmjs.com/package/@tuanhung303/opencode-acp)
-[![CI](https://github.com/tuanhung303/opencode-acp/workflows/CI/badge.svg)](https://github.com/tuanhung303/opencode-acp/actions)
+[![CI](https://github.com/tuanhung303/opencode-agent-context-pruning/workflows/CI/badge.svg)](https://github.com/tuanhung303/opencode-agent-context-pruning/actions)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 <p align="center">

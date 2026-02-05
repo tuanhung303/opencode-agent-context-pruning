@@ -40,9 +40,13 @@ export const filterStepMarkers = (
     }
 }
 
-const PRUNED_TOOL_ERROR_INPUT_REPLACEMENT = "[input removed due to failed tool call]"
-const PRUNED_QUESTION_INPUT_REPLACEMENT = "[questions removed - see output for user's answers]"
-const PRUNED_FILE_PART_REPLACEMENT = "[File attachment masked to save context]"
+// Reserved for future use - keeping for API consistency
+const _PRUNED_TOOL_ERROR_INPUT_REPLACEMENT = "[input removed due to failed tool call]"
+const _PRUNED_QUESTION_INPUT_REPLACEMENT = "[questions removed - see output for user's answers]"
+const _PRUNED_FILE_PART_REPLACEMENT = "[File attachment masked to save context]"
+void _PRUNED_TOOL_ERROR_INPUT_REPLACEMENT
+void _PRUNED_QUESTION_INPUT_REPLACEMENT
+void _PRUNED_FILE_PART_REPLACEMENT
 
 /** Preview length for pruned content placeholders */
 const PREVIEW_LENGTH = 20
@@ -175,8 +179,9 @@ const INPUT_METADATA_KEYS: Record<string, string[]> = {
 /**
  * Strip tool input to metadata-only object.
  * Removes verbose content like file contents, keeping only key identifiers.
+ * @internal Reserved for future use in input stripping strategies
  */
-function stripInputToMetadata(
+function _stripInputToMetadata(
     tool: string,
     input: Record<string, unknown>,
 ): Record<string, unknown> {
@@ -196,6 +201,7 @@ function stripInputToMetadata(
 
     return stripped
 }
+void _stripInputToMetadata
 
 /**
  * Generates a deterministic hash for message parts.
@@ -481,8 +487,9 @@ export const ensureReasoningContentSync = (
  *
  * This preserves key metadata so the agent can understand what was pruned
  * without needing to re-read the content.
+ * @internal Reserved for future use in breadcrumb generation
  */
-const createPrunedOutputBreadcrumb = (
+const _createPrunedOutputBreadcrumb = (
     tool: string,
     input: Record<string, unknown> | undefined,
     status: string,
@@ -524,6 +531,7 @@ const createPrunedOutputBreadcrumb = (
 
     return `[Output removed to save context - information superseded or no longer needed]\n${tool}(${paramsStr}) → ${status}`
 }
+void _createPrunedOutputBreadcrumb
 
 export const prune = (
     state: SessionState,

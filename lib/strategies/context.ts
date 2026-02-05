@@ -8,11 +8,7 @@ import type { WithParts } from "../state"
 import { ensureSessionInitialized } from "../state"
 import { loadPrompt } from "../prompts"
 import { detectTargetType } from "../messages/utils"
-import {
-    executeContextToolDiscard,
-    executeContextMessageDiscard,
-    executeContextReasoningDiscard,
-} from "./discard"
+import { executeContextToolDiscard, executeContextMessageDiscard } from "./discard"
 import {
     executeContextToolDistill,
     executeContextMessageDistill,

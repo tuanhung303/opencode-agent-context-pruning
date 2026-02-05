@@ -174,6 +174,28 @@ export function dimText(text: string): string {
 }
 
 /**
+ * Groups items by a key function while preserving first-occurrence order.
+ * Used to collapse repeated items like "bash, bash, bash" into "bash (x3)".
+ *
+ * @param items - Array of items to group
+ * @param keyFn - Function to extract grouping key from each item
+ * @returns Array of grouped items with counts
+ */
+function groupItems<T>(items: T[], keyFn: (item: T) => string): { item: T; count: number }[] {
+    const groups = new Map<string, { item: T; count: number }>()
+    for (const item of items) {
+        const key = keyFn(item)
+        const existing = groups.get(key)
+        if (existing) {
+            existing.count++
+        } else {
+            groups.set(key, { item, count: 1 })
+        }
+    }
+    return Array.from(groups.values())
+}
+
+/**
  * Get the icon for a prune item type
  */
 function getPruneItemIcon(type: "tool" | "message" | "reasoning"): string {
@@ -219,10 +241,10 @@ function truncateWithQuotes(content: string, maxLength: number = 15): string {
  *
  * @example
  * formatItemizedDetails(
- *   [{ type: "tool", name: "grep" }, { type: "tool", name: "read" }],
+ *   [{ type: "tool", name: "bash" }, { type: "tool", name: "bash" }, { type: "tool", name: "grep" }],
  *   [{ type: "message", summary: "Analysis summary" }]
  * )
- * // Returns: "⚙️ grep ₊ ⚙️ read ₊ 💬 \"Analysis summa...\""
+ * // Returns: "⚙️ bash (x2) ₊ ⚙️ grep ₊ 💬 \"Analysis summa...\""
  */
 export function formatItemizedDetails(
     prunedItems: ItemizedPrunedItem[],
@@ -231,17 +253,21 @@ export function formatItemizedDetails(
 ): string {
     const parts: string[] = []
 
-    // Add pruned items with icons
-    for (const item of prunedItems) {
+    // Add grouped pruned items with icons (collapses "bash, bash, bash" → "bash (x3)")
+    const groupedPruned = groupItems(prunedItems || [], (i) => `${i.type}:${i.name}`)
+    for (const { item, count } of groupedPruned) {
         const icon = getPruneItemIcon(item.type)
-        parts.push(`${icon} ${item.name}`)
+        const countSuffix = count > 1 ? ` (x${count})` : ""
+        parts.push(`${icon} ${item.name}${countSuffix}`)
     }
 
-    // Add distilled items with icons and quoted summaries
-    for (const item of distilledItems) {
+    // Add grouped distilled items with icons and quoted summaries
+    const groupedDistilled = groupItems(distilledItems || [], (i) => `${i.type}:${i.summary}`)
+    for (const { item, count } of groupedDistilled) {
         const icon = getPruneItemIcon(item.type)
         const summary = truncateWithQuotes(item.summary, maxContentLength)
-        parts.push(`${icon} ${summary}`)
+        const countSuffix = count > 1 ? ` (x${count})` : ""
+        parts.push(`${icon} ${summary}${countSuffix}`)
     }
 
     if (parts.length === 0) {

@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from "vitest"
 import { DEFAULT_CONFIG } from "../../lib/config/defaults.js"
-import { createSystemPromptHandler, createToolExecuteAfterHandler } from "../../lib/hooks.js"
+import { createSystemPromptHandler } from "../../lib/hooks.js"
 import type { SessionState } from "../../lib/state/index.js"
 import type { OpenCodeClient } from "../../lib/client.js"
 
@@ -74,12 +74,11 @@ const createMockState = (): SessionState =>
 describe("Integration: Opt-in Defaults", () => {
     let mockState: SessionState
     let mockLogger: ReturnType<typeof createMockLogger>
-    let mockClient: OpenCodeClient
 
     beforeEach(() => {
         mockState = createMockState()
         mockLogger = createMockLogger()
-        mockClient = createMockClient()
+        createMockClient() // Called for side effects, result not needed
         vi.clearAllMocks()
     })
 

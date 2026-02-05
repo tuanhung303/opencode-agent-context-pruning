@@ -1,4 +1,4 @@
-import type { SessionState, WithParts, TodoItem } from "../state/types"
+import type { SessionState, WithParts } from "../state/types"
 import type { PluginConfig } from "../config"
 import type { Logger } from "../logger"
 import { isMessageCompacted } from "../shared-utils"

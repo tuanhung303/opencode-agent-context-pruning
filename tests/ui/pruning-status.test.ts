@@ -3,6 +3,7 @@ import {
     formatPrunedTools,
     formatDistilledContent,
     formatPruningStatus,
+    formatItemizedDetails,
     dimText,
     supportsAnsiColors,
 } from "../../lib/ui/pruning-status"
@@ -241,5 +242,84 @@ describe("dimText", () => {
 
     it("should return empty string for undefined input", () => {
         expect(dimText(undefined as unknown as string)).toBe(undefined)
+    })
+})
+
+describe("formatItemizedDetails", () => {
+    it("should format single tool without count suffix", () => {
+        const result = formatItemizedDetails([{ type: "tool", name: "bash" }], [])
+        expect(result).toBe("⚙️ bash")
+    })
+
+    it("should collapse repeated tools with (xN) suffix", () => {
+        const items = Array(6).fill({ type: "tool", name: "bash" })
+        const result = formatItemizedDetails(items, [])
+        expect(result).toBe("⚙️ bash (x6)")
+    })
+
+    it("should group mixed tools preserving first-occurrence order", () => {
+        const items = [
+            { type: "tool" as const, name: "bash" },
+            { type: "tool" as const, name: "grep" },
+            { type: "tool" as const, name: "bash" },
+            { type: "tool" as const, name: "grep" },
+            { type: "tool" as const, name: "bash" },
+        ]
+        const result = formatItemizedDetails(items, [])
+        expect(result).toBe("⚙️ bash (x3) ₊ ⚙️ grep (x2)")
+    })
+
+    it("should handle mixed types (tools, messages, reasoning)", () => {
+        const pruned = [
+            { type: "tool" as const, name: "bash" },
+            { type: "tool" as const, name: "bash" },
+            { type: "message" as const, name: "msg1" },
+            { type: "reasoning" as const, name: "think1" },
+        ]
+        const result = formatItemizedDetails(pruned, [])
+        expect(result).toBe("⚙️ bash (x2) ₊ 💬 msg1 ₊ 🧠 think1")
+    })
+
+    it("should group distilled items with same summary", () => {
+        const distilled = [
+            { type: "message" as const, summary: "Auth flow" },
+            { type: "message" as const, summary: "Auth flow" },
+            { type: "message" as const, summary: "Auth flow" },
+        ]
+        const result = formatItemizedDetails([], distilled)
+        expect(result).toBe('💬 "Auth flow" (x3)')
+    })
+
+    it("should combine pruned and distilled with grouping", () => {
+        const pruned = [
+            { type: "tool" as const, name: "read" },
+            { type: "tool" as const, name: "read" },
+        ]
+        const distilled = [{ type: "reasoning" as const, summary: "Analysis complete" }]
+        const result = formatItemizedDetails(pruned, distilled)
+        expect(result).toBe('⚙️ read (x2) ₊ 🧠 "Analysis comple..."')
+    })
+
+    it("should return empty string for empty arrays", () => {
+        const result = formatItemizedDetails([], [])
+        expect(result).toBe("")
+    })
+
+    it("should handle null/undefined gracefully", () => {
+        const result = formatItemizedDetails(
+            null as unknown as any[],
+            undefined as unknown as any[],
+        )
+        expect(result).toBe("")
+    })
+
+    it("should not add suffix for count of 1", () => {
+        const items = [
+            { type: "tool" as const, name: "bash" },
+            { type: "tool" as const, name: "grep" },
+            { type: "tool" as const, name: "read" },
+        ]
+        const result = formatItemizedDetails(items, [])
+        expect(result).toBe("⚙️ bash ₊ ⚙️ grep ₊ ⚙️ read")
     })
 })

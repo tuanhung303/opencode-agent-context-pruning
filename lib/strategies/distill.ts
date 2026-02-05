@@ -10,7 +10,6 @@ import type { ItemizedDistilledItem } from "../ui/pruning-status"
 import { formatDiscardNotification } from "../ui/minimal-notifications"
 import { formatPruningStatus, dimText } from "../ui/pruning-status"
 import { calculateTokensSaved, getCurrentParams } from "./utils"
-import type { Logger } from "../logger"
 
 /**
  * Core distill operation for tool outputs.

@@ -10,8 +10,10 @@ import { countTokens } from "../strategies/utils"
 const MAX_TOOL_CACHE_SIZE = 1000
 
 /** Tools that operate on files and support file-based supersede */
-const FILE_TOOLS = ["read", "write", "edit", "glob", "grep"] as const
-type FileTool = (typeof FILE_TOOLS)[number]
+const _FILE_TOOLS = ["read", "write", "edit", "glob", "grep"] as const
+type _FileTool = (typeof _FILE_TOOLS)[number]
+void (_FILE_TOOLS as readonly string[])
+void (undefined as unknown as _FileTool)
 
 /** State query commands that should only keep the latest execution */
 const STATE_QUERY_PATTERNS = [
