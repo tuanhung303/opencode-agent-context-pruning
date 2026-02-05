@@ -2,7 +2,7 @@ import type { SessionState, WithParts } from "../state"
 import type { Part } from "@opencode-ai/sdk/v2"
 import type { Logger } from "../logger"
 import type { PluginConfig } from "../config"
-import { isMessageCompacted } from "../shared-utils"
+import { isMessageCompacted, isMessageCompleted } from "../shared-utils"
 import { generatePartHash } from "../utils/hash"
 import { getPruneCache } from "../state/utils"
 
@@ -231,6 +231,11 @@ export const injectHashesIntoToolOutputs = (
             continue
         }
 
+        // Skip messages still streaming - only inject into completed messages
+        if (!isMessageCompleted(msg)) {
+            continue
+        }
+
         const parts = Array.isArray(msg.parts) ? msg.parts : []
         for (const part of parts) {
             if (part.type !== "tool" || !part.callID) {
@@ -292,6 +297,11 @@ export const injectHashesIntoAssistantMessages = (
 ): void => {
     for (const msg of messages) {
         if (isMessageCompacted(state, msg)) {
+            continue
+        }
+
+        // Skip messages still streaming - only inject into completed messages
+        if (!isMessageCompleted(msg)) {
             continue
         }
 
@@ -378,6 +388,11 @@ export const injectHashesIntoReasoningBlocks = (
 
     for (const msg of messages) {
         if (isMessageCompacted(state, msg)) {
+            continue
+        }
+
+        // Skip messages still streaming - only inject into completed messages
+        if (!isMessageCompleted(msg)) {
             continue
         }
 

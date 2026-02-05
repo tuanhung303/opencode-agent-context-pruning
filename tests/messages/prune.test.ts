@@ -59,15 +59,25 @@ const createToolPart = (
     },
 })
 
-const createMessage = (id: string, parts: any[]): WithParts =>
+const createMessage = (id: string, parts: any[], completed?: number): WithParts =>
     ({
         info: {
             id,
             role: "assistant" as const,
-            time: { created: Date.now() }, // Required for isMessageCompacted check
+            time:
+                completed !== undefined
+                    ? { created: Date.now(), completed }
+                    : { created: Date.now() }, // Omit completed for streaming state
         },
         parts,
     }) as any
+
+/** Create a message that is still streaming (no completed timestamp) */
+const createStreamingMessage = (id: string, parts: any[]): WithParts => createMessage(id, parts) // No completed field
+
+/** Create a completed message */
+const createCompletedMessage = (id: string, parts: any[]): WithParts =>
+    createMessage(id, parts, Date.now())
 
 describe("prune", () => {
     let mockLogger: ReturnType<typeof createMockLogger>
@@ -196,7 +206,7 @@ describe("prune", () => {
             const hashMappings = new Map([["call_123", "abc123"]])
             const state = createMockState([], hashMappings)
             const messages: WithParts[] = [
-                createMessage("msg_1", [
+                createCompletedMessage("msg_1", [
                     createToolPart(
                         "call_123",
                         "read",
@@ -218,7 +228,7 @@ describe("prune", () => {
             const state = createMockState(["call_123"], hashMappings)
             const originalOutput = "file content here"
             const messages: WithParts[] = [
-                createMessage("msg_1", [
+                createCompletedMessage("msg_1", [
                     createToolPart(
                         "call_123",
                         "read",
@@ -250,7 +260,7 @@ describe("prune", () => {
             } as PluginConfig
             const originalOutput = "file content here"
             const messages: WithParts[] = [
-                createMessage("msg_1", [
+                createCompletedMessage("msg_1", [
                     createToolPart(
                         "call_123",
                         "read",
@@ -272,7 +282,7 @@ describe("prune", () => {
             const state = createMockState([], hashMappings)
             const alreadyHashedOutput = "file content here\n<tool_hash>abc123</tool_hash>"
             const messages: WithParts[] = [
-                createMessage("msg_1", [
+                createCompletedMessage("msg_1", [
                     createToolPart(
                         "call_123",
                         "read",
@@ -294,7 +304,7 @@ describe("prune", () => {
             const state = createMockState([], hashMappings)
             const originalOutput = "error message"
             const messages: WithParts[] = [
-                createMessage("msg_1", [
+                createCompletedMessage("msg_1", [
                     createToolPart(
                         "call_123",
                         "read",
@@ -315,7 +325,7 @@ describe("prune", () => {
             const state = createMockState([], new Map())
             const originalOutput = "file content here"
             const messages: WithParts[] = [
-                createMessage("msg_1", [
+                createCompletedMessage("msg_1", [
                     createToolPart(
                         "call_123",
                         "read",
@@ -340,7 +350,7 @@ describe("prune", () => {
             ])
             const state = createMockState([], hashMappings)
             const messages: WithParts[] = [
-                createMessage("msg_1", [
+                createCompletedMessage("msg_1", [
                     createToolPart(
                         "call_read",
                         "read",
@@ -370,6 +380,81 @@ describe("prune", () => {
             expect((messages[0].parts[2] as any).state.output).toBe(
                 "content3\n<tool_hash>b_ghi56</tool_hash>",
             )
+        })
+
+        it("should NOT inject hash into streaming (incomplete) messages", () => {
+            const hashMappings = new Map([["call_123", "abc123"]])
+            const state = createMockState([], hashMappings)
+            const originalOutput = "file content here"
+            const messages: WithParts[] = [
+                createStreamingMessage("msg_1", [
+                    createToolPart(
+                        "call_123",
+                        "read",
+                        "completed",
+                        { filePath: "/test/file.ts" },
+                        originalOutput,
+                    ),
+                ]),
+            ]
+
+            injectHashesIntoToolOutputs(state, mockConfig, messages, mockLogger as any)
+
+            // Output should remain unchanged - no hash injected
+            const output = (messages[0].parts[0] as any).state.output
+            expect(output).toBe(originalOutput)
+        })
+
+        it("should NOT inject hash when completed timestamp is 0", () => {
+            const hashMappings = new Map([["call_123", "abc123"]])
+            const state = createMockState([], hashMappings)
+            const originalOutput = "file content here"
+            const messages: WithParts[] = [
+                createMessage(
+                    "msg_1",
+                    [
+                        createToolPart(
+                            "call_123",
+                            "read",
+                            "completed",
+                            { filePath: "/test/file.ts" },
+                            originalOutput,
+                        ),
+                    ],
+                    0,
+                ), // completed = 0 means still streaming
+            ]
+
+            injectHashesIntoToolOutputs(state, mockConfig, messages, mockLogger as any)
+
+            // Output should remain unchanged - no hash injected
+            const output = (messages[0].parts[0] as any).state.output
+            expect(output).toBe(originalOutput)
+        })
+
+        it("should inject hash when message is completed (positive timestamp)", () => {
+            const hashMappings = new Map([["call_123", "abc123"]])
+            const state = createMockState([], hashMappings)
+            const messages: WithParts[] = [
+                createMessage(
+                    "msg_1",
+                    [
+                        createToolPart(
+                            "call_123",
+                            "read",
+                            "completed",
+                            { filePath: "/test/file.ts" },
+                            "file content here",
+                        ),
+                    ],
+                    Date.now(),
+                ), // completed = positive timestamp
+            ]
+
+            injectHashesIntoToolOutputs(state, mockConfig, messages, mockLogger as any)
+
+            const output = (messages[0].parts[0] as any).state.output
+            expect(output).toBe("file content here\n<tool_hash>abc123</tool_hash>")
         })
     })
 })
