@@ -1,7 +1,7 @@
 {
     "$schema": "https://json.schemastore.org/package.json",
     "name": "@tuanhung303/opencode-acp",
-    "version": "3.0.1",
+    "version": "3.0.2",
     "type": "module",
     "description": "Reduce LLM token usage by up to 50% through intelligent context pruning. Auto-supersede duplicates, manually discard/distill content, and preserve critical state.",
     "main": "./dist/index.js",
