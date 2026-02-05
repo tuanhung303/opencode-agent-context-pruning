@@ -1,7 +1,12 @@
 # Agentic Context Pruning (ACP)
 
 [![npm version](https://img.shields.io/npm/v/@tuanhung303/opencode-acp.svg)](https://www.npmjs.com/package/@tuanhung303/opencode-acp)
+[![CI](https://github.com/tuanhung303/opencode-acp/workflows/CI/badge.svg)](https://github.com/tuanhung303/opencode-acp/actions)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
+<p align="center">
+  <img src="assets/agent_context.png" alt="Agent Context Pruning - Making context disappear" width="350">
+</p>
 
 **Reduce token usage by up to 50% through intelligent context management.**
 
@@ -96,6 +101,8 @@ Add to your OpenCode config:
 
 ### Basic Usage
 
+ACP handles most pruning automatically. The following tools give agents granular control over context:
+
 ```typescript
 // Discard completed work
 context({ action: "discard", targets: [["a1b2c3"]] })
@@ -125,6 +132,7 @@ context({
 | [Context Architecture](docs/CONTROLLED_CONTEXT_ARCHITECTURE.md) | Memory management strategies               |
 | [Decision Tree](docs/PRUNING_DECISION_TREE.md)                  | Visual pruning flowcharts                  |
 | [Limitations Report](docs/PRUNING_LIMITATIONS_REPORT.md)        | What cannot be pruned                      |
+| [Changelog](CHANGELOG.md)                                       | Version history and migration guides       |
 
 ---
 
@@ -182,55 +190,57 @@ ACP automatically removes redundant content through multiple strategies:
 
 Duplicate tool calls with identical arguments are automatically deduplicated.
 
-```typescript
-read({ filePath: "package.json" }) // First call
-// ...other work...
-read({ filePath: "package.json" }) // Auto-supersedes first
+```
+┌─────────────────────────────────────┐        ┌─────────────────────────────────────┐
+│ BEFORE:                             │        │ AFTER:                              │
+│                                     │        │                                     │
+│   1. read(package.json) #a1b2c3     │   ───► │   ...other work...                  │
+│   2. ...other work...               │        │   3. read(package.json) #d4e5f6◄──┐ │
+│   3. read(package.json) #d4e5f6     │        │                                     │
+│                                     │        │  First call superseded (hash match) │
+│  Tokens: ~15,000                    │        │  Tokens: ~10,000  (-33%)            │
+└─────────────────────────────────────┘        └─────────────────────────────────────┘
 ```
 
-**Result**: Only the latest call is retained.
-
-### 2. File-Based Supersede
+### 2. File-Based Supersede (One-File-One-View)
 
 File operations automatically supersede previous operations on the same file.
 
-```typescript
-read({ filePath: "config.ts" }) // Read
-write({ filePath: "config.ts" }) // Supersedes read
-edit({ filePath: "config.ts" }) // Supersedes write
 ```
-
-**Result**: Only the edit operation remains.
+┌─────────────────────────────────────┐        ┌─────────────────────────────────────┐
+│ BEFORE:                             │        │ AFTER:                              │
+│                                     │        │                                     │
+│   1. read(config.ts)                │   ───► │                                     │
+│   2. write(config.ts)               │        │   3. edit(config.ts)◄────────────┐  │
+│   3. edit(config.ts)                │        │                                     │
+│                                     │        │  Previous operations pruned         │
+│  Tokens: ~18,000                    │        │  Tokens: ~6,000  (-67%)             │
+└─────────────────────────────────────┘        └─────────────────────────────────────┘
+```
 
 ### 3. Todo-Based Supersede (One-Todo-One-View)
 
 Todo operations automatically supersede previous todo states.
 
-```typescript
-todowrite({ todos: [{ id: "1", status: "pending" }] }) // First - pruned
-todowrite({ todos: [{ id: "1", status: "in_progress" }] }) // Second - pruned
-todowrite({ todos: [{ id: "1", status: "completed" }] }) // Latest - retained
 ```
-
-**Result**: Only the **latest** todo state is retained in context. Previous outputs are auto-pruned.
+┌─────────────────────────────────────┐        ┌─────────────────────────────────────┐
+│ BEFORE:                             │        │ AFTER:                              │
+│                                     │        │                                     │
+│   1. todowrite: pending             │   ───► │                                     │
+│   2. todowrite: in_progress         │        │   3. todowrite: completed◄────────┐ │
+│   3. todowrite: completed           │        │                                     │
+│                                     │        │  Previous states auto-pruned        │
+│  Tokens: ~4,500                     │        │  Tokens: ~1,500  (-67%)             │
+└─────────────────────────────────────┘        └─────────────────────────────────────┘
+```
 
 ### 4. Source-URL Supersede
 
-Identical URL fetches are deduplicated.
-
-```typescript
-webfetch({ url: "https://api.example.com" }) // First
-webfetch({ url: "https://api.example.com" }) // Supersedes first
-```
+Identical URL fetches are deduplicated—only the latest response is retained.
 
 ### 5. State Query Supersede
 
-State queries (`ls`, `find`, `git status`) are deduplicated.
-
-```typescript
-bash({ command: "ls -la" }) // First
-bash({ command: "ls -la" }) // Supersedes first
-```
+State queries (`ls`, `find`, `git status`) are deduplicated—only the latest results matter.
 
 ---
 
@@ -359,7 +369,7 @@ See [Validation Guide](docs/VALIDATION_GUIDE.md) for detailed test procedures.
 ## 🏗️ Architecture Overview
 
 ```mermaid
-flowchart LR
+flowchart TD
     subgraph OpenCode["OpenCode Core"]
         direction TB
         A[User Message] --> B[Session]
@@ -478,151 +488,48 @@ Identifies tasks stuck in `in_progress` for too long:
 
 ---
 
-## 🔬 Provider-Specific: Thinking Mode API Compatibility
+## 🛠️ Troubleshooting
 
-### The Problem
+### Error: `reasoning_content is missing` (400 Bad Request)
 
-When using **Anthropic's API with extended thinking mode enabled**, the API enforces a strict requirement:
+**Cause:** Using Anthropic/DeepSeek/Kimi thinking mode with an outdated ACP version or missing reasoning sync.
 
-> **All assistant messages containing tool calls MUST have a `reasoning_content` field.**
+**Fix:**
 
-Failure to include this field results in a `400 Bad Request` error:
+1. Update to ACP v3.0.0+: `npm install @tuanhung303/opencode-acp@latest`
+2. Ensure your config has thinking-compatible settings
+3. See [Thinking Mode Compatibility](docs/THINKING_MODE_COMPATIBILITY.md) for details
 
-```
-error, status code: 400, message: thinking is enabled but reasoning_content is missing
-in assistant tool call message at index 2
-```
+### Plugin Not Loading
 
-### Root Cause (Fixed in v2.9.13)
+**Symptoms:** Commands like `/acp` return "Unknown command"
 
-The context tool's no-op paths (when receiving non-existing hashes) were skipping critical initialization:
+**Fix:**
 
-```typescript
-// BROKEN: No-op path skipped message fetch
-if (validHashes.length === 0) {
-    const currentParams = getCurrentParams(state, [], logger)  // ← Empty array!
-    await sendAttemptedNotification(...)
-    return `No valid tool hashes to discard`
-}
-```
+1. Verify plugin is in `opencode.jsonc`: `"plugin": ["@tuanhung303/opencode-acp@latest"]`
+2. Run `npm run build && npm link` in the plugin directory
+3. Restart OpenCode
 
-**Why this caused the error:**
+### High Token Usage Despite ACP
 
-1. User calls `context({ action: "discard", targets: [["zzzzzz"]] })` with non-existing hash
-2. No-op path returns early without fetching messages
-3. `ensureSessionInitialized` never runs → `reasoning_content` not synced
-4. Next API call includes assistant message with tool call but missing `reasoning_content`
-5. Anthropic API rejects with 400 error
+**Check:**
 
-### The Fix
+- Is aggressive pruning enabled in config? See [Configuration](#configuration)
+- Are you using protected tools excessively? (`task`, `write`, `edit` can't be pruned)
+- Is your session >100 turns? Consider starting a fresh session
 
-All context tool paths now **always** fetch messages and initialize session state:
+---
 
-```typescript
-// FIXED: Always fetch messages for proper state sync
-export async function executeContextToolDiscard(ctx, toolCtx, hashes) {
-    const { client, state, logger, config } = ctx
-    const sessionId = toolCtx.sessionID
+## 🔬 Provider Compatibility
 
-    // Always fetch messages (required for thinking mode API compatibility)
-    const messagesResponse = await client.session.messages({
-        path: { id: sessionId },
-    })
-    const messages = messagesResponse.data || messagesResponse
+### Thinking Mode APIs (Anthropic, DeepSeek, Kimi)
 
-    // Ensures reasoning_content is synced on all assistant messages with tool calls
-    await ensureSessionInitialized(client, state, sessionId, logger, messages)
+ACP is fully compatible with **extended thinking mode** APIs that require the `reasoning_content` field. The context tool automatically syncs reasoning content to prevent `400 Bad Request` errors.
 
-    // ... rest of function
+**Supported providers:** Anthropic, DeepSeek, Kimi  
+**Not required:** OpenAI, Google
 
-    if (validHashes.length === 0) {
-        const currentParams = getCurrentParams(state, messages, logger) // ← Actual messages
-        // ...
-    }
-}
-```
-
-### Functions Fixed
-
-| File                        | Function                         | Issue                            |
-| --------------------------- | -------------------------------- | -------------------------------- |
-| `lib/strategies/discard.ts` | `executeContextToolDiscard`      | No-op path skipped message fetch |
-| `lib/strategies/discard.ts` | `executeContextMessageDiscard`   | No-op path skipped message fetch |
-| `lib/strategies/discard.ts` | `executeContextReasoningDiscard` | No-op path skipped message fetch |
-| `lib/strategies/distill.ts` | `executeContextToolDistill`      | No-op path skipped message fetch |
-| `lib/strategies/distill.ts` | `executeContextMessageDistill`   | No-op path skipped message fetch |
-| `lib/strategies/distill.ts` | `executeContextReasoningDistill` | No-op path skipped message fetch |
-
-### How `ensureReasoningContentSync` Works
-
-Located in `lib/messages/prune.ts`, this function ensures API compatibility:
-
-```typescript
-export const ensureReasoningContentSync = (state, messages, logger) => {
-    for (const msg of messages) {
-        // Only process assistant messages
-        if (msg.info.role !== "assistant") continue
-
-        // Check if message has tool calls
-        const hasToolCalls = parts.some((p) => p.type === "tool" && p.callID)
-        if (!hasToolCalls) continue
-
-        // Skip if reasoning_content already exists
-        if (msg.info.reasoning_content) continue
-
-        // Find reasoning content from parts and sync to msg.info
-        const reasoningPart = parts.find((p) => p.type === "reasoning" && p.text)
-        if (reasoningPart) {
-            msg.info.reasoning_content = reasoningPart.text
-        }
-    }
-}
-```
-
-### Thinking Mode Safety: Auto-Convert Discard to Distill
-
-For reasoning blocks, ACP automatically converts `discard` to `distill` with a minimal placeholder:
-
-```typescript
-// In lib/strategies/context.ts
-if (reasoningHashes.length > 0) {
-    // Auto-convert to distill to preserve reasoning_content field structure
-    const minimalSummaries = reasoningHashes.map(() => "—")
-    reasoningResult = await executeContextReasoningDistill(
-        ctx,
-        toolCtx,
-        reasoningHashes.map((h, i) => [h, minimalSummaries[i]]),
-    )
-}
-```
-
-**Why?** Completely discarding reasoning content would remove the `reasoning_content` field, causing API validation errors. Distilling with "—" preserves the field structure while minimizing token usage.
-
-### Affected Providers
-
-| Provider  | Thinking Mode     | Requires `reasoning_content` |
-| --------- | ----------------- | ---------------------------- |
-| Anthropic | Extended thinking | ✅ Yes                       |
-| DeepSeek  | DeepThink         | ✅ Yes                       |
-| Kimi      | K1 thinking       | ✅ Yes                       |
-| OpenAI    | N/A               | ❌ No                        |
-| Google    | N/A               | ❌ No                        |
-
-### Verification
-
-To verify the fix works:
-
-```typescript
-// This should NOT cause a 400 error anymore
-context({ action: "discard", targets: [["zzzzzz"]] }) // Non-existing hash
-```
-
-Expected output:
-
-```
-「 🗑️ discard ✓ 」- ⚙️ zzzzzz
-No valid tool hashes to discard
-```
+See the [detailed technical documentation](docs/THINKING_MODE_COMPATIBILITY.md) for implementation details and the root cause of the original compatibility issue.
 
 ---
 
@@ -667,7 +574,8 @@ MIT © [tuanhung303](https://github.com/tuanhung303)
 
 ---
 
-## ⚠️ Known Pitfalls for Agents
+<details id="-known-pitfalls-for-agents" open>
+<summary><strong>⚠️ Known Pitfalls for Agents</strong> — Critical rules when modifying ACP code</summary>
 
 > **Read this section before modifying ACP code.** These are hard-won lessons from debugging production issues.
 
@@ -809,9 +717,12 @@ When you see `reasoning_content is missing` errors:
 4. **Check the no-op path** - Does the early return path have proper initialization?
 5. **Test with invalid hash** - `context({ action: "discard", targets: [["zzzzzz"]] })`
 
+</details>
+
 ---
 
-## 🗨️ For LLM Agents
+<details>
+<summary><strong>🗨️ For LLM Agents</strong> — Quick pruning reference and safety guidelines</summary>
 
 If you're an AI assistant reading this:
 
@@ -825,3 +736,5 @@ If you're an AI assistant reading this:
 > **Always Protect:** Active todos, current file edits, user requirements
 
 Ask the user: "Would you like me to run a context optimization check?"
+
+</details>
