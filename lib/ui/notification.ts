@@ -1,12 +1,14 @@
 import type { Logger } from "../logger"
-import type { SessionState } from "../state"
+import type { SessionState, ToolParameterEntry } from "../state"
 import {
     formatDistilled,
     formatPrunedItemsList,
     formatStatsHeader,
     formatTokenCount,
 } from "./utils"
-import { ToolParameterEntry } from "../state"
+import { formatNoOpNotification } from "./minimal-notifications"
+import type { ItemizedPrunedItem, ItemizedDistilledItem } from "./pruning-status"
+import { formatItemizedDetails } from "./pruning-status"
 import { PluginConfig } from "../config"
 
 export type PruneReason =
@@ -17,6 +19,7 @@ export type PruneReason =
     | "duplicate"
     | "distillation"
     | "manual"
+
 export const PRUNE_REASON_LABELS: Record<PruneReason, string> = {
     completion: "Task Complete",
     noise: "Noise Removal",
@@ -27,49 +30,89 @@ export const PRUNE_REASON_LABELS: Record<PruneReason, string> = {
     manual: "Manual Prune",
 }
 
-function buildMinimalMessage(
-    state: SessionState,
-    reason: PruneReason | undefined,
-    distillation: string[] | undefined,
-    showDistillation: boolean,
-): string {
-    const distilledCount = distillation?.length ?? 0
-    const message = formatStatsHeader(
-        state.stats.totalPruneTokens,
-        state.stats.pruneTokenCounter,
-        state.stats.totalPruneMessages,
-        state.stats.pruneMessageCounter,
-        distilledCount,
-    )
-
-    return message + formatDistilled(showDistillation ? distillation : undefined)
+export interface NotificationContext {
+    state: SessionState
+    reason?: PruneReason
+    pruneToolIds: string[]
+    toolMetadata: Map<string, ToolParameterEntry>
+    workingDirectory: string
+    distillation?: string[]
+    pruneMessagePartIds?: string[]
+    pruneReasoningPartIds?: string[]
+    attemptedTargets?: string[]
+    targetType?: "tool" | "message" | "reasoning"
+    options?: {
+        simplified?: boolean
+    }
+    /** Itemized list of pruned items with types for detailed display */
+    itemizedPruned?: ItemizedPrunedItem[]
+    /** Itemized list of distilled items with types for detailed display */
+    itemizedDistilled?: ItemizedDistilledItem[]
 }
 
-function buildDetailedMessage(
+function buildMinimalMessage(
     state: SessionState,
-    reason: PruneReason | undefined,
-    pruneToolIds: string[],
-    toolMetadata: Map<string, ToolParameterEntry>,
-    workingDirectory: string,
     distillation: string[] | undefined,
     showDistillation: boolean,
-    simplified: boolean = false,
-    pruneMessagePartIds: string[] = [],
+    attemptedTargets?: string[],
+    reason?: PruneReason,
+    targetType?: "tool" | "message" | "reasoning",
+    itemizedPruned?: ItemizedPrunedItem[],
+    itemizedDistilled?: ItemizedDistilledItem[],
 ): string {
-    const distilledCount = distillation?.length ?? 0
-    let message = formatStatsHeader(
-        state.stats.totalPruneTokens,
-        state.stats.pruneTokenCounter,
-        state.stats.totalPruneMessages,
-        state.stats.pruneMessageCounter,
-        distilledCount,
-    )
+    const statsMessage = formatStatsHeader(state.stats.strategyStats)
+
+    // If we have itemized data, use the new formatter with icons
+    if (
+        (itemizedPruned && itemizedPruned.length > 0) ||
+        (itemizedDistilled && itemizedDistilled.length > 0)
+    ) {
+        const details = formatItemizedDetails(itemizedPruned || [], itemizedDistilled || [])
+        return `${statsMessage}- ${details}`
+    }
+
+    // Build the action notification with attempted targets
+    if (attemptedTargets && attemptedTargets.length > 0) {
+        const isDistill = reason === "distillation"
+        const actionMessage = formatNoOpNotification(
+            isDistill ? "distill" : "discard",
+            attemptedTargets,
+            targetType,
+        )
+        // Extract just the details part after the box
+        const details = actionMessage.replace(/^「 .*? 」- /, "").trim()
+        return `${statsMessage}- ${details}`
+    }
+
+    return statsMessage + formatDistilled(showDistillation ? distillation : undefined)
+}
+
+function buildDetailedMessage(ctx: NotificationContext, showDistillation: boolean): string {
+    const {
+        state,
+        reason,
+        pruneToolIds,
+        toolMetadata,
+        workingDirectory,
+        distillation,
+        pruneMessagePartIds = [],
+        pruneReasoningPartIds = [],
+        options,
+    } = ctx
+    const simplified = options?.simplified ?? false
+
+    let message = formatStatsHeader(state.stats.strategyStats)
 
     // Only show pruning details if there are tokens being pruned or distilled
     const hasPruningActivity =
         state.stats.pruneTokenCounter > 0 || (distillation && distillation.length > 0)
 
-    if (hasPruningActivity && (pruneToolIds.length > 0 || pruneMessagePartIds.length > 0)) {
+    if (
+        hasPruningActivity &&
+        (pruneToolIds.length > 0 ||
+            pruneMessagePartIds.length > 0 ||
+            pruneReasoningPartIds.length > 0)
+    ) {
         const pruneTokenCounterStr = `▼ ${formatTokenCount(state.stats.pruneTokenCounter)}`
         const reasonLabel = reason ? ` — ${PRUNE_REASON_LABELS[reason]}` : ""
         message += `\n\n▣ Pruning (${pruneTokenCounterStr})${reasonLabel}`
@@ -87,57 +130,81 @@ function buildDetailedMessage(
         if (pruneMessagePartIds.length > 0) {
             message += `\n  - ${pruneMessagePartIds.length} assistant message part(s)`
         }
+
+        if (pruneReasoningPartIds.length > 0) {
+            message += `\n  - ${pruneReasoningPartIds.length} thinking block(s)`
+        }
     }
 
     return (message + formatDistilled(showDistillation ? distillation : undefined)).trim()
-}
-
-export interface NotifyOptions {
-    simplified?: boolean
 }
 
 export async function sendUnifiedNotification(
     client: any,
     logger: Logger,
     config: PluginConfig,
-    state: SessionState,
+    ctx: NotificationContext,
     sessionId: string,
-    pruneToolIds: string[],
-    toolMetadata: Map<string, ToolParameterEntry>,
-    reason: PruneReason | undefined,
     params: any,
-    workingDirectory: string,
-    distillation?: string[],
-    options?: NotifyOptions,
-    pruneMessagePartIds: string[] = [],
 ): Promise<boolean> {
-    const hasPruned = pruneToolIds.length > 0 || pruneMessagePartIds.length > 0
-    if (!hasPruned) {
-        return false
-    }
+    const {
+        pruneToolIds,
+        pruneMessagePartIds = [],
+        pruneReasoningPartIds = [],
+        state,
+        reason,
+        distillation,
+    } = ctx
+
+    const _hasPruned =
+        pruneToolIds.length > 0 ||
+        pruneMessagePartIds.length > 0 ||
+        pruneReasoningPartIds.length > 0
+    void _hasPruned // Reserved for future conditional notification logic
 
     if (config.pruneNotification === "off") {
         return false
     }
 
     const showDistillation = config.tools.distill.showDistillation
-    const simplified = options?.simplified ?? false
 
     const message =
         config.pruneNotification === "minimal"
-            ? buildMinimalMessage(state, reason, distillation, showDistillation)
-            : buildDetailedMessage(
+            ? buildMinimalMessage(
                   state,
-                  reason,
-                  pruneToolIds,
-                  toolMetadata,
-                  workingDirectory,
                   distillation,
                   showDistillation,
-                  simplified,
-                  pruneMessagePartIds,
+                  ctx.attemptedTargets,
+                  reason,
+                  ctx.targetType,
+                  ctx.itemizedPruned,
+                  ctx.itemizedDistilled,
               )
+            : buildDetailedMessage(ctx, showDistillation)
 
+    await sendIgnoredMessage(client, sessionId, message, params, logger)
+    return true
+}
+
+/**
+ * Send notification for attempted pruning (no-op cases)
+ * Always shows notification even when nothing was actually pruned
+ */
+export async function sendAttemptedNotification(
+    client: any,
+    logger: Logger,
+    config: PluginConfig,
+    type: "discard" | "distill",
+    attemptedTargets: string[],
+    sessionId: string,
+    params: any,
+    targetType?: "tool" | "message" | "reasoning",
+): Promise<boolean> {
+    if (config.pruneNotification === "off") {
+        return false
+    }
+
+    const message = formatNoOpNotification(type, attemptedTargets, targetType)
     await sendIgnoredMessage(client, sessionId, message, params, logger)
     return true
 }

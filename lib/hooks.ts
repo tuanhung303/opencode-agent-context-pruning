@@ -2,22 +2,18 @@ import type { SessionState, WithParts, ToolParameterEntry } from "./state"
 import type { Logger } from "./logger"
 import type { PluginConfig } from "./config"
 import type { OpenCodeClient } from "./client"
-import { syncToolCache } from "./state/tool-cache"
-import {
-    deduplicate,
-    supersedeWrites,
-    purgeErrors,
-    truncateLargeOutputs,
-    compressThinkingBlocks,
-} from "./strategies"
+import { syncSessionState } from "./state/index"
+import { purgeErrors } from "./strategies"
 import {
     prune,
     injectHashesIntoToolOutputs,
+    injectHashesIntoAssistantMessages,
+    injectHashesIntoReasoningBlocks,
     injectTodoReminder,
     detectAutomataActivation,
     injectAutomataReflection,
+    ensureReasoningContentSync,
 } from "./messages"
-import { checkSession, ensureSessionInitialized } from "./state"
 import { loadPrompt } from "./prompts"
 import { handleStatsCommand } from "./commands/stats"
 import { handleContextCommand } from "./commands/context"
@@ -29,6 +25,19 @@ import { safeExecute } from "./safe-execute"
 import { sendUnifiedNotification } from "./ui/notification"
 import { getCurrentParams } from "./strategies/utils"
 import { saveSessionState } from "./state/persistence"
+import { isSyntheticMessage } from "./shared-utils"
+
+type Strategy = (
+    state: SessionState,
+    logger: Logger,
+    config: PluginConfig,
+    messages: WithParts[],
+) => void | Promise<void>
+
+const PRUNE_STRATEGIES: Record<string, Strategy> = {
+    purgeErrors,
+    prune,
+}
 
 const INTERNAL_AGENT_SIGNATURES = [
     "You are a title generator",
@@ -71,7 +80,7 @@ export function createChatMessageTransformHandler(
         _input: Record<string, unknown>,
         output: { messages: WithParts[] },
     ): Promise<void> => {
-        await checkSession(client, state, logger, output.messages)
+        await syncSessionState(client, state, config, logger, output.messages)
 
         if (state.isSubAgent) {
             return
@@ -84,7 +93,9 @@ export function createChatMessageTransformHandler(
         })
 
         // Detect new user message
-        const lastUserMessage = [...output.messages].reverse().find((m) => m.info.role === "user")
+        const lastUserMessage = [...output.messages]
+            .reverse()
+            .find((m) => m.info.role === "user" && !isSyntheticMessage(m))
         if (lastUserMessage && lastUserMessage.info.id !== state.lastUserMessageId) {
             state.lastUserMessageId = lastUserMessage.info.id
             logger.info(`New user message detected (id: ${lastUserMessage.info.id})`)
@@ -97,8 +108,6 @@ export function createChatMessageTransformHandler(
             )
         }
 
-        syncToolCache(state, config, logger, output.messages)
-
         // Inject hashes into tool outputs (before any pruning)
         safeExecute(
             () => injectHashesIntoToolOutputs(state, config, output.messages, logger),
@@ -106,52 +115,46 @@ export function createChatMessageTransformHandler(
             "injectHashesIntoToolOutputs",
         )
 
-        // Note: Assistant message hashing disabled - agents use "start...end" patterns for message operations
-
-        // Run pruning strategies with error boundaries to prevent crashes
+        // Inject hashes into reasoning blocks for hash-based discarding
         safeExecute(
-            () => deduplicate(state, logger, config, output.messages),
+            () => injectHashesIntoReasoningBlocks(state, config, output.messages, logger),
             logger,
-            "deduplicate",
-        )
-        safeExecute(
-            () => supersedeWrites(state, logger, config, output.messages),
-            logger,
-            "supersedeWrites",
-        )
-        safeExecute(
-            () => purgeErrors(state, logger, config, output.messages),
-            logger,
-            "purgeErrors",
-        )
-        safeExecute(
-            () => truncateLargeOutputs(state, logger, config, output.messages),
-            logger,
-            "truncateLargeOutputs",
-        )
-        safeExecute(
-            () => compressThinkingBlocks(state, logger, config, output.messages),
-            logger,
-            "compressThinkingBlocks",
+            "injectHashesIntoReasoningBlocks",
         )
 
-        safeExecute(() => prune(state, logger, config, output.messages), logger, "prune")
+        // Inject hashes into assistant messages for hash-based operations
+        safeExecute(
+            () => injectHashesIntoAssistantMessages(state, config, output.messages, logger),
+            logger,
+            "injectHashesIntoAssistantMessages",
+        )
+
+        // Run pruning strategies in pipeline
+        for (const [name, strategy] of Object.entries(PRUNE_STRATEGIES)) {
+            safeExecute(() => strategy(state, logger, config, output.messages), logger, name)
+        }
+
+        // CRITICAL: Ensure reasoning_content is synced on all assistant messages with tool calls
+        // This is required for thinking mode API compatibility (DeepSeek, Kimi, etc.)
+        safeExecute(
+            () => ensureReasoningContentSync(state, output.messages, logger),
+            logger,
+            "ensureReasoningContentSync",
+        )
 
         // Inject todo reminder if needed (after all other strategies)
         safeExecute(
-            () => injectTodoReminder(state, config, output.messages, logger),
+            () => injectTodoReminder(state, logger, config, output.messages),
             logger,
             "injectTodoReminder",
         )
 
         // Inject automata reflection if needed (after todo reminder)
         safeExecute(
-            () => injectAutomataReflection(state, config, output.messages, logger),
+            () => injectAutomataReflection(state, logger, config, output.messages),
             logger,
             "injectAutomataReflection",
         )
-
-        // NOTE: insertPruneToolContext removed - hashes are now embedded in tool outputs
 
         logger.debug("Transform complete", {
             initialMessageCount,
@@ -263,11 +266,6 @@ export function createCommandExecuteHandler(
     }
 }
 
-/**
- * Handler for tool.execute.after hook.
- * Runs lightweight pruning strategies immediately after each tool execution
- * to keep context clean throughout the conversation.
- */
 export function createToolExecuteAfterHandler(
     client: OpenCodeClient,
     state: SessionState,
@@ -277,10 +275,6 @@ export function createToolExecuteAfterHandler(
 ): (input: { tool: string; sessionID: string; callID: string }) => Promise<void> {
     return async (input: { tool: string; sessionID: string; callID: string }): Promise<void> => {
         if (!config.enabled) {
-            return
-        }
-
-        if (!config.autoPruneAfterTool) {
             return
         }
 
@@ -297,38 +291,16 @@ export function createToolExecuteAfterHandler(
             })
             const messages: WithParts[] = (messagesResponse.data || messagesResponse) as WithParts[]
 
-            // Ensure session is initialized
-            await ensureSessionInitialized(client, state, sessionId, logger, messages)
-
-            // Sync tool cache to pick up the just-executed tool
-            syncToolCache(state, config, logger, messages)
-
-            // Note: Assistant message hashing disabled - agents use "start...end" patterns
+            // Sync session and tool cache
+            await syncSessionState(client, state, config, logger, messages)
 
             // Store initial prune count to detect changes
             const initialPruneCount = state.prune.toolIds.length + state.prune.messagePartIds.length
 
-            // Run lightweight strategies
-            safeExecute(() => deduplicate(state, logger, config, messages), logger, "deduplicate")
-            safeExecute(
-                () => supersedeWrites(state, logger, config, messages),
-                logger,
-                "supersedeWrites",
-            )
-            safeExecute(() => purgeErrors(state, logger, config, messages), logger, "purgeErrors")
-            safeExecute(
-                () => truncateLargeOutputs(state, logger, config, messages),
-                logger,
-                "truncateLargeOutputs",
-            )
-            safeExecute(
-                () => compressThinkingBlocks(state, logger, config, messages),
-                logger,
-                "compressThinkingBlocks",
-            )
-
-            // Apply pruning
-            safeExecute(() => prune(state, logger, config, messages), logger, "prune")
+            // Run strategies in pipeline
+            for (const [name, strategy] of Object.entries(PRUNE_STRATEGIES)) {
+                safeExecute(() => strategy(state, logger, config, messages), logger, name)
+            }
 
             // Check if anything was pruned
             const newPruneCount = state.prune.toolIds.length + state.prune.messagePartIds.length
@@ -354,15 +326,15 @@ export function createToolExecuteAfterHandler(
                     client,
                     logger,
                     config,
-                    state,
+                    {
+                        state,
+                        pruneToolIds: newlyPrunedIds,
+                        toolMetadata,
+                        workingDirectory,
+                        options: { simplified: true },
+                    },
                     sessionId,
-                    newlyPrunedIds,
-                    toolMetadata,
-                    undefined,
                     currentParams,
-                    workingDirectory,
-                    undefined,
-                    { simplified: true },
                 )
 
                 // Save state

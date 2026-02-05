@@ -50,9 +50,6 @@ function formatProtectedMessage(config: PluginConfig): string {
     // Strategy-specific protected tools
     lines.push("🔧 Strategy-Specific Protection:")
     lines.push(
-        `   Deduplication: ${config.strategies.deduplication.protectedTools.join(", ") || "none"}`,
-    )
-    lines.push(
         `   Purge Errors: ${config.strategies.purgeErrors.protectedTools.join(", ") || "none"}`,
     )
     lines.push("")

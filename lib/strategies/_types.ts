@@ -14,3 +14,8 @@ export interface PruneToolContext {
     config: PluginConfig
     workingDirectory: string
 }
+
+/**
+ * Result type for target type detection.
+ */
+export type TargetTypeResult = "tool_hash" | "message_hash" | "reasoning_hash"

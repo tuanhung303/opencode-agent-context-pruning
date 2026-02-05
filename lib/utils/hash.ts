@@ -83,6 +83,18 @@ export function createQuickHash(content: string): string {
 }
 
 /**
+ * Generate a deterministic hash for message/reasoning parts.
+ * Uses SHA-256 of content, returns 6 hex characters (no prefix).
+ * Format: xxxxxx (e.g., a1b2c3)
+ *
+ * @param content - The content to hash
+ * @returns 6-character hex hash
+ */
+export function generatePartHash(content: string): string {
+    return createHash("sha256").update(content).digest("hex").slice(0, 6)
+}
+
+/**
  * Compare two hashes for equality
  */
 export function hashesEqual(a: string, b: string): boolean {

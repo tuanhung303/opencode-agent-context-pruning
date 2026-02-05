@@ -18,6 +18,24 @@
  * @module lib/ui/pruning-status
  */
 
+import { PRUNE_CATEGORY_ICONS } from "./utils"
+
+/**
+ * Item representing a pruned item with its type
+ */
+export interface ItemizedPrunedItem {
+    type: "tool" | "message" | "reasoning"
+    name: string
+}
+
+/**
+ * Item representing a distilled item with its type and summary
+ */
+export interface ItemizedDistilledItem {
+    type: "tool" | "message" | "reasoning"
+    summary: string
+}
+
 /**
  * Format pruned tools list for display
  * Format: "pruned: tool1, tool2, tool3..."
@@ -153,4 +171,109 @@ export function dimText(text: string): string {
     }
 
     return `${ANSI_DIM}${text}${ANSI_RESET}`
+}
+
+/**
+ * Groups items by a key function while preserving first-occurrence order.
+ * Used to collapse repeated items like "bash, bash, bash" into "bash (x3)".
+ *
+ * @param items - Array of items to group
+ * @param keyFn - Function to extract grouping key from each item
+ * @returns Array of grouped items with counts
+ */
+function groupItems<T>(items: T[], keyFn: (item: T) => string): { item: T; count: number }[] {
+    const groups = new Map<string, { item: T; count: number }>()
+    for (const item of items) {
+        const key = keyFn(item)
+        const existing = groups.get(key)
+        if (existing) {
+            existing.count++
+        } else {
+            groups.set(key, { item, count: 1 })
+        }
+    }
+    return Array.from(groups.values())
+}
+
+/**
+ * Get the icon for a prune item type
+ */
+function getPruneItemIcon(type: "tool" | "message" | "reasoning"): string {
+    switch (type) {
+        case "tool":
+            return PRUNE_CATEGORY_ICONS.tool
+        case "message":
+            return PRUNE_CATEGORY_ICONS.message
+        case "reasoning":
+            return PRUNE_CATEGORY_ICONS.thinking
+    }
+}
+
+/**
+ * Truncate content for display with quotes
+ * Shows first N characters followed by "..." if truncated
+ *
+ * @param content - The content to truncate
+ * @param maxLength - Maximum length before truncation (default: 15)
+ * @returns Truncated string with quotes
+ *
+ * @example
+ * truncateWithQuotes("Analysis summary content", 15)
+ * // Returns: ""Analysis summary...""
+ */
+function truncateWithQuotes(content: string, maxLength: number = 15): string {
+    if (content.length <= maxLength) {
+        return `"${content}"`
+    }
+    return `"${content.slice(0, maxLength)}..."`
+}
+
+/**
+ * Format itemized details with icons
+ * Creates detailed line showing each pruned/distilled item with type icon
+ *
+ * Format: "⚙️ tool_name ₊ ⚙️ tool_name ₊ 💬 \"summary...\" ₊ 🧠 \"reasoning...\""
+ *
+ * @param prunedItems - Array of pruned items with types
+ * @param distilledItems - Array of distilled items with types and summaries
+ * @param maxContentLength - Maximum length for content previews (default: 15)
+ * @returns Formatted string or empty string if no items
+ *
+ * @example
+ * formatItemizedDetails(
+ *   [{ type: "tool", name: "bash" }, { type: "tool", name: "bash" }, { type: "tool", name: "grep" }],
+ *   [{ type: "message", summary: "Analysis summary" }]
+ * )
+ * // Returns: "⚙️ bash (x2) ₊ ⚙️ grep ₊ 💬 \"Analysis summa...\""
+ */
+export function formatItemizedDetails(
+    prunedItems: ItemizedPrunedItem[],
+    distilledItems: ItemizedDistilledItem[],
+    maxContentLength: number = 15,
+): string {
+    const parts: string[] = []
+
+    // Add grouped pruned items with icons (collapses "bash, bash, bash" → "bash (x3)")
+    const groupedPruned = groupItems(prunedItems || [], (i) => `${i.type}:${i.name}`)
+    for (const { item, count } of groupedPruned) {
+        const icon = getPruneItemIcon(item.type)
+        const countSuffix = count > 1 ? ` (x${count})` : ""
+        parts.push(`${icon} ${item.name}${countSuffix}`)
+    }
+
+    // Add grouped distilled items with icons and quoted summaries
+    const groupedDistilled = groupItems(distilledItems || [], (i) => `${i.type}:${i.summary}`)
+    for (const { item, count } of groupedDistilled) {
+        const icon = getPruneItemIcon(item.type)
+        const summary = truncateWithQuotes(item.summary, maxContentLength)
+        const countSuffix = count > 1 ? ` (x${count})` : ""
+        parts.push(`${icon} ${summary}${countSuffix}`)
+    }
+
+    if (parts.length === 0) {
+        return ""
+    }
+
+    // Join with ₊ separator (matching summary style)
+    return parts.join(" ₊ ")
 }

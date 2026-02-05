@@ -112,16 +112,16 @@
                     }
                 },
                 "discard": {
+                    "description": "Configure the discard tool for manually removing specific tool outputs from context",
                     "type": "object",
-                    "description": "Configuration for the discard tool",
-                    "additionalProperties": false,
                     "properties": {
                         "enabled": {
+                            "description": "Enable the discard tool",
                             "type": "boolean",
-                            "default": true,
-                            "description": "Enable the discard tool"
+                            "default": true
                         }
-                    }
+                    },
+                    "additionalProperties": false
                 },
                 "distill": {
                     "type": "object",
@@ -159,6 +159,11 @@
                             "type": "number",
                             "default": 6,
                             "description": "Turns between subsequent reminders"
+                        },
+                        "stuckTaskTurns": {
+                            "type": "number",
+                            "default": 12,
+                            "description": "Turns a task can be in_progress before suggesting breakdown"
                         }
                     }
                 },

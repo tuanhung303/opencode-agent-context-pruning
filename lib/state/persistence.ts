@@ -18,22 +18,45 @@ export interface PersistedSessionState {
     prune: Prune
     stats: SessionStats
     lastUpdated: string
-    // Hash-based discard system (tools)
-    hashToCallId?: Record<string, string>
-    callIdToHash?: Record<string, string>
+
+    // Grouped cursors
+    cursors?: {
+        todo: {
+            lastTurn: number
+            lastReminderTurn: number
+            lastWriteCallId: string | null
+            lastReadCallId: string | null
+        }
+        context: {
+            lastCallId: string | null
+        }
+        automata: {
+            enabled: boolean
+            lastTurn: number
+            lastReflectionTurn: number
+        }
+        files: {
+            pathToCallIds: Record<string, string[]>
+        }
+    }
+
+    // Unified registry
+    hashRegistry?: {
+        calls: Record<string, string>
+        callIds: Record<string, string>
+        messages: Record<string, string>
+        messagePartIds: Record<string, string>
+        reasoning: Record<string, string>
+        reasoningPartIds: Record<string, string>
+        fileParts: Record<string, string>
+    }
+
     discardHistory?: DiscardStats[]
-    // Hash-based discard system (assistant messages)
-    hashToMessagePart?: Record<string, string>
-    messagePartToHash?: Record<string, string>
-    // Todo reminder tracking
-    lastTodoTurn?: number
-    lastReminderTurn?: number
-    lastTodowriteCallId?: string | null
     todos?: TodoItem[]
-    // Automata Mode tracking
-    automataEnabled?: boolean
-    lastAutomataTurn?: number
-    lastReflectionTurn?: number
+
+    // Legacy fields for migration check
+    lastTodoTurn?: number
+    hashToCallId?: Record<string, string>
 }
 
 const STORAGE_DIR = join(homedir(), ".local", "share", "opencode", "storage", "plugin", "acp")
@@ -118,22 +141,15 @@ export async function saveSessionState(
             prune: sessionState.prune,
             stats: sessionState.stats,
             lastUpdated: new Date().toISOString(),
-            // Hash-based discard system (tools)
-            hashToCallId: Object.fromEntries(sessionState.hashToCallId),
-            callIdToHash: Object.fromEntries(sessionState.callIdToHash),
-            discardHistory: sessionState.discardHistory,
-            // Hash-based discard system (assistant messages)
-            hashToMessagePart: Object.fromEntries(sessionState.hashToMessagePart),
-            messagePartToHash: Object.fromEntries(sessionState.messagePartToHash),
-            // Todo reminder tracking
-            lastTodoTurn: sessionState.lastTodoTurn,
-            lastReminderTurn: sessionState.lastReminderTurn,
-            lastTodowriteCallId: sessionState.lastTodowriteCallId,
-            todos: sessionState.todos,
-            // Automata Mode tracking
-            automataEnabled: sessionState.automataEnabled,
-            lastAutomataTurn: sessionState.lastAutomataTurn,
-            lastReflectionTurn: sessionState.lastReflectionTurn,
+            hashRegistry: {
+                calls: Object.fromEntries(sessionState.hashRegistry.calls),
+                callIds: Object.fromEntries(sessionState.hashRegistry.callIds),
+                messages: Object.fromEntries(sessionState.hashRegistry.messages),
+                messagePartIds: Object.fromEntries(sessionState.hashRegistry.messagePartIds),
+                reasoning: Object.fromEntries(sessionState.hashRegistry.reasoning),
+                reasoningPartIds: Object.fromEntries(sessionState.hashRegistry.reasoningPartIds),
+                fileParts: Object.fromEntries(sessionState.hashRegistry.fileParts),
+            },
         }
 
         const filePath = getSessionFilePath(sessionState.sessionId)

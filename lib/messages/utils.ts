@@ -2,6 +2,7 @@ import { createHash } from "crypto"
 import { isMessageCompacted } from "../shared-utils"
 import type { SessionState, WithParts } from "../state"
 import type { UserMessage } from "@opencode-ai/sdk/v2"
+import { getPruneCache } from "../state/utils"
 
 const SYNTHETIC_MESSAGE_ID = "msg_01234567890123456789012345"
 
@@ -34,15 +35,13 @@ export function stableStringify(obj: unknown): string {
 
 /**
  * Generate a short, stable hash for a tool call.
- * Format: x_xxxxx (e.g., r_a1b2c)
- * - First char is tool prefix (first letter of tool name)
- * - 5 hex chars from SHA256 hash of stable-stringified params
+ * Format: xxxxxx (e.g., a1b2c3)
+ * - 6 hex chars from SHA256 hash of stable-stringified params
  */
-export function generateToolHash(tool: string, params: unknown): string {
-    const prefix = (tool[0] ?? "x").toLowerCase()
+export function generateToolHash(_tool: string, params: unknown): string {
     const paramsStr = stableStringify(params)
-    const hash = createHash("sha256").update(paramsStr).digest("hex").substring(0, 5)
-    return `${prefix}_${hash}`
+    const hash = createHash("sha256").update(paramsStr).digest("hex").substring(0, 6)
+    return hash
 }
 const SYNTHETIC_PART_ID = "prt_01234567890123456789012345"
 const SYNTHETIC_CALL_ID = "call_01234567890123456789012345"
@@ -301,15 +300,109 @@ export const isIgnoredUserMessage = (message: WithParts): boolean => {
     return true
 }
 
+import type { TargetTypeResult } from "../strategies/_types"
+
 /**
- * Detect whether a target string is a tool hash or a pattern.
- * Tool hashes follow the format: x_xxxxx (e.g., r_a1b2c, g_d4e5f)
- * - First char is tool prefix (first letter of tool name)
- * - 5 hex chars from SHA256 hash
- * Everything else is treated as a pattern for message matching.
+ * Detect target type using state map lookups (no prefix-based detection).
+ * Supports: tool_hash, message_hash, reasoning_hash
+ * Format: 6 hex chars (e.g., a1b2c3) for all hash types
  */
-export function detectTargetType(target: string): "tool_hash" | "pattern" {
-    // Match format: letter_5hexchars (e.g., r_a1b2c, g_d4e5f, t_12345)
-    const hashPattern = /^[a-z]_[a-f0-9]{5}$/i
-    return hashPattern.test(target) ? "tool_hash" : "pattern"
+export function detectTargetType(target: string, state: SessionState): TargetTypeResult {
+    // Lookup-based detection (no prefix required)
+    if (state.hashRegistry.calls.has(target)) {
+        return "tool_hash"
+    }
+    if (state.hashRegistry.messages.has(target)) {
+        return "message_hash"
+    }
+    if (state.hashRegistry.reasoning.has(target)) {
+        return "reasoning_hash"
+    }
+
+    return "tool_hash" // Default assumption for unknown targets
+}
+
+/**
+ * Pluralize a tool name for display.
+ * read → reads, grep → greps, glob → globs, task → tasks, etc.
+ */
+function pluralizeToolName(tool: string): string {
+    // Handle special cases
+    if (tool === "bash") return "bashes"
+    if (tool === "webfetch") return "fetches"
+    if (tool === "websearch" || tool === "codesearch") return "searches"
+    // Default: add 's'
+    return `${tool}s`
+}
+
+/**
+ * Group hashes by their tool name, looking up from state.
+ * Returns a map of pluralized tool names to arrays of hashes.
+ * Only includes unpruned hashes (excludes those in state.prune.toolIds).
+ */
+export function groupHashesByToolName(state: SessionState): Record<string, string[]> {
+    const grouped: Record<string, string[]> = {}
+
+    // Use cached Set for O(1) lookup
+    const { prunedToolIds } = getPruneCache(state)
+
+    // Iterate through all known hashes
+    for (const [hash, callId] of state.hashRegistry.calls.entries()) {
+        // Skip if already pruned
+        if (prunedToolIds.has(callId)) {
+            continue
+        }
+
+        // Look up tool name from toolParameters
+        const toolEntry = state.toolParameters.get(callId)
+        if (!toolEntry) {
+            continue // Skip if no metadata available
+        }
+
+        const toolName = pluralizeToolName(toolEntry.tool)
+
+        // Group by tool name
+        if (!grouped[toolName]) {
+            grouped[toolName] = []
+        }
+        grouped[toolName].push(hash)
+    }
+
+    return grouped
+}
+
+/**
+ * Format grouped hashes into a display string for the reminder.
+ * Output format: "reads: a1b2c3, d4e5f6\ngreps: 123abc\nglobs: 67890a"
+ * Returns empty string if no hashes.
+ */
+export function formatHashInventory(grouped: Record<string, string[]>): string {
+    const toolOrder = [
+        "reads",
+        "edits",
+        "writes",
+        "greps",
+        "globs",
+        "bashes",
+        "tasks",
+        "fetches",
+        "searches",
+    ]
+    const lines: string[] = []
+
+    // First, add tools in preferred order
+    for (const toolName of toolOrder) {
+        if (grouped[toolName] && grouped[toolName].length > 0) {
+            lines.push(`${toolName}: ${grouped[toolName].join(", ")}`)
+        }
+    }
+
+    // Then add any remaining tools not in the preferred order
+    for (const [toolName, hashes] of Object.entries(grouped)) {
+        if (!toolOrder.includes(toolName) && hashes.length > 0) {
+            lines.push(`${toolName}: ${hashes.join(", ")}`)
+        }
+    }
+
+    return lines.join("\n")
 }

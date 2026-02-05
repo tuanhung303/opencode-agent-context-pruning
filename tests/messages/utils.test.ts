@@ -8,8 +8,11 @@ import {
     isIgnoredUserMessage,
     stableStringify,
     generateToolHash,
+    groupHashesByToolName,
+    formatHashInventory,
 } from "../../lib/messages/utils"
 import type { WithParts } from "../../lib/state"
+import { createSessionState } from "../../lib/state"
 
 const createBaseMessage = (): WithParts => ({
     info: {
@@ -294,19 +297,19 @@ describe("generateToolHash", () => {
         expect(hash1).toBe(hash2)
     })
 
-    it("should use tool prefix in hash format", () => {
+    it("should generate 6-char hex hashes without prefix", () => {
         const readHash = generateToolHash("read", { filePath: "/a.ts" })
         const globHash = generateToolHash("glob", { pattern: "**/*.ts" })
         const bashHash = generateToolHash("bash", { command: "npm test" })
 
-        expect(readHash).toMatch(/^r_[a-f0-9]{5}$/)
-        expect(globHash).toMatch(/^g_[a-f0-9]{5}$/)
-        expect(bashHash).toMatch(/^b_[a-f0-9]{5}$/)
+        expect(readHash).toMatch(/^[a-f0-9]{6}$/)
+        expect(globHash).toMatch(/^[a-f0-9]{6}$/)
+        expect(bashHash).toMatch(/^[a-f0-9]{6}$/)
     })
 
     it("should handle empty params", () => {
         const hash = generateToolHash("read", {})
-        expect(hash).toMatch(/^r_[a-f0-9]{5}$/)
+        expect(hash).toMatch(/^[a-f0-9]{6}$/)
     })
 
     it("should handle complex nested params", () => {
@@ -322,6 +325,151 @@ describe("generateToolHash", () => {
         })
 
         expect(hash1).toBe(hash2)
-        expect(hash1).toMatch(/^t_[a-f0-9]{5}$/)
+        expect(hash1).toMatch(/^[a-f0-9]{6}$/)
+    })
+})
+
+describe("groupHashesByToolName", () => {
+    it("should group hashes by tool name from state", () => {
+        const state = createSessionState()
+
+        // Set up hash mappings
+        state.hashRegistry.calls.set("abc123", "call_1")
+        state.hashRegistry.calls.set("def456", "call_2")
+        state.hashRegistry.calls.set("123456", "call_3")
+        state.hashRegistry.calls.set("789abc", "call_4")
+
+        state.hashRegistry.callIds.set("call_1", "abc123")
+        state.hashRegistry.callIds.set("call_2", "def456")
+        state.hashRegistry.callIds.set("call_3", "123456")
+        state.hashRegistry.callIds.set("call_4", "789abc")
+
+        // Set up tool parameters
+        state.toolParameters.set("call_1", { tool: "read", parameters: {}, turn: 1 })
+        state.toolParameters.set("call_2", { tool: "read", parameters: {}, turn: 2 })
+        state.toolParameters.set("call_3", { tool: "grep", parameters: {}, turn: 3 })
+        state.toolParameters.set("call_4", { tool: "glob", parameters: {}, turn: 4 })
+
+        const grouped = groupHashesByToolName(state)
+
+        expect(grouped.reads).toEqual(["abc123", "def456"])
+        expect(grouped.greps).toEqual(["123456"])
+        expect(grouped.globs).toEqual(["789abc"])
+    })
+
+    it("should exclude pruned hashes", () => {
+        const state = createSessionState()
+
+        state.hashRegistry.calls.set("abc123", "call_1")
+        state.hashRegistry.calls.set("def456", "call_2")
+        state.hashRegistry.callIds.set("call_1", "abc123")
+        state.hashRegistry.callIds.set("call_2", "def456")
+
+        state.toolParameters.set("call_1", { tool: "read", parameters: {}, turn: 1 })
+        state.toolParameters.set("call_2", { tool: "read", parameters: {}, turn: 2 })
+
+        // Mark call_1 as pruned
+        state.prune.toolIds.push("call_1")
+
+        const grouped = groupHashesByToolName(state)
+
+        expect(grouped.reads).toEqual(["def456"])
+    })
+
+    it("should return empty object when no hashes", () => {
+        const state = createSessionState()
+        const grouped = groupHashesByToolName(state)
+        expect(grouped).toEqual({})
+    })
+
+    it("should skip hashes without tool parameters", () => {
+        const state = createSessionState()
+
+        state.hashRegistry.calls.set("abc123", "call_1")
+        state.hashRegistry.callIds.set("call_1", "abc123")
+        // No toolParameters entry for call_1
+
+        const grouped = groupHashesByToolName(state)
+        expect(grouped).toEqual({})
+    })
+
+    it("should handle special pluralization for bash", () => {
+        const state = createSessionState()
+
+        state.hashRegistry.calls.set("b_12345", "call_1")
+        state.hashRegistry.callIds.set("call_1", "b_12345")
+        state.toolParameters.set("call_1", { tool: "bash", parameters: {}, turn: 1 })
+
+        const grouped = groupHashesByToolName(state)
+        expect(grouped.bashes).toEqual(["b_12345"])
+    })
+
+    it("should handle task tool", () => {
+        const state = createSessionState()
+
+        state.hashRegistry.calls.set("t_12345", "call_1")
+        state.hashRegistry.callIds.set("call_1", "t_12345")
+        state.toolParameters.set("call_1", { tool: "task", parameters: {}, turn: 1 })
+
+        const grouped = groupHashesByToolName(state)
+        expect(grouped.tasks).toEqual(["t_12345"])
+    })
+})
+
+describe("formatHashInventory", () => {
+    it("should format grouped hashes with tool names", () => {
+        const grouped = {
+            reads: ["abc123", "def456"],
+            greps: ["123456"],
+        }
+
+        const result = formatHashInventory(grouped)
+
+        expect(result).toBe("reads: abc123, def456\ngreps: 123456")
+    })
+
+    it("should return empty string for empty grouped object", () => {
+        const result = formatHashInventory({})
+        expect(result).toBe("")
+    })
+
+    it("should order tools in preferred order", () => {
+        const grouped = {
+            tasks: ["t_12345"],
+            reads: ["abc123"],
+            greps: ["123456"],
+            globs: ["789abc"],
+        }
+
+        const result = formatHashInventory(grouped)
+        const lines = result.split("\n")
+
+        // reads should come before greps, greps before globs, globs before tasks
+        expect(lines[0]).toContain("reads:")
+        expect(lines[1]).toContain("greps:")
+        expect(lines[2]).toContain("globs:")
+        expect(lines[3]).toContain("tasks:")
+    })
+
+    it("should handle single hash per tool", () => {
+        const grouped = {
+            reads: ["abc123"],
+        }
+
+        const result = formatHashInventory(grouped)
+        expect(result).toBe("reads: abc123")
+    })
+
+    it("should handle unknown tool types at the end", () => {
+        const grouped = {
+            reads: ["abc123"],
+            unknowns: ["u_12345"],
+        }
+
+        const result = formatHashInventory(grouped)
+        const lines = result.split("\n")
+
+        expect(lines[0]).toContain("reads:")
+        expect(lines[1]).toContain("unknowns:")
     })
 })

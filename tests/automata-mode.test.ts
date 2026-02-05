@@ -31,8 +31,8 @@ describe("Automata Mode: Activation", () => {
         const activated = detectAutomataActivation(state, messages, logger)
 
         expect(activated).toBe(true)
-        expect(state.automataEnabled).toBe(true)
-        expect(state.lastAutomataTurn).toBe(1)
+        expect(state.cursors.automata.enabled).toBe(true)
+        expect(state.cursors.automata.lastTurn).toBe(1)
         expect(logger.info).toHaveBeenCalledWith(expect.stringContaining("Automata mode activated"))
     })
 
@@ -47,12 +47,12 @@ describe("Automata Mode: Activation", () => {
         const activated = detectAutomataActivation(state, messages, logger)
 
         expect(activated).toBe(false)
-        expect(state.automataEnabled).toBe(false)
+        expect(state.cursors.automata.enabled).toBe(false)
     })
 
     it("should remain active once activated even if keyword is missing in later messages", () => {
-        state.automataEnabled = true
-        state.lastAutomataTurn = 1
+        state.cursors.automata.enabled = true
+        state.cursors.automata.lastTurn = 1
 
         const messages: any[] = [
             {
@@ -64,7 +64,7 @@ describe("Automata Mode: Activation", () => {
         const activated = detectAutomataActivation(state, messages, logger)
 
         expect(activated).toBe(true)
-        expect(state.automataEnabled).toBe(true)
+        expect(state.cursors.automata.enabled).toBe(true)
     })
 })
 
@@ -91,45 +91,45 @@ describe("Automata Mode: Injection", () => {
     })
 
     it("should inject reflection message when threshold is met", () => {
-        state.automataEnabled = true
+        state.cursors.automata.enabled = true
         state.currentTurn = 8
-        state.lastAutomataTurn = 0
-        state.lastReflectionTurn = 0
+        state.cursors.automata.lastTurn = 0
+        state.cursors.automata.lastReflectionTurn = 0
 
         const messages: any[] = []
-        const injected = injectAutomataReflection(state, config, messages, logger)
+        const injected = injectAutomataReflection(state, logger, config, messages)
 
         expect(injected).toBe(true)
         expect(messages.length).toBe(1)
         expect(messages[0].parts[0].text).toContain("Strategic Reflection")
-        expect(state.lastReflectionTurn).toBe(8)
+        expect(state.cursors.automata.lastReflectionTurn).toBe(8)
     })
 
     it("should not inject if not enabled in config", () => {
         config.tools.automataMode.enabled = false
-        state.automataEnabled = true
+        state.cursors.automata.enabled = true
         state.currentTurn = 8
 
         const messages: any[] = []
-        const injected = injectAutomataReflection(state, config, messages, logger)
+        const injected = injectAutomataReflection(state, logger, config, messages)
 
         expect(injected).toBe(false)
     })
 
     it("should not inject if automata mode not activated via keyword", () => {
-        state.automataEnabled = false
+        state.cursors.automata.enabled = false
         state.currentTurn = 8
 
         const messages: any[] = []
-        const injected = injectAutomataReflection(state, config, messages, logger)
+        const injected = injectAutomataReflection(state, logger, config, messages)
 
         expect(injected).toBe(false)
     })
 
     it("should replace previous reflection message with new one", () => {
-        state.automataEnabled = true
+        state.cursors.automata.enabled = true
         state.currentTurn = 16
-        state.lastReflectionTurn = 8
+        state.cursors.automata.lastReflectionTurn = 8
 
         const messages: any[] = [
             {
@@ -138,7 +138,7 @@ describe("Automata Mode: Injection", () => {
             },
         ]
 
-        const injected = injectAutomataReflection(state, config, messages, logger)
+        const injected = injectAutomataReflection(state, logger, config, messages)
 
         expect(injected).toBe(true)
         expect(messages.length).toBe(1)

@@ -59,14 +59,17 @@ describe("Unified Context Tool Integration", () => {
             prune: {
                 toolIds: [],
                 messagePartIds: [],
+                reasoningPartIds: [],
             },
             toolParameters: new Map(),
-            hashToCallId: new Map(),
-            callIdToHash: new Map(),
-            patternToContent: new Map(),
-            softPrunedTools: new Set(),
-            softPrunedMessageParts: new Set(),
-            softPrunedMessages: new Set(),
+            hashRegistry: {
+                calls: new Map(),
+                callIds: new Map(),
+                messages: new Map(),
+                messagePartIds: new Map(),
+                reasoning: new Map(),
+                reasoningPartIds: new Map(),
+            },
             discardHistory: [],
             lastCompaction: 0,
             stats: {
@@ -75,7 +78,18 @@ describe("Unified Context Tool Integration", () => {
                 pruneMessageCounter: 0,
                 totalPruneMessages: 0,
                 strategyStats: {
-                    manualDiscard: { count: 0, tokens: 0 },
+                    autoSupersede: {
+                        hash: { count: 0, tokens: 0 },
+                        file: { count: 0, tokens: 0 },
+                        todo: { count: 0, tokens: 0 },
+                        context: { count: 0, tokens: 0 },
+                    },
+                    purgeErrors: { count: 0, tokens: 0 },
+                    manualDiscard: {
+                        message: { count: 0, tokens: 0 },
+                        thinking: { count: 0, tokens: 0 },
+                        tool: { count: 0, tokens: 0 },
+                    },
                     distillation: { count: 0, tokens: 0 },
                 },
             },
@@ -102,7 +116,11 @@ describe("Unified Context Tool Integration", () => {
         mockToolCtx = { sessionID: "test-session" }
     })
 
-    it("should discard a message by pattern and then restore it symmetrically", async () => {
+    it("should discard a message by hash", async () => {
+        // Setup: Pre-inject a hash for the message
+        mockState.hashRegistry.messages.set("a1b2c3", "msg_1:0")
+        mockState.hashRegistry.messagePartIds.set("msg_1:0", "a1b2c3")
+
         const tool = createContextTool({
             client: mockClient,
             state: mockState,
@@ -111,37 +129,28 @@ describe("Unified Context Tool Integration", () => {
             workingDirectory: "/test",
         })
 
-        // 1. Discard
+        // Discard by hash
         const discardResult = await tool.execute(
             {
                 action: "discard",
-                targets: [["Let me explain...detail."]],
+                targets: [["a1b2c3"]],
             },
             mockToolCtx,
         )
 
-        expect(discardResult).toContain("Discarded 1 message(s)")
+        expect(discardResult).toContain("💬")
         expect(mockState.prune.messagePartIds).toContain("msg_1:0")
-        expect(mockState.patternToContent.has("let me explain...detail.")).toBe(true)
-
-        // 2. Restore
-        const restoreResult = await tool.execute(
-            {
-                action: "restore",
-                targets: [["Let me explain...detail."]],
-            },
-            mockToolCtx,
-        )
-
-        expect(restoreResult).toContain("Restored 1 message(s)")
-        expect(mockState.prune.messagePartIds).not.toContain("msg_1:0")
     })
 
-    it("should handle mixed targets (tool hash + message pattern) in a single call", async () => {
+    it("should handle mixed targets (tool hash + message hash) in a single call", async () => {
         // Setup a tool in state
-        mockState.hashToCallId.set("r_abc12", "call_1")
-        mockState.callIdToHash.set("call_1", "r_abc12")
+        mockState.hashRegistry.calls.set("abc123", "call_1")
+        mockState.hashRegistry.callIds.set("call_1", "abc123")
         mockState.toolParameters.set("call_1", { tool: "read", turn: 1, parameters: {} } as any)
+
+        // Setup a message hash
+        mockState.hashRegistry.messages.set("d4e5f6", "msg_1:0")
+        mockState.hashRegistry.messagePartIds.set("msg_1:0", "d4e5f6")
 
         const tool = createContextTool({
             client: mockClient,
@@ -154,14 +163,93 @@ describe("Unified Context Tool Integration", () => {
         const result = await tool.execute(
             {
                 action: "discard",
-                targets: [["r_abc12"], ["Let me explain...detail."]],
+                targets: [["abc123"], ["d4e5f6"]],
             },
             mockToolCtx,
         )
 
         expect(result).toContain("discard")
-        expect(result).toContain("Discarded 1 message(s)")
+        expect(result).toContain("💬")
         expect(mockState.prune.toolIds).toContain("call_1")
         expect(mockState.prune.messagePartIds).toContain("msg_1:0")
+    })
+
+    it("should discard multiple tools by individual hashes", async () => {
+        // Setup multiple tools in state
+        mockState.hashRegistry.calls.set("abc123", "call_1")
+        mockState.hashRegistry.calls.set("def456", "call_2")
+        mockState.hashRegistry.calls.set("567890", "call_3")
+        mockState.hashRegistry.callIds.set("call_1", "abc123")
+        mockState.hashRegistry.callIds.set("call_2", "def456")
+        mockState.hashRegistry.callIds.set("call_3", "567890")
+        mockState.toolParameters.set("call_1", { tool: "read", turn: 1, parameters: {} } as any)
+        mockState.toolParameters.set("call_2", { tool: "grep", turn: 2, parameters: {} } as any)
+        mockState.toolParameters.set("call_3", { tool: "write", turn: 3, parameters: {} } as any)
+
+        const tool = createContextTool({
+            client: mockClient,
+            state: mockState,
+            logger: mockLogger,
+            config: mockConfig,
+            workingDirectory: "/test",
+        })
+
+        const result = await tool.execute(
+            {
+                action: "discard",
+                targets: [["abc123"], ["def456"], ["567890"]],
+            },
+            mockToolCtx,
+        )
+
+        expect(result).toContain("discard")
+        expect(mockState.prune.toolIds).toContain("call_1")
+        expect(mockState.prune.toolIds).toContain("call_2")
+        expect(mockState.prune.toolIds).toContain("call_3")
+    })
+
+    it("should reject protected tools", async () => {
+        // Setup a protected tool
+        mockState.hashRegistry.calls.set("abc123", "call_1")
+        mockState.hashRegistry.callIds.set("call_1", "abc123")
+        mockState.toolParameters.set("call_1", { tool: "task", turn: 1, parameters: {} } as any)
+
+        const tool = createContextTool({
+            client: mockClient,
+            state: mockState,
+            logger: mockLogger,
+            config: mockConfig,
+            workingDirectory: "/test",
+        })
+
+        await expect(
+            tool.execute(
+                {
+                    action: "discard",
+                    targets: [["abc123"]],
+                },
+                mockToolCtx,
+            ),
+        ).rejects.toThrow("protected tool")
+    })
+
+    it("should report invalid targets not found in registry", async () => {
+        const tool = createContextTool({
+            client: mockClient,
+            state: mockState,
+            logger: mockLogger,
+            config: mockConfig,
+            workingDirectory: "/test",
+        })
+
+        const result = await tool.execute(
+            {
+                action: "discard",
+                targets: [["nonexistent"]],
+            },
+            mockToolCtx,
+        )
+
+        expect(result).toContain("No valid tool hashes to discard")
     })
 })

@@ -3,14 +3,13 @@
  */
 
 import type { PruneToolContext } from "./_types"
-import type { SessionState, ToolParameterEntry, WithParts } from "../state"
-import { ensureSessionInitialized } from "../state"
+import { SessionState, ToolParameterEntry, WithParts, ensureSessionInitialized } from "../state"
 import { saveSessionState } from "../state/persistence"
-import { sendUnifiedNotification } from "../ui/notification"
+import { sendUnifiedNotification, sendAttemptedNotification } from "../ui/notification"
+import type { ItemizedDistilledItem } from "../ui/pruning-status"
 import { formatDiscardNotification } from "../ui/minimal-notifications"
 import { formatPruningStatus, dimText } from "../ui/pruning-status"
 import { calculateTokensSaved, getCurrentParams } from "./utils"
-import { findMessagesByPattern, storePatternMapping } from "../messages/pattern-match"
 
 /**
  * Core distill operation for tool outputs.
@@ -30,7 +29,9 @@ export async function executeToolDistill(
 
     if (!callIds || callIds.length === 0) {
         logger.debug("Distill tool called but no valid call IDs resolved")
-        throw new Error(`No valid hashes provided. Use hashes from tool outputs (e.g., r_a1b2c).`)
+        throw new Error(
+            `No valid hashes provided. Use 6-char hashes from tool outputs (e.g., a1b2c3).`,
+        )
     }
 
     const messagesResponse = await client.session.messages({
@@ -47,14 +48,23 @@ export async function executeToolDistill(
     // Add to prune lists
     state.prune.toolIds.push(...callIds)
 
-    // Collect metadata
+    // Collect metadata and build itemized distilled data
     const toolMetadata = new Map<string, ToolParameterEntry>()
     const prunedToolNames: string[] = []
-    for (const callId of callIds) {
+    const itemizedDistilled: ItemizedDistilledItem[] = []
+    for (let i = 0; i < callIds.length; i++) {
+        const callId = callIds[i]!
+        const summary = distillation[i]
         const toolParameters = state.toolParameters.get(callId)
         if (toolParameters) {
             toolMetadata.set(callId, toolParameters)
             prunedToolNames.push(toolParameters.tool)
+        }
+        if (summary) {
+            itemizedDistilled.push({
+                type: "tool",
+                summary,
+            })
         }
     }
 
@@ -77,16 +87,19 @@ export async function executeToolDistill(
         client,
         logger,
         config,
-        state,
+        {
+            state,
+            pruneToolIds: callIds,
+            toolMetadata,
+            reason: "distillation",
+            workingDirectory,
+            distillation,
+            attemptedTargets: hashes,
+            options: { simplified: true },
+            itemizedDistilled,
+        },
         sessionId,
-        callIds,
-        toolMetadata,
-        "distillation",
         currentParams,
-        workingDirectory,
-        distillation,
-        { simplified: true },
-        [],
     )
 
     commitStats(state)
@@ -98,7 +111,12 @@ export async function executeToolDistill(
     // Build notification
     const tuiStatus = formatPruningStatus(prunedToolNames, distillation)
     const tuiNotification = tuiStatus ? dimText(tuiStatus) : ""
-    const minimalNotification = formatDiscardNotification(callIds.length, "distillation")
+    const minimalNotification = formatDiscardNotification(
+        callIds.length,
+        "distillation",
+        hashes,
+        "tool",
+    )
 
     return tuiNotification ? `${minimalNotification}\n${tuiNotification}` : minimalNotification
 }
@@ -112,7 +130,16 @@ export async function executeContextToolDistill(
     hashes: string[],
     distillation: string[],
 ): Promise<string> {
-    const { state, logger } = ctx
+    const { client, state, logger, config } = ctx
+    const sessionId = toolCtx.sessionID
+
+    // Always fetch messages for proper state sync (required for thinking mode API compatibility)
+    const messagesResponse = await client.session.messages({
+        path: { id: sessionId },
+    })
+    const messages: WithParts[] = (messagesResponse.data || messagesResponse) as WithParts[]
+
+    await ensureSessionInitialized(client, state, sessionId, logger, messages)
 
     const callIds: string[] = []
     const validHashes: string[] = []
@@ -125,7 +152,7 @@ export async function executeContextToolDistill(
             logger.warn(`No summary provided for hash: ${hash}`)
             continue
         }
-        const callId = state.hashToCallId.get(hash)
+        const callId = state.hashRegistry.calls.get(hash)
         if (callId) {
             if (!state.prune.toolIds.includes(callId)) {
                 callIds.push(callId)
@@ -140,43 +167,206 @@ export async function executeContextToolDistill(
     }
 
     if (validHashes.length === 0) {
-        return "No valid tool hashes to distill"
+        // Send no-op notification showing attempted hashes
+        const currentParams = getCurrentParams(state, messages, logger)
+        await sendAttemptedNotification(
+            client,
+            logger,
+            config,
+            "distill",
+            hashes,
+            sessionId,
+            currentParams,
+            "tool",
+        )
+        // Return notification in the response too
+        const minimalNotification = formatDiscardNotification(0, "distillation", hashes, "tool")
+        return `${minimalNotification}\nNo valid tool hashes to distill`
     }
 
     return executeToolDistill(ctx, toolCtx, callIds, validHashes, validDistillation)
 }
 
 /**
- * Distill messages by pattern.
+ * Distill message parts by hash.
  */
 export async function executeContextMessageDistill(
     ctx: PruneToolContext,
-    _toolCtx: { sessionID: string },
+    toolCtx: { sessionID: string },
     entries: Array<[string, string]>,
-    messages: WithParts[],
 ): Promise<string> {
-    const { state, logger } = ctx
+    const { client, state, logger, config } = ctx
+    const sessionId = toolCtx.sessionID
+
+    // Always fetch messages for proper state sync (required for thinking mode API compatibility)
+    const messagesResponse = await client.session.messages({
+        path: { id: sessionId },
+    })
+    const messages: WithParts[] = (messagesResponse.data || messagesResponse) as WithParts[]
+
+    await ensureSessionInitialized(client, state, sessionId, logger, messages)
 
     let distilledCount = 0
+    const itemizedDistilled: ItemizedDistilledItem[] = []
 
-    for (const [pattern, summary] of entries) {
-        const matches = findMessagesByPattern(messages, pattern)
-        for (const match of matches) {
-            const partId = `${match.messageId}:${match.partIndex}`
+    for (const [hash, summary] of entries) {
+        const partId = state.hashRegistry.messages.get(hash)
+        if (partId) {
             if (!state.prune.messagePartIds.includes(partId)) {
                 state.prune.messagePartIds.push(partId)
-                storePatternMapping(pattern, summary, partId, state)
-                logger.info(`Distilled message part ${partId} via pattern`)
+                logger.info(`Distilled message part ${partId} via hash ${hash}: ${summary}`)
                 distilledCount++
+                itemizedDistilled.push({
+                    type: "message",
+                    summary,
+                })
             }
+        } else {
+            logger.warn(`Unknown message hash: ${hash}`)
         }
     }
+
+    const currentParams = getCurrentParams(state, messages, logger)
+    const hashes = entries.map((e) => e[0])
+
+    await sendUnifiedNotification(
+        client,
+        logger,
+        config,
+        {
+            state,
+            pruneToolIds: [],
+            toolMetadata: new Map(),
+            pruneMessagePartIds:
+                distilledCount > 0 ? state.prune.messagePartIds.slice(-distilledCount) : [],
+            reason: "distillation",
+            workingDirectory: ctx.workingDirectory,
+            attemptedTargets: hashes,
+            options: { simplified: true },
+            itemizedDistilled,
+        },
+        sessionId,
+        currentParams,
+    )
 
     saveSessionState(state, logger).catch((err: Error) =>
         logger.error("Failed to persist state", { error: err.message }),
     )
 
-    return `Distilled ${distilledCount} message(s)`
+    // Return formatted notification
+    const minimalNotification = formatDiscardNotification(
+        distilledCount,
+        "distillation",
+        hashes,
+        "message",
+    )
+    return minimalNotification
+}
+
+/**
+ * Distill reasoning/thinking parts by hash.
+ * Used for thinking mode safety: converts discard to distill with minimal placeholder.
+ * Note: Updates manualDiscard.thinking stats (not distillation) for proper notification display.
+ */
+export async function executeContextReasoningDistill(
+    ctx: PruneToolContext,
+    toolCtx: { sessionID: string },
+    entries: Array<[string, string]>,
+): Promise<string> {
+    const { state, logger, config, client } = ctx
+    const sessionId = toolCtx.sessionID
+
+    // Always fetch messages for proper state sync (required for thinking mode API compatibility)
+    const messagesResponse = await client.session.messages({
+        path: { id: sessionId },
+    })
+    const messages: WithParts[] = (messagesResponse.data || messagesResponse) as WithParts[]
+
+    await ensureSessionInitialized(client, state, sessionId, logger, messages)
+
+    let distilledCount = 0
+    let tokensSaved = 0
+    const processedHashes: string[] = []
+    const itemizedDistilled: ItemizedDistilledItem[] = []
+
+    for (const [hash, summary] of entries) {
+        const partId = state.hashRegistry.reasoning.get(hash)
+        if (partId) {
+            if (!state.prune.reasoningPartIds.includes(partId)) {
+                state.prune.reasoningPartIds.push(partId)
+                processedHashes.push(hash)
+                distilledCount++
+                tokensSaved += 2000 // Estimate tokens per reasoning block
+                logger.info(`Distilled reasoning part ${partId} via hash ${hash}`)
+                itemizedDistilled.push({
+                    type: "reasoning",
+                    summary,
+                })
+            } else {
+                logger.debug(`Hash ${hash} already pruned, skipping`)
+            }
+        } else {
+            logger.warn(`Unknown reasoning hash: ${hash}`)
+        }
+    }
+
+    if (distilledCount === 0) {
+        return "No valid reasoning hashes to distill"
+    }
+
+    // Update stats - use manualDiscard.thinking for notification display (shows 🧠 icon)
+    state.stats.pruneTokenCounter += tokensSaved
+    state.stats.pruneMessageCounter += distilledCount
+    state.stats.strategyStats.manualDiscard.thinking.count += distilledCount
+    state.stats.strategyStats.manualDiscard.thinking.tokens += tokensSaved
+
+    state.lastDiscardStats = {
+        itemCount: distilledCount,
+        tokensSaved: state.stats.pruneTokenCounter,
+    }
+
+    // Send notification for consistent status display
+    const currentParams = getCurrentParams(state, messages, logger)
+    // Build reasoning part IDs list for notification (using "msgId:partIndex" format)
+    const reasoningPartIds = processedHashes
+        .map((hash) => state.hashRegistry.reasoning.get(hash))
+        .filter((id): id is string => id !== undefined)
+    await sendUnifiedNotification(
+        client,
+        logger,
+        config,
+        {
+            state,
+            pruneToolIds: [],
+            toolMetadata: new Map(),
+            pruneMessagePartIds: [],
+            pruneReasoningPartIds: reasoningPartIds,
+            reason: "manual",
+            workingDirectory: ctx.workingDirectory,
+            itemizedDistilled,
+        },
+        sessionId,
+        currentParams,
+    )
+
+    // Commit stats
+    state.stats.totalPruneTokens += state.stats.pruneTokenCounter
+    state.stats.pruneTokenCounter = 0
+    state.stats.totalPruneMessages += state.stats.pruneMessageCounter
+    state.stats.pruneMessageCounter = 0
+
+    saveSessionState(state, logger).catch((err: Error) =>
+        logger.error("Failed to persist state", { error: err.message }),
+    )
+
+    // Return formatted notification
+    const minimalNotification = formatDiscardNotification(
+        distilledCount,
+        "manual",
+        processedHashes,
+        "reasoning",
+    )
+    return minimalNotification
 }
 
 // ============================================================================
@@ -197,13 +387,13 @@ function validateCallIds(
     for (const callId of callIds) {
         const metadata = state.toolParameters.get(callId)
         if (!metadata) {
-            const hash = state.callIdToHash.get(callId) || "unknown"
+            const hash = state.hashRegistry.callIds.get(callId) || "unknown"
             logger.debug("Rejecting distill request - call ID not in cache", { callId, hash })
             throw new Error(`Invalid hash provided. The tool may have already been discarded.`)
         }
 
         if (allProtectedTools.includes(metadata.tool)) {
-            const hash = state.callIdToHash.get(callId) || "unknown"
+            const hash = state.hashRegistry.callIds.get(callId) || "unknown"
             logger.debug("Rejecting distill request - protected tool", {
                 callId,
                 hash,
@@ -216,6 +406,10 @@ function validateCallIds(
         }
     }
 }
+
+// ============================================================================
+// Helpers
+// ============================================================================
 
 function updateStats(state: SessionState, count: number, tokensSaved: number): void {
     state.stats.pruneTokenCounter += tokensSaved

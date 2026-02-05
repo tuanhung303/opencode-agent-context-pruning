@@ -30,8 +30,6 @@ describe("Integration: Automata Hook", () => {
                 deduplication: { enabled: false },
                 supersedeWrites: { enabled: false },
                 purgeErrors: { enabled: false },
-                truncation: { enabled: false },
-                thinkingCompression: { enabled: false },
             },
         }
         client = {
@@ -46,11 +44,11 @@ describe("Integration: Automata Hook", () => {
         vi.spyOn(stateModule, "checkSession").mockResolvedValue(undefined)
 
         state.sessionId = "test-session"
-        state.automataEnabled = true
+        state.cursors.automata.enabled = true
         state.currentTurn = 4
         state.todos = [{ id: "1", content: "Test", status: "pending", priority: "high" }]
-        state.lastTodoTurn = 0
-        state.lastAutomataTurn = 0
+        state.cursors.todo.lastTurn = 0
+        state.cursors.automata.lastTurn = 0
 
         const output = {
             messages: [
@@ -73,7 +71,7 @@ describe("Integration: Automata Hook", () => {
         expect(output.messages.length).toBe(3)
 
         // Verify order: Original -> Todo Reminder -> Automata Reflection
-        expect(output.messages[1].parts[0].text).toContain("Todo Review Reminder")
+        expect(output.messages[1].parts[0].text).toContain("🔖 Checkpoint")
         expect(output.messages[2].parts[0].text).toContain("Strategic Reflection")
     })
 })

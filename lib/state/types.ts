@@ -22,19 +22,30 @@ export interface SessionStats {
     totalPruneMessages: number
     // Strategy effectiveness tracking
     strategyStats: {
-        deduplication: { count: number; tokens: number }
-        supersedeWrites: { count: number; tokens: number }
+        autoSupersede: {
+            hash: { count: number; tokens: number }
+            file: { count: number; tokens: number }
+            todo: { count: number; tokens: number }
+            context: { count: number; tokens: number }
+            url: { count: number; tokens: number }
+            stateQuery: { count: number; tokens: number }
+            snapshot: { count: number; tokens: number }
+            retry: { count: number; tokens: number }
+        }
         purgeErrors: { count: number; tokens: number }
-        manualDiscard: { count: number; tokens: number }
+        manualDiscard: {
+            message: { count: number; tokens: number }
+            thinking: { count: number; tokens: number }
+            tool: { count: number; tokens: number }
+        }
         distillation: { count: number; tokens: number }
-        truncation: { count: number; tokens: number }
-        thinkingCompression: { count: number; tokens: number }
     }
 }
 
 export interface Prune {
     toolIds: string[]
     messagePartIds: string[] // "msgId:partIndex" format for assistant text parts
+    reasoningPartIds: string[] // "msgId:partIndex" format for reasoning parts
 }
 
 export interface LastDiscardStats {
@@ -58,6 +69,17 @@ export interface TodoItem {
     content: string
     status: "pending" | "in_progress" | "completed" | "cancelled"
     priority: "high" | "medium" | "low"
+    inProgressSince?: number // Turn when task became in_progress (for stuck task detection)
+}
+
+/**
+ * Transient runtime cache for O(1) lookups.
+ * NOT persisted - rebuilt on demand from arrays.
+ */
+export interface RuntimeCache {
+    prunedToolIds: Set<string>
+    prunedMessagePartIds: Set<string>
+    prunedReasoningPartIds: Set<string>
 }
 
 export interface SessionState {
@@ -72,57 +94,56 @@ export interface SessionState {
     variant?: string
     lastDiscardStats: LastDiscardStats | null
     lastUserMessageId: string | null
+
     // Hash-based discard system
-    hashToCallId: Map<string, string>
-    callIdToHash: Map<string, string>
+    hashRegistry: {
+        calls: Map<string, string>
+        callIds: Map<string, string>
+        messages: Map<string, string>
+        messagePartIds: Map<string, string>
+        reasoning: Map<string, string>
+        reasoningPartIds: Map<string, string>
+        fileParts: Map<string, string>
+    }
     discardHistory: DiscardStats[]
-    // Message part hash system
-    hashToMessagePart: Map<string, string>
-    messagePartToHash: Map<string, string>
-    // Soft prune cache for restore capability
-    softPrunedTools: Map<string, SoftPrunedEntry>
-    softPrunedMessageParts: Map<string, SoftPrunedMessagePart>
-    // New: message pruning cache for pattern-based discard_msg/distill_msg
-    softPrunedMessages: Map<string, SoftPrunedMessage>
-    // Pattern-based restore system for unified context tool
-    patternToContent: Map<string, PatternContentEntry>
-    // Todo reminder tracking
-    lastTodoTurn: number // Turn when todowrite was last called
-    lastReminderTurn: number // Turn when reminder was last injected (0 = never)
-    lastTodowriteCallId: string | null // CallID of last processed todowrite (to avoid reprocessing)
+
+    // Tracking cursors (grouped)
+    cursors: {
+        todo: {
+            lastTurn: number
+            lastReminderTurn: number
+            lastWriteCallId: string | null
+            lastReadCallId: string | null
+        }
+        context: {
+            lastCallId: string | null
+        }
+        automata: {
+            enabled: boolean
+            lastTurn: number
+            lastReflectionTurn: number
+        }
+        files: {
+            pathToCallIds: Map<string, Set<string>>
+        }
+        urls: {
+            urlToCallIds: Map<string, Set<string>>
+        }
+        stateQueries: {
+            queryToCallIds: Map<string, Set<string>>
+        }
+        snapshots: {
+            allCallIds: Set<string>
+            latestCallId: string | null
+        }
+        retries: {
+            // Maps tool+hash to failed callIds awaiting successful retry
+            pendingRetries: Map<string, string[]>
+        }
+    }
+
     todos: TodoItem[] // Current todo list state
-    // Automata Mode tracking
-    automataEnabled: boolean // Whether automata mode is active for this session
-    lastAutomataTurn: number // Turn when automata keyword was last detected
-    lastReflectionTurn: number // Turn when reflection was last injected
-}
 
-export interface SoftPrunedEntry {
-    originalOutput: string
-    tool: string
-    parameters: Record<string, unknown>
-    prunedAt: number
-    hash: string
-}
-
-export interface SoftPrunedMessagePart {
-    originalText: string
-    messageId: string
-    partIndex: number
-    prunedAt: number
-    hash: string
-}
-
-export interface SoftPrunedMessage {
-    content: string
-    messageId: string
-    partIndex: number
-    prunedAt: number
-    hash: string
-}
-
-export interface PatternContentEntry {
-    originalContent: string
-    partId: string
-    normalizedPattern: string
+    // Transient runtime cache - NOT persisted, rebuilt on demand
+    _cache?: RuntimeCache
 }

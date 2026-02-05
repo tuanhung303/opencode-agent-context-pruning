@@ -4,6 +4,10 @@ import { Logger } from "../logger"
 import { countTokens as anthropicCountTokens } from "@anthropic-ai/tokenizer"
 import { getLastUserMessage, isMessageCompacted } from "../shared-utils"
 
+// Token count memoization cache with LRU eviction
+const tokenCache = new Map<string, number>()
+const MAX_TOKEN_CACHE_SIZE = 500
+
 export function getCurrentParams(
     state: SessionState,
     messages: WithParts[],
@@ -33,13 +37,45 @@ export function getCurrentParams(
     return { providerId, modelId, agent, variant }
 }
 
+/**
+ * Count tokens in text with memoization.
+ * Uses LRU eviction when cache exceeds MAX_TOKEN_CACHE_SIZE.
+ */
 export function countTokens(text: string): number {
     if (!text) return 0
-    try {
-        return anthropicCountTokens(text)
-    } catch {
-        return Math.round(text.length / 4)
+
+    // Check cache first
+    const cached = tokenCache.get(text)
+    if (cached !== undefined) {
+        return cached
     }
+
+    // Compute token count
+    let count: number
+    try {
+        count = anthropicCountTokens(text)
+    } catch {
+        count = Math.round(text.length / 4)
+    }
+
+    // LRU eviction: remove oldest entry if at capacity
+    if (tokenCache.size >= MAX_TOKEN_CACHE_SIZE) {
+        const firstKey = tokenCache.keys().next().value
+        if (firstKey !== undefined) {
+            tokenCache.delete(firstKey)
+        }
+    }
+
+    // Cache the result
+    tokenCache.set(text, count)
+    return count
+}
+
+/**
+ * Clear the token cache. Useful for testing.
+ */
+export function clearTokenCache(): void {
+    tokenCache.clear()
 }
 
 function estimateTokensBatch(texts: string[]): number[] {
