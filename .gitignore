@@ -32,3 +32,8 @@ Thumbs.db
 notes/
 test-update.ts
 SCHEMA_NOTES.md
+
+# Test artifacts (validation checklist)
+test-file.txt
+other-file.txt
+large-test.txt
