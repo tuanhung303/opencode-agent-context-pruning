@@ -284,12 +284,8 @@ export async function executeContext(
         results.push(errorMsg)
     }
 
-    // Add inventory to successful responses
-    if (results.length > 0 && invalidTargets.length === 0) {
-        results.push(inventoryLine)
-    }
-
-    return results.join("\n") || `${action} completed: 0 items processed\n${inventoryLine}`
+    // Inventory line removed from successful responses per user preference
+    return results.join("\n") || `${action} completed: 0 items processed`
 }
 
 /**
