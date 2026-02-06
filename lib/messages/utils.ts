@@ -3,6 +3,7 @@ import { isMessageCompacted } from "../shared-utils"
 import type { SessionState, WithParts } from "../state"
 import type { UserMessage } from "@opencode-ai/sdk/v2"
 import { getPruneCache } from "../state/utils"
+import type { Logger } from "../logger"
 
 const SYNTHETIC_MESSAGE_ID = "msg_01234567890123456789012345"
 
@@ -301,10 +302,87 @@ export const isIgnoredUserMessage = (message: WithParts): boolean => {
 }
 
 import type { TargetTypeResult } from "../strategies/_types"
+import { extractHashTags } from "../state/hash-registry"
+
+/**
+ * Scan messages and register any *_hash tags found
+ * This allows detection of non-standard hash types like thinking_hash
+ */
+export function scanAndRegisterHashTags(
+    messages: WithParts[],
+    state: SessionState,
+    logger: Logger,
+): void {
+    for (const msg of messages) {
+        const parts = Array.isArray(msg.parts) ? msg.parts : []
+
+        for (const part of parts) {
+            if (!part) continue
+
+            // Extract content based on part type
+            let content = ""
+            if (part.type === "text" && part.text) {
+                content = part.text
+            } else if (part.type === "reasoning" && (part as any).text) {
+                content = (part as any).text
+            } else if (part.type === "tool" && part.state?.status === "completed") {
+                content = (part.state as any).output || ""
+            }
+
+            if (!content) continue
+
+            // Extract all hash tags from content
+            const hashes = extractHashTags(content)
+
+            for (const { type, hash } of hashes) {
+                // Skip if already registered in standard registries
+                if (
+                    state.hashRegistry.calls.has(hash) ||
+                    state.hashRegistry.messages.has(hash) ||
+                    state.hashRegistry.reasoning.has(hash)
+                ) {
+                    continue
+                }
+
+                // Register based on type
+                const messageId = msg.info.id
+
+                if (type === "thinking" || type === "thinking_hash") {
+                    // Map thinking_hash to reasoning_hash
+                    const partId = `${messageId}:reasoning`
+                    state.hashRegistry.reasoning.set(hash, partId)
+                    state.hashRegistry.reasoningPartIds.set(partId, hash)
+                    logger.debug(`Registered thinking_hash ${hash} as reasoning_hash for ${partId}`)
+                } else if (type === "custom" || type === "custom_hash") {
+                    // Register custom hashes as reasoning (safest default)
+                    const partId = `${messageId}:custom`
+                    state.hashRegistry.reasoning.set(hash, partId)
+                    state.hashRegistry.reasoningPartIds.set(partId, hash)
+                    logger.debug(`Registered custom_hash ${hash} as reasoning_hash for ${partId}`)
+                } else if (
+                    type !== "tool" &&
+                    type !== "tool_hash" &&
+                    type !== "message" &&
+                    type !== "message_hash" &&
+                    type !== "reasoning" &&
+                    type !== "reasoning_hash"
+                ) {
+                    // Unknown type - register as reasoning for safety
+                    const partId = `${messageId}:${type}`
+                    state.hashRegistry.reasoning.set(hash, partId)
+                    state.hashRegistry.reasoningPartIds.set(partId, hash)
+                    logger.debug(
+                        `Registered unknown hash type ${type} (${hash}) as reasoning for ${partId}`,
+                    )
+                }
+            }
+        }
+    }
+}
 
 /**
  * Detect target type using state map lookups (no prefix-based detection).
- * Supports: tool_hash, message_hash, reasoning_hash
+ * Supports: tool_hash, message_hash, reasoning_hash, and any registered hash
  * Format: 6 hex chars (e.g., a1b2c3) for all hash types
  */
 export function detectTargetType(target: string, state: SessionState): TargetTypeResult {
@@ -319,7 +397,64 @@ export function detectTargetType(target: string, state: SessionState): TargetTyp
         return "reasoning_hash"
     }
 
-    return "tool_hash" // Default assumption for unknown targets
+    // For unknown targets, return "unknown_hash" to allow flexible handling
+    // The caller should decide how to handle unknown hashes
+    return "unknown_hash"
+}
+
+/**
+ * Resolve a hash to a human-readable display name for status bar notifications.
+ * For tool hashes: returns tool name (e.g., "read", "bash")
+ * For message hashes: returns "message part"
+ * For reasoning hashes: returns "thinking block"
+ * Falls back to raw hash if resolution fails.
+ *
+ * @param hash - The 6-char hash to resolve
+ * @param state - Session state containing hash registry and tool parameters
+ * @param workingDirectory - Optional working directory for path shortening (reserved for future use)
+ * @param targetType - Optional hint for target type when hash lookup fails
+ * @returns Human-readable display name or raw hash as fallback
+ */
+export function resolveTargetDisplayName(
+    hash: string,
+    state?: SessionState,
+    workingDirectory?: string,
+    targetType?: "tool" | "message" | "reasoning",
+): string {
+    // If no state provided, return raw hash
+    if (!state) {
+        return hash
+    }
+
+    // Try tool hash first (most common case)
+    const callId = state.hashRegistry.calls.get(hash)
+    if (callId) {
+        const toolEntry = state.toolParameters.get(callId)
+        if (toolEntry) {
+            return toolEntry.tool
+        }
+    }
+
+    // Try message hash
+    if (state.hashRegistry.messages.has(hash)) {
+        return "message part"
+    }
+
+    // Try reasoning hash
+    if (state.hashRegistry.reasoning.has(hash)) {
+        return "thinking block"
+    }
+
+    // Use targetType hint if provided
+    if (targetType === "message") {
+        return "message part"
+    }
+    if (targetType === "reasoning") {
+        return "thinking block"
+    }
+
+    // Fallback to raw hash
+    return hash
 }
 
 /**

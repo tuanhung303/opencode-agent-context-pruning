@@ -28,6 +28,7 @@ function formatHelpMessage(): string {
     lines.push("  /acp sweep [n]    Prune tools since last user message, or last n tools")
     lines.push("  /acp protected    Show protected tools and file patterns")
     lines.push("  /acp budget       Show context budget and recommendations")
+    lines.push("  /acp suggest      Show ranked pruning candidates with token estimates")
     lines.push("")
 
     return lines.join("\n")

@@ -112,7 +112,14 @@ export async function executeToolPrune(
     // Build notification
     const tuiStatus = formatPruningStatus(prunedToolNames, [])
     const tuiNotification = tuiStatus ? dimText(tuiStatus) : ""
-    const minimalNotification = formatDiscardNotification(callIds.length, reason, hashes, "tool")
+    const minimalNotification = formatDiscardNotification(
+        callIds.length,
+        reason,
+        hashes,
+        "tool",
+        state,
+        workingDirectory,
+    )
 
     return tuiNotification ? `${minimalNotification}\n${tuiNotification}` : minimalNotification
 }
@@ -165,9 +172,18 @@ export async function executeContextToolDiscard(
             sessionId,
             currentParams,
             "tool",
+            state,
+            ctx.workingDirectory,
         )
         // Return notification in the response too
-        const minimalNotification = formatDiscardNotification(0, "manual", hashes, "tool")
+        const minimalNotification = formatDiscardNotification(
+            0,
+            "manual",
+            hashes,
+            "tool",
+            state,
+            ctx.workingDirectory,
+        )
         return `${minimalNotification}\nNo valid tool hashes to discard`
     }
 
@@ -268,6 +284,8 @@ export async function executeContextMessageDiscard(
         "manual",
         hashes,
         "message",
+        state,
+        ctx.workingDirectory,
     )
     return minimalNotification
 }
@@ -367,6 +385,8 @@ export async function executeContextReasoningDiscard(
         "manual",
         hashes,
         "reasoning",
+        state,
+        ctx.workingDirectory,
     )
     return minimalNotification
 }

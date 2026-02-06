@@ -1,4 +1,7 @@
 import { truncate } from "../utils/string"
+import { resolveTargetDisplayName } from "../messages/utils"
+import type { SessionState } from "../state"
+
 export type PruneReason =
     | "noise"
     | "completion"
@@ -200,12 +203,14 @@ export function formatNpmOutput(output: string, version?: string): string {
 /**
  * Format distill notification
  * 「 ✨ distill ✓ 」- 3 items
- * 「 ✨ distill ✓ 」- ⚙️ abc123... (+2)
+ * 「 ✨ distill ✓ 」- ⚙️ read (+2)
  */
 export function formatDistillNotification(
     operations: PruneOperation[],
     attemptedTargets?: string[],
     targetType?: "tool" | "message" | "reasoning",
+    state?: SessionState,
+    workingDirectory?: string,
 ): string {
     const baseNotification = formatMinimalNotification({
         type: "distill",
@@ -223,7 +228,14 @@ export function formatDistillNotification(
 
     if (attemptedTargets && attemptedTargets.length > 0) {
         const firstTarget = attemptedTargets[0]!
-        const truncated = firstTarget.length > 15 ? firstTarget.slice(0, 12) + "..." : firstTarget
+        // Resolve hash to display name (tool name, "message part", or "thinking block")
+        const displayName = resolveTargetDisplayName(
+            firstTarget,
+            state,
+            workingDirectory,
+            targetType,
+        )
+        const truncated = displayName.length > 15 ? displayName.slice(0, 12) + "..." : displayName
         const suffix = attemptedTargets.length > 1 ? ` (+${attemptedTargets.length - 1})` : ""
         return `${baseNotification}- ${icon}${truncated}${suffix}`
     }
@@ -234,13 +246,15 @@ export function formatDistillNotification(
 /**
  * Format discard notification
  * 「 🗑️ discard ✓ 」- 7 items
- * 「 🗑️ discard ✓ 」- ⚙️ abc123... (+2)
+ * 「 🗑️ discard ✓ 」- ⚙️ read (+2)
  */
 export function formatDiscardNotification(
     count: number,
     reason: PruneReason,
     attemptedTargets?: string[],
     targetType?: "tool" | "message" | "reasoning",
+    state?: SessionState,
+    workingDirectory?: string,
 ): string {
     const baseNotification = formatMinimalNotification({
         type: "discard",
@@ -258,7 +272,14 @@ export function formatDiscardNotification(
 
     if (attemptedTargets && attemptedTargets.length > 0) {
         const firstTarget = attemptedTargets[0]!
-        const truncated = firstTarget.length > 15 ? firstTarget.slice(0, 12) + "..." : firstTarget
+        // Resolve hash to display name (tool name, "message part", or "thinking block")
+        const displayName = resolveTargetDisplayName(
+            firstTarget,
+            state,
+            workingDirectory,
+            targetType,
+        )
+        const truncated = displayName.length > 15 ? displayName.slice(0, 12) + "..." : displayName
         const suffix = attemptedTargets.length > 1 ? ` (+${attemptedTargets.length - 1})` : ""
         return `${baseNotification}- ${icon}${truncated}${suffix}`
     }
@@ -268,13 +289,15 @@ export function formatDiscardNotification(
 
 /**
  * Format no-op notification showing attempted targets with 15-char truncation
- * 「 🗑️ discard ✓ 」 tool_name...
- * 「 ✨ distill ✓ 」 a quick bro...
+ * 「 🗑️ discard ✓ 」 read
+ * 「 ✨ distill ✓ 」 message part
  */
 export function formatNoOpNotification(
     type: "discard" | "distill",
     attemptedTargets: string[],
     targetType?: "tool" | "message" | "reasoning",
+    state?: SessionState,
+    workingDirectory?: string,
 ): string {
     const baseNotification = formatMinimalNotification({
         type,
@@ -294,9 +317,10 @@ export function formatNoOpNotification(
         return `${baseNotification}- 0 items`
     }
 
-    // Show first target truncated to 15 chars
+    // Show first target resolved to display name, truncated to 15 chars
     const firstTarget = attemptedTargets[0]!
-    const truncated = truncate(firstTarget, 15)
+    const displayName = resolveTargetDisplayName(firstTarget, state, workingDirectory, targetType)
+    const truncated = truncate(displayName, 15)
     const suffix = attemptedTargets.length > 1 ? ` (+${attemptedTargets.length - 1})` : ""
 
     return `${baseNotification}- ${icon}${truncated}${suffix}`

@@ -13,6 +13,8 @@ import {
     detectAutomataActivation,
     injectAutomataReflection,
     ensureReasoningContentSync,
+    stripAllHashTagsFromMessages,
+    scanAndRegisterHashTags,
 } from "./messages"
 import { loadPrompt } from "./prompts"
 import { handleStatsCommand } from "./commands/stats"
@@ -21,6 +23,7 @@ import { handleHelpCommand } from "./commands/help"
 import { handleSweepCommand } from "./commands/sweep"
 import { handleProtectedCommand } from "./commands/protected"
 import { handleBudgetCommand } from "./commands/budget"
+import { handleSuggestCommand } from "./commands/suggest"
 import { safeExecute } from "./safe-execute"
 import { sendUnifiedNotification } from "./ui/notification"
 import { getCurrentParams } from "./strategies/utils"
@@ -129,6 +132,14 @@ export function createChatMessageTransformHandler(
             "injectHashesIntoAssistantMessages",
         )
 
+        // Scan for any *_hash tags from LLM and register them for pruning
+        // This supports non-standard hash types like <thinking_hash> from different LLMs
+        safeExecute(
+            () => scanAndRegisterHashTags(output.messages, state, logger),
+            logger,
+            "scanAndRegisterHashTags",
+        )
+
         // Run pruning strategies in pipeline
         for (const [name, strategy] of Object.entries(PRUNE_STRATEGIES)) {
             safeExecute(() => strategy(state, logger, config, output.messages), logger, name)
@@ -154,6 +165,14 @@ export function createChatMessageTransformHandler(
             () => injectAutomataReflection(state, logger, config, output.messages),
             logger,
             "injectAutomataReflection",
+        )
+
+        // CRITICAL: Strip all hash tags before output to prevent leakage
+        // Hash tags are for internal tracking only - must never reach users/LLM
+        safeExecute(
+            () => stripAllHashTagsFromMessages(output.messages, state, logger),
+            logger,
+            "stripAllHashTagsFromMessages",
         )
 
         logger.debug("Transform complete", {
@@ -252,6 +271,19 @@ export function createCommandExecuteHandler(
                     messages,
                 })
                 throw new Error("__ACP_BUDGET_HANDLED__")
+            }
+
+            if (subcommand === "suggest") {
+                await handleSuggestCommand({
+                    client,
+                    state,
+                    logger,
+                    config,
+                    sessionId: input.sessionID,
+                    messages,
+                    args: _subArgs,
+                })
+                throw new Error("__ACP_SUGGEST_HANDLED__")
             }
 
             await handleHelpCommand({

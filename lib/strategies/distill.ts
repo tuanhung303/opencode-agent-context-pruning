@@ -116,6 +116,8 @@ export async function executeToolDistill(
         "distillation",
         hashes,
         "tool",
+        state,
+        workingDirectory,
     )
 
     return tuiNotification ? `${minimalNotification}\n${tuiNotification}` : minimalNotification
@@ -178,9 +180,18 @@ export async function executeContextToolDistill(
             sessionId,
             currentParams,
             "tool",
+            state,
+            ctx.workingDirectory,
         )
         // Return notification in the response too
-        const minimalNotification = formatDiscardNotification(0, "distillation", hashes, "tool")
+        const minimalNotification = formatDiscardNotification(
+            0,
+            "distillation",
+            hashes,
+            "tool",
+            state,
+            ctx.workingDirectory,
+        )
         return `${minimalNotification}\nNo valid tool hashes to distill`
     }
 
@@ -259,6 +270,8 @@ export async function executeContextMessageDistill(
         "distillation",
         hashes,
         "message",
+        state,
+        ctx.workingDirectory,
     )
     return minimalNotification
 }
@@ -365,6 +378,8 @@ export async function executeContextReasoningDistill(
         "manual",
         processedHashes,
         "reasoning",
+        state,
+        ctx.workingDirectory,
     )
     return minimalNotification
 }

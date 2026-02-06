@@ -70,7 +70,7 @@ When you see output like this in your response:
 ```
 <thinking>
 Analyzing requirements...
-<thinking_hash>abc123</thinking_hash>
+<reasoning_hash>abc123</reasoning_hash>
 </thinking>
 ```
 
@@ -683,7 +683,7 @@ todowrite({ todos: [{ id: "1", content: "Task", status: "pending" }] })
 read({ filePath: "lib/strategies/distill.ts" })
 // Analyze and document findings...
 
-// Look for thinking_hash in output, then prune:
+// Look for reasoning_hash in output, then prune:
 context({
     action: "discard",
     targets: [["abc123"]], // Replace with actual hash
@@ -720,12 +720,12 @@ context({
 
 ```typescript
 // Generate thinking block (complex analysis)
-// Look for thinking_hash
+// Look for reasoning_hash
 
 // Distill with summary
 context({
     action: "distill",
-    targets: [["thinking_hash", "Analysis: 3 optimization opportunities found"]],
+    targets: [["abc123", "Analysis: 3 optimization opportunities found"]],
 })
 
 // Verify: Thinking block replaced with summary

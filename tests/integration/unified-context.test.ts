@@ -245,11 +245,11 @@ describe("Unified Context Tool Integration", () => {
         const result = await tool.execute(
             {
                 action: "discard",
-                targets: [["nonexistent"]],
+                targets: [["aaaaaa"]], // Valid format but doesn't exist
             },
             mockToolCtx,
         )
 
-        expect(result).toContain("No valid tool hashes to discard")
+        expect(result).toContain("Hash(es) not found")
     })
 })

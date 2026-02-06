@@ -17,5 +17,6 @@ export interface PruneToolContext {
 
 /**
  * Result type for target type detection.
+ * Supports known types (backward compatible) and generic "unknown_hash" for flexibility.
  */
-export type TargetTypeResult = "tool_hash" | "message_hash" | "reasoning_hash"
+export type TargetTypeResult = "tool_hash" | "message_hash" | "reasoning_hash" | "unknown_hash"

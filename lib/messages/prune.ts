@@ -2,7 +2,7 @@ import type { SessionState, WithParts } from "../state"
 import type { Part } from "@opencode-ai/sdk/v2"
 import type { Logger } from "../logger"
 import type { PluginConfig } from "../config"
-import { isMessageCompacted } from "../shared-utils"
+import { isMessageCompacted, isMessageCompleted } from "../shared-utils"
 import { generatePartHash } from "../utils/hash"
 import { getPruneCache } from "../state/utils"
 
@@ -71,15 +71,15 @@ function createPrunedToolPlaceholder(toolName: string): string {
 // Hash tag names for trailing format
 const TOOL_HASH_TAG = "tool_hash"
 const MESSAGE_HASH_TAG = "message_hash"
-const THINKING_HASH_TAG = "thinking_hash"
+const REASONING_HASH_TAG = "reasoning_hash"
 
 /** Create trailing hash tag */
 const createHashTag = (tagName: string, hash: string): string =>
     `\n<${tagName}>${hash}</${tagName}>`
 
-/** Check if content already has trailing hash tag */
-const hasTrailingHashTag = (content: string, tagName: string): boolean => {
-    const regex = new RegExp(`<${tagName}>[a-f0-9]{6}</${tagName}>$`, "i")
+/** Check if content already has hash tag with specific hash anywhere in content */
+const hasHashTag = (content: string, tagName: string, hash: string): boolean => {
+    const regex = new RegExp(`<${tagName}>${hash}</${tagName}>`, "i")
     return regex.test(content)
 }
 
@@ -231,6 +231,11 @@ export const injectHashesIntoToolOutputs = (
             continue
         }
 
+        // Skip messages still streaming - only inject into completed messages
+        if (!isMessageCompleted(msg)) {
+            continue
+        }
+
         const parts = Array.isArray(msg.parts) ? msg.parts : []
         for (const part of parts) {
             if (part.type !== "tool" || !part.callID) {
@@ -263,8 +268,8 @@ export const injectHashesIntoToolOutputs = (
             }
 
             // Skip if already has hash prefix (format: xxxxxx - 6 hex chars)
-            // Skip if already has trailing hash tag
-            if (part.state.output && hasTrailingHashTag(part.state.output, TOOL_HASH_TAG)) {
+            // Skip if already has this specific hash tag anywhere in content
+            if (part.state.output && hasHashTag(part.state.output, TOOL_HASH_TAG, hash)) {
                 continue
             }
 
@@ -295,6 +300,11 @@ export const injectHashesIntoAssistantMessages = (
             continue
         }
 
+        // Skip messages still streaming - only inject into completed messages
+        if (!isMessageCompleted(msg)) {
+            continue
+        }
+
         // Only process assistant messages
         if (msg.info.role !== "assistant") {
             continue
@@ -311,11 +321,6 @@ export const injectHashesIntoAssistantMessages = (
 
             // Only process text parts
             if (part.type !== "text" || !part.text) {
-                continue
-            }
-
-            // Skip if already has trailing hash tag
-            if (hasTrailingHashTag(part.text, MESSAGE_HASH_TAG)) {
                 continue
             }
 
@@ -343,9 +348,18 @@ export const injectHashesIntoAssistantMessages = (
                 logger.debug(`Generated hash ${hash} for assistant text part ${partId}`)
             }
 
-            // Hash registered in registry - no injection into visible text
-            // Individual hash lookup works via registry
-            logger.debug(`Registered hash ${hash} for assistant text part (no injection)`)
+            // Skip if this specific hash is already in the content
+            if (hasHashTag(part.text, MESSAGE_HASH_TAG, hash)) {
+                continue
+            }
+
+            // Inject hash tag if enabled (default: true)
+            if (config.tools?.settings?.enableVisibleAssistantHashes !== false) {
+                part.text = `${part.text}${createHashTag(MESSAGE_HASH_TAG, hash)}`
+                logger.debug(`Injected hash ${hash} into assistant text part`)
+            } else {
+                logger.debug(`Registered hash ${hash} for assistant text part (no injection)`)
+            }
         }
     }
 }
@@ -381,6 +395,11 @@ export const injectHashesIntoReasoningBlocks = (
             continue
         }
 
+        // Skip messages still streaming - only inject into completed messages
+        if (!isMessageCompleted(msg)) {
+            continue
+        }
+
         // Only process assistant messages
         if (msg.info.role !== "assistant") {
             continue
@@ -397,11 +416,6 @@ export const injectHashesIntoReasoningBlocks = (
 
             // Only process reasoning parts
             if (part.type !== "reasoning" || !part.text) {
-                continue
-            }
-
-            // Skip if already has trailing hash tag
-            if (hasTrailingHashTag(part.text, THINKING_HASH_TAG)) {
                 continue
             }
 
@@ -429,8 +443,13 @@ export const injectHashesIntoReasoningBlocks = (
                 logger.debug(`Generated hash ${hash} for reasoning part ${partId}`)
             }
 
+            // Skip if this specific hash is already in the content
+            if (hasHashTag(part.text, REASONING_HASH_TAG, hash)) {
+                continue
+            }
+
             // Append trailing hash tag
-            part.text = `${part.text}${createHashTag(THINKING_HASH_TAG, hash)}`
+            part.text = `${part.text}${createHashTag(REASONING_HASH_TAG, hash)}`
             logger.debug(`Injected hash ${hash} into reasoning part`)
         }
     }
@@ -627,5 +646,74 @@ export const prune = (
                 )
             }
         }
+    }
+}
+
+/**
+ * Regex for matching any *_hash XML tag pattern
+ * Matches: <anything_hash>xxxxxx</anything_hash> or <anything_hash>xxxxxx_N</anything_hash>
+ * Supports collision suffix (_2, _3, etc.) for hash deduplication
+ */
+const HASH_TAG_REGEX = /<([a-zA-Z_][a-zA-Z0-9_]*)_hash>[a-f0-9]{6}(?:_\d+)?<\/\1_hash>/gi
+
+/**
+ * Strip all *_hash tags from a string
+ */
+export function stripHashTags(content: string): string {
+    return content.replace(HASH_TAG_REGEX, "")
+}
+
+/**
+ * Strip all hash tags from all message parts before output
+ * Prevents hash tags from leaking to users or LLM
+ */
+export function stripAllHashTagsFromMessages(
+    messages: WithParts[],
+    _state: SessionState,
+    logger: Logger,
+): void {
+    let totalStripped = 0
+
+    for (const msg of messages) {
+        const parts = Array.isArray(msg.parts) ? msg.parts : []
+
+        for (const part of parts) {
+            if (!part) continue
+
+            // Strip from text parts
+            if (part.type === "text" && part.text) {
+                const original = part.text
+                part.text = stripHashTags(part.text)
+                if (part.text !== original) {
+                    totalStripped++
+                }
+            }
+
+            // Strip from tool outputs (only if completed)
+            if (
+                part.type === "tool" &&
+                part.state?.status === "completed" &&
+                (part.state as any).output
+            ) {
+                const original = (part.state as any).output
+                ;(part.state as any).output = stripHashTags((part.state as any).output)
+                if ((part.state as any).output !== original) {
+                    totalStripped++
+                }
+            }
+
+            // Strip from reasoning parts
+            if (part.type === "reasoning" && part.text) {
+                const original = part.text
+                part.text = stripHashTags(part.text)
+                if (part.text !== original) {
+                    totalStripped++
+                }
+            }
+        }
+    }
+
+    if (totalStripped > 0) {
+        logger.debug(`Stripped ${totalStripped} hash tag(s) from messages before output`)
     }
 }

@@ -2,18 +2,27 @@ import type { SessionState, WithParts } from "../state/types"
 import type { PluginConfig } from "../config"
 import type { Logger } from "../logger"
 import { isMessageCompacted } from "../shared-utils"
-import { groupHashesByToolName, formatHashInventory } from "./utils"
+import { calculateTotalContextTokens } from "../strategies/utils"
+
+/**
+ * Format token count for display (e.g., 1234 -> "1.2K", 12345 -> "12.3K")
+ */
+function formatTokens(tokens: number): string {
+    if (tokens < 1000) return String(tokens)
+    return `${(tokens / 1000).toFixed(1)}K`
+}
 
 const REMINDER_TEMPLATE = `::synth::
 ---
 ## 🔖 Checkpoint
-
+{context_pressure}
 I've noticed your todo list hasn't been updated for {turns} turns. Before continuing:
 
 ### 1. Reflect — What changed? Any new risks or blockers?
 ### 2. Update — Call \`todowrite\` to sync progress
 ### 3. Prune — Call \`context\` to discard/distill noise
-{prunable_hashes}{stuck_task_guidance}
+Use hash tags from outputs (\`<tool_hash>\`, \`<message_hash>\`, \`<reasoning_hash>\`) to target content.
+{stuck_task_guidance}
 ---
 `
 
@@ -135,10 +144,11 @@ export function injectTodoReminder(
     // Remove any existing reminder messages first (ensure only one exists)
     removeTodoReminder(state, messages, logger)
 
-    // Generate prunable hashes section
-    const grouped = groupHashesByToolName(state)
-    const hashInventory = formatHashInventory(grouped)
-    const prunableSection = hashInventory ? `\n**Prunable Outputs:**\n${hashInventory}\n` : "\n"
+    // Calculate context pressure
+    const currentTokens = calculateTotalContextTokens(state, messages)
+    const maxTokens = config.tools.todoReminder.maxContextTokens ?? 100000 // Default 100K
+    const pressurePercent = Math.min(100, Math.round((currentTokens / maxTokens) * 100))
+    const contextPressure = `\n⚡ **Context: ${pressurePercent}%** (${formatTokens(currentTokens)}/${formatTokens(maxTokens)} tokens)\n`
 
     // Detect stuck tasks (in_progress for too long)
     const stuckTaskTurns = config.tools.todoReminder.stuckTaskTurns ?? 12
@@ -163,7 +173,7 @@ export function injectTodoReminder(
 
     // Create reminder content
     const reminderContent = REMINDER_TEMPLATE.replace("{turns}", String(turnsSinceTodo))
-        .replace("{prunable_hashes}", prunableSection)
+        .replace("{context_pressure}", contextPressure)
         .replace("{stuck_task_guidance}", stuckTaskSection)
 
     // Create a new user message with the reminder

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest"
-import { prune, injectHashesIntoToolOutputs } from "../../lib/messages/prune"
+import { prune, injectHashesIntoToolOutputs, stripHashTags } from "../../lib/messages/prune"
 import type { SessionState, WithParts } from "../../lib/state"
 import type { PluginConfig } from "../../lib/config"
 
@@ -59,15 +59,25 @@ const createToolPart = (
     },
 })
 
-const createMessage = (id: string, parts: any[]): WithParts =>
+const createMessage = (id: string, parts: any[], completed?: number): WithParts =>
     ({
         info: {
             id,
             role: "assistant" as const,
-            time: { created: Date.now() }, // Required for isMessageCompacted check
+            time:
+                completed !== undefined
+                    ? { created: Date.now(), completed }
+                    : { created: Date.now() }, // Omit completed for streaming state
         },
         parts,
     }) as any
+
+/** Create a message that is still streaming (no completed timestamp) */
+const createStreamingMessage = (id: string, parts: any[]): WithParts => createMessage(id, parts) // No completed field
+
+/** Create a completed message */
+const createCompletedMessage = (id: string, parts: any[]): WithParts =>
+    createMessage(id, parts, Date.now())
 
 describe("prune", () => {
     let mockLogger: ReturnType<typeof createMockLogger>
@@ -196,7 +206,7 @@ describe("prune", () => {
             const hashMappings = new Map([["call_123", "abc123"]])
             const state = createMockState([], hashMappings)
             const messages: WithParts[] = [
-                createMessage("msg_1", [
+                createCompletedMessage("msg_1", [
                     createToolPart(
                         "call_123",
                         "read",
@@ -218,7 +228,7 @@ describe("prune", () => {
             const state = createMockState(["call_123"], hashMappings)
             const originalOutput = "file content here"
             const messages: WithParts[] = [
-                createMessage("msg_1", [
+                createCompletedMessage("msg_1", [
                     createToolPart(
                         "call_123",
                         "read",
@@ -250,7 +260,7 @@ describe("prune", () => {
             } as PluginConfig
             const originalOutput = "file content here"
             const messages: WithParts[] = [
-                createMessage("msg_1", [
+                createCompletedMessage("msg_1", [
                     createToolPart(
                         "call_123",
                         "read",
@@ -272,7 +282,7 @@ describe("prune", () => {
             const state = createMockState([], hashMappings)
             const alreadyHashedOutput = "file content here\n<tool_hash>abc123</tool_hash>"
             const messages: WithParts[] = [
-                createMessage("msg_1", [
+                createCompletedMessage("msg_1", [
                     createToolPart(
                         "call_123",
                         "read",
@@ -294,7 +304,7 @@ describe("prune", () => {
             const state = createMockState([], hashMappings)
             const originalOutput = "error message"
             const messages: WithParts[] = [
-                createMessage("msg_1", [
+                createCompletedMessage("msg_1", [
                     createToolPart(
                         "call_123",
                         "read",
@@ -315,7 +325,7 @@ describe("prune", () => {
             const state = createMockState([], new Map())
             const originalOutput = "file content here"
             const messages: WithParts[] = [
-                createMessage("msg_1", [
+                createCompletedMessage("msg_1", [
                     createToolPart(
                         "call_123",
                         "read",
@@ -340,7 +350,7 @@ describe("prune", () => {
             ])
             const state = createMockState([], hashMappings)
             const messages: WithParts[] = [
-                createMessage("msg_1", [
+                createCompletedMessage("msg_1", [
                     createToolPart(
                         "call_read",
                         "read",
@@ -369,6 +379,120 @@ describe("prune", () => {
             )
             expect((messages[0].parts[2] as any).state.output).toBe(
                 "content3\n<tool_hash>b_ghi56</tool_hash>",
+            )
+        })
+
+        it("should NOT inject hash into streaming (incomplete) messages", () => {
+            const hashMappings = new Map([["call_123", "abc123"]])
+            const state = createMockState([], hashMappings)
+            const originalOutput = "file content here"
+            const messages: WithParts[] = [
+                createStreamingMessage("msg_1", [
+                    createToolPart(
+                        "call_123",
+                        "read",
+                        "completed",
+                        { filePath: "/test/file.ts" },
+                        originalOutput,
+                    ),
+                ]),
+            ]
+
+            injectHashesIntoToolOutputs(state, mockConfig, messages, mockLogger as any)
+
+            // Output should remain unchanged - no hash injected
+            const output = (messages[0].parts[0] as any).state.output
+            expect(output).toBe(originalOutput)
+        })
+
+        it("should NOT inject hash when completed timestamp is 0", () => {
+            const hashMappings = new Map([["call_123", "abc123"]])
+            const state = createMockState([], hashMappings)
+            const originalOutput = "file content here"
+            const messages: WithParts[] = [
+                createMessage(
+                    "msg_1",
+                    [
+                        createToolPart(
+                            "call_123",
+                            "read",
+                            "completed",
+                            { filePath: "/test/file.ts" },
+                            originalOutput,
+                        ),
+                    ],
+                    0,
+                ), // completed = 0 means still streaming
+            ]
+
+            injectHashesIntoToolOutputs(state, mockConfig, messages, mockLogger as any)
+
+            // Output should remain unchanged - no hash injected
+            const output = (messages[0].parts[0] as any).state.output
+            expect(output).toBe(originalOutput)
+        })
+
+        it("should inject hash when message is completed (positive timestamp)", () => {
+            const hashMappings = new Map([["call_123", "abc123"]])
+            const state = createMockState([], hashMappings)
+            const messages: WithParts[] = [
+                createMessage(
+                    "msg_1",
+                    [
+                        createToolPart(
+                            "call_123",
+                            "read",
+                            "completed",
+                            { filePath: "/test/file.ts" },
+                            "file content here",
+                        ),
+                    ],
+                    Date.now(),
+                ), // completed = positive timestamp
+            ]
+
+            injectHashesIntoToolOutputs(state, mockConfig, messages, mockLogger as any)
+
+            const output = (messages[0].parts[0] as any).state.output
+            expect(output).toBe("file content here\n<tool_hash>abc123</tool_hash>")
+        })
+    })
+
+    describe("stripHashTags", () => {
+        it("should strip standard 6-char hash tags", () => {
+            const content = "file content here\n<tool_hash>abc123</tool_hash>"
+            expect(stripHashTags(content)).toBe("file content here\n")
+        })
+
+        it("should strip collision hash tags with suffix", () => {
+            const content = "file content here\n<tool_hash>abc123_2</tool_hash>"
+            expect(stripHashTags(content)).toBe("file content here\n")
+        })
+
+        it("should strip multiple collision hash tags", () => {
+            const content =
+                "content1\n<tool_hash>abc123</tool_hash>\ncontent2\n<message_hash>def456_3</message_hash>\ncontent3\n<reasoning_hash>789abc_15</reasoning_hash>"
+            expect(stripHashTags(content)).toBe("content1\n\ncontent2\n\ncontent3\n")
+        })
+
+        it("should strip hash tags with various collision suffixes", () => {
+            expect(stripHashTags("<tool_hash>abc123_2</tool_hash>")).toBe("")
+            expect(stripHashTags("<tool_hash>abc123_99</tool_hash>")).toBe("")
+            expect(stripHashTags("<message_hash>def456_100</message_hash>")).toBe("")
+        })
+
+        it("should not strip malformed hash tags", () => {
+            // Too short hash
+            expect(stripHashTags("<tool_hash>abc12</tool_hash>")).toBe(
+                "<tool_hash>abc12</tool_hash>",
+            )
+            // Invalid suffix format
+            expect(stripHashTags("<tool_hash>abc123_</tool_hash>")).toBe(
+                "<tool_hash>abc123_</tool_hash>",
+            )
+            // Non-numeric suffix
+            expect(stripHashTags("<tool_hash>abc123_x</tool_hash>")).toBe(
+                "<tool_hash>abc123_x</tool_hash>",
             )
         })
     })
