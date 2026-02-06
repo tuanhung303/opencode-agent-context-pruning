@@ -9,5 +9,6 @@ This file tracks all major tracks for the project. Each track has its own detail
 
 ---
 
-- [ ] **Track: Add pruneAll flag to context tool for bulk pruning operations**
-      _Link: [./conductor/tracks/context-tool-prune-all_20250203/](./conductor/tracks/context-tool-prune-all_20250203/)_
+## Completed Tracks
+
+All tracks have been completed and archived. Check `conductor/archive/` for historical track records.

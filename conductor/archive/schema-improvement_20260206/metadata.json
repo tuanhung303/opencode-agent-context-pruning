@@ -1,0 +1,8 @@
+{
+    "track_id": "schema-improvement_20260206",
+    "type": "chore",
+    "status": "new",
+    "created_at": "2026-02-06T00:00:00Z",
+    "updated_at": "2026-02-06T00:00:00Z",
+    "description": "Review and improve json schema of the plugin"
+}
