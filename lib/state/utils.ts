@@ -28,6 +28,7 @@ export function getPruneCache(state: SessionState): RuntimeCache {
             prunedToolIds: new Set(state.prune.toolIds),
             prunedMessagePartIds: new Set(state.prune.messagePartIds),
             prunedReasoningPartIds: new Set(state.prune.reasoningPartIds),
+            prunedSegmentIds: new Set(state.prune.segmentIds),
         }
     }
     return state._cache

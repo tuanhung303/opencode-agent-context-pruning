@@ -50,6 +50,7 @@ export function createSessionState(): SessionState {
             toolIds: [],
             messagePartIds: [],
             reasoningPartIds: [],
+            segmentIds: [],
         },
         stats: {
             pruneTokenCounter: 0,
@@ -91,6 +92,7 @@ export function createSessionState(): SessionState {
             reasoning: new Map(),
             reasoningPartIds: new Map(),
             fileParts: new Map(),
+            segments: new Map(),
         },
         discardHistory: [],
         cursors: {
@@ -225,6 +227,7 @@ export async function ensureSessionInitialized(
         toolIds: persisted.prune?.toolIds || [],
         messagePartIds: persisted.prune?.messagePartIds || [],
         reasoningPartIds: persisted.prune?.reasoningPartIds || [],
+        segmentIds: persisted.prune?.segmentIds || [],
     }
     state.stats = {
         pruneTokenCounter: persisted.stats?.pruneTokenCounter || 0,
