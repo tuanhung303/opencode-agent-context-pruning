@@ -843,6 +843,9 @@ export function stripAllHashTagsFromMessages(
                 }
             }
 
+            // DO NOT strip from tool outputs - LLM needs to see hashes for context tool
+            // The hashes in tool outputs are how the LLM knows what to prune
+
             // Strip hash tags from reasoning parts before UI display
             if (part.type === "reasoning" && typeof part.text === "string") {
                 const stripped = stripHashTags(part.text)
@@ -851,8 +854,6 @@ export function stripAllHashTagsFromMessages(
                     totalStripped++
                 }
             }
-
-            // NOTE: Tool outputs preserve hashes - LLM needs them for context tool
         }
     }
 
