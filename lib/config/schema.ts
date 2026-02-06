@@ -18,6 +18,7 @@ export const ToolSettingsSchema = z.object({
     protectedTools: z.array(z.string()).default([]),
     enableAssistantMessagePruning: z.boolean().default(true),
     enableReasoningPruning: z.boolean().default(true),
+    enableVisibleAssistantHashes: z.boolean().default(true),
 })
 
 export const TodoReminderSchema = z.object({
@@ -25,6 +26,7 @@ export const TodoReminderSchema = z.object({
     initialTurns: z.number().positive().default(8),
     repeatTurns: z.number().positive().default(4),
     stuckTaskTurns: z.number().positive().default(12),
+    maxContextTokens: z.number().positive().default(100000),
 })
 
 export const AutomataModeSchema = z.object({

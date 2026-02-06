@@ -53,6 +53,7 @@ export const DEFAULT_CONFIG: PluginConfig = {
             protectedTools: [...DEFAULT_PROTECTED_TOOLS],
             enableAssistantMessagePruning: true,
             enableReasoningPruning: true,
+            enableVisibleAssistantHashes: true,
         },
         discard: {
             enabled: true,
@@ -63,9 +64,10 @@ export const DEFAULT_CONFIG: PluginConfig = {
         },
         todoReminder: {
             enabled: true,
-            initialTurns: 8,
+            initialTurns: 5,
             repeatTurns: 4,
             stuckTaskTurns: 12,
+            maxContextTokens: 100000,
         },
         automataMode: {
             enabled: true,
