@@ -71,7 +71,7 @@ function createPrunedToolPlaceholder(toolName: string): string {
 // Hash tag names for trailing format
 const TOOL_HASH_TAG = "tool_hash"
 const MESSAGE_HASH_TAG = "message_hash"
-const THINKING_HASH_TAG = "thinking_hash"
+const REASONING_HASH_TAG = "reasoning_hash"
 
 /** Create trailing hash tag */
 const createHashTag = (tagName: string, hash: string): string =>
@@ -353,9 +353,13 @@ export const injectHashesIntoAssistantMessages = (
                 logger.debug(`Generated hash ${hash} for assistant text part ${partId}`)
             }
 
-            // Hash registered in registry - no injection into visible text
-            // Individual hash lookup works via registry
-            logger.debug(`Registered hash ${hash} for assistant text part (no injection)`)
+            // Inject hash tag if enabled (default: true)
+            if (config.tools?.settings?.enableVisibleAssistantHashes !== false) {
+                part.text = `${part.text}${createHashTag(MESSAGE_HASH_TAG, hash)}`
+                logger.debug(`Injected hash ${hash} into assistant text part`)
+            } else {
+                logger.debug(`Registered hash ${hash} for assistant text part (no injection)`)
+            }
         }
     }
 }
@@ -416,7 +420,7 @@ export const injectHashesIntoReasoningBlocks = (
             }
 
             // Skip if already has trailing hash tag
-            if (hasTrailingHashTag(part.text, THINKING_HASH_TAG)) {
+            if (hasTrailingHashTag(part.text, REASONING_HASH_TAG)) {
                 continue
             }
 
@@ -445,7 +449,7 @@ export const injectHashesIntoReasoningBlocks = (
             }
 
             // Append trailing hash tag
-            part.text = `${part.text}${createHashTag(THINKING_HASH_TAG, hash)}`
+            part.text = `${part.text}${createHashTag(REASONING_HASH_TAG, hash)}`
             logger.debug(`Injected hash ${hash} into reasoning part`)
         }
     }

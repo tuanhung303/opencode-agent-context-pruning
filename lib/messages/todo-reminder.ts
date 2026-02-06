@@ -3,16 +3,26 @@ import type { PluginConfig } from "../config"
 import type { Logger } from "../logger"
 import { isMessageCompacted } from "../shared-utils"
 import { groupHashesByToolName, formatHashInventory } from "./utils"
+import { calculateTotalContextTokens, rankPruningCandidates } from "../strategies/utils"
+
+/**
+ * Format token count for display (e.g., 1234 -> "1.2K", 12345 -> "12.3K")
+ */
+function formatTokens(tokens: number): string {
+    if (tokens < 1000) return String(tokens)
+    return `${(tokens / 1000).toFixed(1)}K`
+}
 
 const REMINDER_TEMPLATE = `::synth::
 ---
 ## 🔖 Checkpoint
-
+{context_pressure}
 I've noticed your todo list hasn't been updated for {turns} turns. Before continuing:
 
 ### 1. Reflect — What changed? Any new risks or blockers?
 ### 2. Update — Call \`todowrite\` to sync progress
 ### 3. Prune — Call \`context\` to discard/distill noise
+Use hash tags from outputs (\`<tool_hash>\`, \`<message_hash>\`, \`<reasoning_hash>\`) to target content.
 {prunable_hashes}{stuck_task_guidance}
 ---
 `
@@ -135,10 +145,32 @@ export function injectTodoReminder(
     // Remove any existing reminder messages first (ensure only one exists)
     removeTodoReminder(state, messages, logger)
 
-    // Generate prunable hashes section
-    const grouped = groupHashesByToolName(state)
-    const hashInventory = formatHashInventory(grouped)
-    const prunableSection = hashInventory ? `\n**Prunable Outputs:**\n${hashInventory}\n` : "\n"
+    // Calculate context pressure
+    const currentTokens = calculateTotalContextTokens(state, messages)
+    const maxTokens = config.tools.todoReminder.maxContextTokens ?? 100000 // Default 100K
+    const pressurePercent = Math.min(100, Math.round((currentTokens / maxTokens) * 100))
+    const contextPressure = `\n⚡ **Context: ${pressurePercent}%** (${formatTokens(currentTokens)}/${formatTokens(maxTokens)} tokens)\n`
+
+    // Generate ranked pruning suggestions with token estimates
+    const protectedTools = config.tools?.settings?.protectedTools ?? []
+    const candidates = rankPruningCandidates(state, messages, protectedTools, 5)
+
+    let prunableSection = "\n"
+    if (candidates.length > 0) {
+        const lines = candidates.map((c) => {
+            const target = c.target ? `(${c.target})` : ""
+            return `- ${c.toolName}${target}: \`${c.hash}\` (~${formatTokens(c.estimatedTokens)} tokens)`
+        })
+        const totalSavings = candidates.reduce((sum, c) => sum + c.estimatedTokens, 0)
+        prunableSection = `\n**Top Pruning Candidates** (potential savings: ~${formatTokens(totalSavings)} tokens):\n${lines.join("\n")}\n`
+    } else {
+        // Fallback to simple hash inventory if no ranked candidates
+        const grouped = groupHashesByToolName(state)
+        const hashInventory = formatHashInventory(grouped)
+        if (hashInventory) {
+            prunableSection = `\n**Prunable Outputs:**\n${hashInventory}\n`
+        }
+    }
 
     // Detect stuck tasks (in_progress for too long)
     const stuckTaskTurns = config.tools.todoReminder.stuckTaskTurns ?? 12
