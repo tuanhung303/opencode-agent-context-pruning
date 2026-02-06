@@ -648,3 +648,71 @@ export const prune = (
         }
     }
 }
+
+/**
+ * Regex for matching any *_hash XML tag pattern
+ * Matches: <anything_hash>xxxxxx</anything_hash>
+ */
+const HASH_TAG_REGEX = /<([a-zA-Z_][a-zA-Z0-9_]*)_hash>[a-f0-9]{6}<\/\1_hash>/gi
+
+/**
+ * Strip all *_hash tags from a string
+ */
+export function stripHashTags(content: string): string {
+    return content.replace(HASH_TAG_REGEX, "")
+}
+
+/**
+ * Strip all hash tags from all message parts before output
+ * Prevents hash tags from leaking to users or LLM
+ */
+export function stripAllHashTagsFromMessages(
+    messages: WithParts[],
+    _state: SessionState,
+    logger: Logger,
+): void {
+    let totalStripped = 0
+
+    for (const msg of messages) {
+        const parts = Array.isArray(msg.parts) ? msg.parts : []
+
+        for (const part of parts) {
+            if (!part) continue
+
+            // Strip from text parts
+            if (part.type === "text" && part.text) {
+                const original = part.text
+                part.text = stripHashTags(part.text)
+                if (part.text !== original) {
+                    totalStripped++
+                }
+            }
+
+            // Strip from tool outputs (only if completed)
+            if (
+                part.type === "tool" &&
+                part.state?.status === "completed" &&
+                (part.state as any).output
+            ) {
+                const original = (part.state as any).output
+                ;(part.state as any).output = stripHashTags((part.state as any).output)
+                if ((part.state as any).output !== original) {
+                    totalStripped++
+                }
+            }
+
+            // Strip from reasoning parts
+            if (part.type === "reasoning" && part.text) {
+                const original = part.text
+                part.text = stripHashTags(part.text)
+                if (part.text !== original) {
+                    totalStripped++
+                }
+            }
+        }
+    }
+
+    if (totalStripped > 0) {
+        logger.debug(`Stripped ${totalStripped} hash tag(s) from messages before output`)
+    }
+}
