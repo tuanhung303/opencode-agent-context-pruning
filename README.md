@@ -366,6 +366,46 @@ See [Validation Guide](docs/VALIDATION_GUIDE.md) for detailed test procedures.
 
 ---
 
+## 📋 Pruning Workflow
+
+Complete example: execute tool → find hash → prune.
+
+**Step 1: Run a tool**
+
+```typescript
+read({ filePath: "src/config.ts" })
+// Output includes: <tool_hash>a1b2c3</tool_hash>
+```
+
+**Step 2: Find the hash in output**
+
+```
+... file contents ...
+<tool_hash>a1b2c3</tool_hash>
+```
+
+**Step 3: Prune when no longer needed**
+
+```typescript
+context({ action: "discard", targets: [["a1b2c3"]] })
+// Response: 「 🗑️ discard ✓ 」- ⚙️ read
+// Available: Tools(5), Messages(2), Reasoning(1)
+```
+
+**Batch multiple targets:**
+
+```typescript
+context({ action: "discard", targets: [["a1b2c3"], ["d4e5f6"], ["g7h8i9"]] })
+```
+
+**Distill with summary:**
+
+```typescript
+context({ action: "distill", targets: [["abc123", "Auth: chose JWT over sessions"]] })
+```
+
+---
+
 ## 🏗️ Architecture Overview
 
 ```mermaid
