@@ -7,7 +7,7 @@ import type { PruneToolContext } from "./_types"
 import type { WithParts } from "../state"
 import { ensureSessionInitialized } from "../state"
 import { loadPrompt } from "../prompts"
-import { detectTargetType } from "../messages/utils"
+import { detectTargetType, resolveTargetDisplayName } from "../messages/utils"
 import { executeContextToolDiscard, executeContextMessageDiscard } from "./discard"
 import {
     executeContextToolDistill,
@@ -16,6 +16,52 @@ import {
 } from "./distill"
 
 const CONTEXT_TOOL_SPEC = loadPrompt("context-spec")
+
+/**
+ * Get hash inventory counts from state.
+ */
+function getHashInventory(state: PruneToolContext["state"]): {
+    tools: number
+    messages: number
+    reasoning: number
+    total: number
+} {
+    // Count unpruned hashes only
+    const prunedToolIds = new Set(state.prune.toolIds)
+    const prunedMessageIds = new Set(state.prune.messagePartIds)
+    const prunedReasoningIds = new Set(state.prune.reasoningPartIds)
+
+    let tools = 0
+    for (const [, callId] of state.hashRegistry.calls) {
+        if (!prunedToolIds.has(callId)) tools++
+    }
+
+    let messages = 0
+    for (const [, partId] of state.hashRegistry.messages) {
+        if (!prunedMessageIds.has(partId)) messages++
+    }
+
+    let reasoning = 0
+    for (const [, partId] of state.hashRegistry.reasoning) {
+        if (!prunedReasoningIds.has(partId)) reasoning++
+    }
+
+    return { tools, messages, reasoning, total: tools + messages + reasoning }
+}
+
+/**
+ * Format hash inventory for display.
+ */
+function formatInventoryLine(inventory: ReturnType<typeof getHashInventory>): string {
+    if (inventory.total === 0) {
+        return "Available: none"
+    }
+    const parts: string[] = []
+    if (inventory.tools > 0) parts.push(`Tools(${inventory.tools})`)
+    if (inventory.messages > 0) parts.push(`Messages(${inventory.messages})`)
+    if (inventory.reasoning > 0) parts.push(`Reasoning(${inventory.reasoning})`)
+    return `Available: ${parts.join(", ")}`
+}
 
 /**
  * Execute context operation (discard, distill) with unified interface.
@@ -35,8 +81,20 @@ export async function executeContext(
 
     if (!targets || targets.length === 0) {
         throw new Error(
-            `No targets provided. Provide an array of [target] or [target, summary] tuples.`,
+            `No targets provided. Provide an array of [hash] or [hash, summary] tuples.\n` +
+                `Hash format: exactly 6 hex characters (0-9, a-f), e.g., "a1b2c3"`,
         )
+    }
+
+    // Validate hash format before processing
+    for (const tuple of targets) {
+        const target = tuple[0]
+        if (!/^[a-f0-9]{6}$/i.test(target)) {
+            throw new Error(
+                `Invalid hash format: "${target}" (${target.length} chars).\n` +
+                    `Expected: exactly 6 hex characters (0-9, a-f), e.g., "a1b2c3"`,
+            )
+        }
     }
 
     const messagesResponse = await client.session.messages({
@@ -194,12 +252,44 @@ export async function executeContext(
     // Combine results
     const results = [toolResult, reasoningResult, messageResult].filter(Boolean)
 
+    // Get hash inventory for response
+    const inventory = getHashInventory(state)
+    const inventoryLine = formatInventoryLine(inventory)
+
     // Report invalid targets if any
     if (invalidTargets.length > 0) {
-        results.push(`Invalid targets (not found in registry): ${invalidTargets.join(", ")}`)
+        // Check if any were already pruned
+        const alreadyPruned: string[] = []
+        for (const target of invalidTargets) {
+            // Check discard history
+            const historyEntry = state.discardHistory.find((h) => h.hashes.includes(target))
+            if (historyEntry) {
+                const turnsAgo =
+                    state.currentTurn - Math.floor((Date.now() - historyEntry.timestamp) / 60000)
+                alreadyPruned.push(`${target} (pruned ~${Math.max(1, turnsAgo)} turns ago)`)
+            }
+        }
+
+        let errorMsg = `Hash(es) not found: ${invalidTargets.join(", ")}`
+        if (alreadyPruned.length > 0) {
+            errorMsg += `\nAlready pruned: ${alreadyPruned.join(", ")}`
+        }
+
+        // Add empty context guidance if no hashes available
+        if (inventory.total === 0) {
+            errorMsg += `\nNo content to prune yet. Run tools first (read, bash, glob, grep).`
+        } else {
+            errorMsg += `\n${inventoryLine}`
+        }
+        results.push(errorMsg)
     }
 
-    return results.join("\n") || `${action} completed: 0 items processed`
+    // Add inventory to successful responses
+    if (results.length > 0 && invalidTargets.length === 0) {
+        results.push(inventoryLine)
+    }
+
+    return results.join("\n") || `${action} completed: 0 items processed\n${inventoryLine}`
 }
 
 /**
