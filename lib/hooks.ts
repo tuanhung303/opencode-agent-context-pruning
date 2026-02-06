@@ -175,6 +175,12 @@ export function createChatMessageTransformHandler(
             "stripAllHashTagsFromMessages",
         )
 
+        // Reset pruning flags after display
+        if (state.lastToolPrune) {
+            state.lastToolPrune = false
+            state.lastPrunedContent = null
+        }
+
         logger.debug("Transform complete", {
             initialMessageCount,
             finalMessageCount: output.messages.length,

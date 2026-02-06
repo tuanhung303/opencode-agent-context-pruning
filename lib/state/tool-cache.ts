@@ -223,9 +223,86 @@ export async function syncToolCache(
                     continue
                 }
 
-                state.lastToolPrune =
-                    (part.tool === "discard" || part.tool === "distill") &&
-                    part.state.status === "completed"
+                // Track context tool completion and capture pruned content for status bar
+                // DEDUPLICATION: Only track if we haven't already tracked this call ID
+                if (part.tool === "context" && part.state?.status === "completed") {
+                    // Check if we've already processed this context call
+                    const alreadyProcessed =
+                        state.lastPrunedContent?.timestamp &&
+                        state.cursors.context.lastCallId === part.callID
+
+                    if (!alreadyProcessed) {
+                        state.lastToolPrune = true
+
+                        // Parse output to capture what was pruned BEFORE it gets superseded
+                        const output = (part.state as any).output || ""
+                        const prunedTools: string[] = []
+                        let prunedMessages = 0
+                        let prunedReasoning = 0
+
+                        // Try multiple parsing strategies for different output formats
+
+                        // Strategy 1: Parse "pruned: tool1, tool2, tool3..." format
+                        const prunedMatch = output.match(/pruned:\s*([^|]+)/i)
+                        if (prunedMatch) {
+                            const toolList = prunedMatch[1]
+                                .split(",")
+                                .map((t: string) => t.trim().replace(/\.\.$/, ""))
+                            for (const tool of toolList) {
+                                if (tool && tool.length > 0 && !tool.includes(" ")) {
+                                    prunedTools.push(tool)
+                                }
+                            }
+                        }
+
+                        // Strategy 2: Parse "⚙️ toolname" format (itemized details)
+                        if (prunedTools.length === 0) {
+                            const toolMatches = output.match(/⚙️\s*(\w+)/g)
+                            if (toolMatches) {
+                                for (const match of toolMatches) {
+                                    const toolName = match.replace(/⚙️\s*/, "").trim()
+                                    if (toolName) prunedTools.push(toolName)
+                                }
+                            }
+                        }
+
+                        // Count message prunes from output (💬 or "msg" in status)
+                        const msgMatch = output.match(/💬/g) || output.match(/(\d+)\s*msg/i)
+                        if (msgMatch) {
+                            if (Array.isArray(msgMatch) && msgMatch[0]?.includes("💬")) {
+                                prunedMessages = msgMatch.length
+                            } else if (msgMatch[1]) {
+                                prunedMessages = parseInt(msgMatch[1], 10) || 0
+                            }
+                        }
+
+                        // Count reasoning prunes from output (🧠 or "thinking" in status)
+                        const reasonMatch = output.match(/🧠/g) || output.match(/(\d+)\s*thinking/i)
+                        if (reasonMatch) {
+                            if (Array.isArray(reasonMatch) && reasonMatch[0]?.includes("🧠")) {
+                                prunedReasoning = reasonMatch.length
+                            } else if (reasonMatch[1]) {
+                                prunedReasoning = parseInt(reasonMatch[1], 10) || 0
+                            }
+                        }
+
+                        // Only store if something was actually pruned
+                        if (prunedTools.length > 0 || prunedMessages > 0 || prunedReasoning > 0) {
+                            state.lastPrunedContent = {
+                                tools: prunedTools,
+                                messages: prunedMessages,
+                                reasoning: prunedReasoning,
+                                timestamp: Date.now(),
+                            }
+                            logger.debug("Captured pruned content for status bar", {
+                                tools: prunedTools.length,
+                                messages: prunedMessages,
+                                reasoning: prunedReasoning,
+                                callId: part.callID,
+                            })
+                        }
+                    }
+                }
 
                 // Skip if already cached
                 if (state.toolParameters.has(part.callID)) {

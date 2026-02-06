@@ -665,7 +665,9 @@ export function stripHashTags(content: string): string {
 
 /**
  * Strip all hash tags from all message parts before output
- * Prevents hash tags from leaking to users or LLM
+ * NOTE: We intentionally DO NOT strip from tool outputs - the LLM needs to see
+ * hash tags to use the context tool for pruning. Only strip from text/reasoning
+ * parts that might leak to user-facing UI.
  */
 export function stripAllHashTagsFromMessages(
     messages: WithParts[],
@@ -680,7 +682,7 @@ export function stripAllHashTagsFromMessages(
         for (const part of parts) {
             if (!part) continue
 
-            // Strip from text parts
+            // Strip from text parts (user-facing)
             if (part.type === "text" && part.text) {
                 const original = part.text
                 part.text = stripHashTags(part.text)
@@ -689,20 +691,10 @@ export function stripAllHashTagsFromMessages(
                 }
             }
 
-            // Strip from tool outputs (only if completed)
-            if (
-                part.type === "tool" &&
-                part.state?.status === "completed" &&
-                (part.state as any).output
-            ) {
-                const original = (part.state as any).output
-                ;(part.state as any).output = stripHashTags((part.state as any).output)
-                if ((part.state as any).output !== original) {
-                    totalStripped++
-                }
-            }
+            // DO NOT strip from tool outputs - LLM needs to see hashes for context tool
+            // The hashes in tool outputs are how the LLM knows what to prune
 
-            // Strip from reasoning parts
+            // Strip from reasoning parts (user-facing in some UIs)
             if (part.type === "reasoning" && part.text) {
                 const original = part.text
                 part.text = stripHashTags(part.text)
@@ -714,6 +706,6 @@ export function stripAllHashTagsFromMessages(
     }
 
     if (totalStripped > 0) {
-        logger.debug(`Stripped ${totalStripped} hash tag(s) from messages before output`)
+        logger.debug(`Stripped ${totalStripped} hash tag(s) from text/reasoning parts`)
     }
 }
