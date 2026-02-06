@@ -99,9 +99,9 @@ describe("Context Discoverability (t44-t52)", () => {
                 mockToolCtx,
             )
 
-            // Response shows no valid hashes and available inventory
-            expect(result).toContain("No valid tool hashes to discard")
-            expect(result).toContain("Available: none")
+            // Response shows no valid hashes and guidance to run tools first
+            expect(result).toContain("Hash(es) not found")
+            expect(result).toContain("No content to prune yet")
         })
 
         it("shows available inventory when hashes exist but target not found", async () => {
@@ -114,7 +114,7 @@ describe("Context Discoverability (t44-t52)", () => {
             )
 
             // Response shows no valid hashes but lists available inventory
-            expect(result).toContain("No valid tool hashes to discard")
+            expect(result).toContain("Hash(es) not found")
             expect(result).toContain("Available:")
             expect(result).toContain("Tools(2)")
         })

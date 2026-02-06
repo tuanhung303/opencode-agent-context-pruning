@@ -250,6 +250,6 @@ describe("Unified Context Tool Integration", () => {
             mockToolCtx,
         )
 
-        expect(result).toContain("No valid tool hashes to discard")
+        expect(result).toContain("Hash(es) not found")
     })
 })
