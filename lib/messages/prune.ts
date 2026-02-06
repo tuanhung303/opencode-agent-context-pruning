@@ -373,8 +373,11 @@ function generateReasoningPartHash(content: string): string {
 }
 
 /**
- * Injects hash identifiers into reasoning blocks for hash-based discarding.
- * Format: xxxxxx\n<original reasoning> (6 hex chars from SHA256, no prefix)
+ * Injects hash identifiers for reasoning blocks into VISIBLE text parts.
+ * Hash is appended to the first text part of the message (agent's visible response).
+ *
+ * CRITICAL: Hash must be in text part (visible to agent), NOT inside reasoning part.
+ * Reasoning content is hidden from agent view, so hashes inside it are invisible.
  *
  * This allows agents to discard their own thinking/reasoning blocks when they're
  * no longer needed, saving significant tokens in long conversations.
@@ -407,6 +410,9 @@ export const injectHashesIntoReasoningBlocks = (
 
         const messageId = msg.info.id
         const parts = Array.isArray(msg.parts) ? msg.parts : []
+
+        // Collect all reasoning hashes for this message
+        const reasoningHashes: string[] = []
 
         for (let partIndex = 0; partIndex < parts.length; partIndex++) {
             const part = parts[partIndex]
@@ -443,14 +449,35 @@ export const injectHashesIntoReasoningBlocks = (
                 logger.debug(`Generated hash ${hash} for reasoning part ${partId}`)
             }
 
-            // Skip if this specific hash is already in the content
-            if (hasHashTag(part.text, REASONING_HASH_TAG, hash)) {
-                continue
-            }
+            reasoningHashes.push(hash)
+        }
 
-            // Append trailing hash tag
-            part.text = `${part.text}${createHashTag(REASONING_HASH_TAG, hash)}`
-            logger.debug(`Injected hash ${hash} into reasoning part`)
+        // If we have reasoning hashes, inject them into the first text part (visible to agent)
+        if (reasoningHashes.length > 0) {
+            const firstTextPart = parts.find(
+                (p): p is Part & { type: "text"; text: string } =>
+                    p?.type === "text" && typeof p.text === "string",
+            )
+
+            if (firstTextPart) {
+                // Check which hashes are not already in the text
+                const hashesToInject = reasoningHashes.filter(
+                    (hash) => !hasHashTag(firstTextPart.text, REASONING_HASH_TAG, hash),
+                )
+
+                if (hashesToInject.length > 0) {
+                    // Append all reasoning hashes at the end of the text part
+                    const hashTags = hashesToInject
+                        .map((hash) => createHashTag(REASONING_HASH_TAG, hash))
+                        .join("")
+                    firstTextPart.text = `${firstTextPart.text}${hashTags}`
+                    logger.debug(
+                        `Injected ${hashesToInject.length} reasoning hash(es) into text part (visible to agent)`,
+                    )
+                }
+            } else {
+                logger.debug(`No text part found for reasoning hashes in message ${messageId}`)
+            }
         }
     }
 }
@@ -682,7 +709,9 @@ export function stripAllHashTagsFromMessages(
         for (const part of parts) {
             if (!part) continue
 
-            // Strip from text parts (user-facing)
+            // DO NOT strip from text/reasoning parts - Agent needs to see hashes for pruning
+            // The hashes are how the Agent knows what to discard or distill
+            /* 
             if (part.type === "text" && part.text) {
                 const original = part.text
                 part.text = stripHashTags(part.text)
@@ -690,11 +719,13 @@ export function stripAllHashTagsFromMessages(
                     totalStripped++
                 }
             }
+            */
 
             // DO NOT strip from tool outputs - LLM needs to see hashes for context tool
             // The hashes in tool outputs are how the LLM knows what to prune
 
             // Strip from reasoning parts (user-facing in some UIs)
+            /*
             if (part.type === "reasoning" && part.text) {
                 const original = part.text
                 part.text = stripHashTags(part.text)
@@ -702,6 +733,7 @@ export function stripAllHashTagsFromMessages(
                     totalStripped++
                 }
             }
+            */
         }
     }
 
