@@ -80,8 +80,8 @@ test-all: test test-e2e
 test-llm: link
 	@echo "🤖 Running real LLM validation tests..."
 	@echo "⚠️  This will make actual API calls and incur costs!"
-	RUN_LLM_TESTS=true npm test -- tests/llm/ --run
-	@echo "✅ LLM validation tests passed!"
+	opencode run --continue "Run validation tests from docs/VALIDATION_GUIDE.md. Execute t1-t6 (core operations), t11-t12 (error handling), t13-t20 (auto-supersede), t21-t25 (stuck task), t26-t28 (reminders), t29-t32 (thinking blocks), t33-t41 (aggressive pruning). Report final pass/fail summary."
+	@echo "✅ LLM validation tests completed!"
 
 # Run only LLM infrastructure tests (no API calls)
 test-llm-infra: link

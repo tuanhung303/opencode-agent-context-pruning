@@ -15,14 +15,22 @@
 
 ## Testing Commands
 
-| Command                              | What it does                                                                   |
-| ------------------------------------ | ------------------------------------------------------------------------------ |
-| `npm run test`                       | Run all automated tests (vitest) — fast, CI-friendly                           |
-| `npm test -- tests/e2e/`             | Run E2E tests only — covers VALIDATION_GUIDE scenarios t1-t43                  |
-| `make test-e2e`                      | Run E2E tests with XDG isolation                                               |
-| `make integration-test`              | Full integration test with opencode CLI                                        |
-| "validation tests" / "run checklist" | Execute VALIDATION_GUIDE.md manually — interactive, tests real plugin behavior |
-| "integration test"                   | Execute full E2E test flow (see below)                                         |
+| Command                  | What it does                                                  |
+| ------------------------ | ------------------------------------------------------------- |
+| `npm run test`           | Run all automated tests (vitest) — fast, CI-friendly          |
+| `npm test -- tests/e2e/` | Run E2E tests only — covers VALIDATION_GUIDE scenarios t1-t43 |
+| `make test-e2e`          | Run E2E tests with XDG isolation                              |
+| `make test-llm`          | Run real LLM validation via opencode CLI (incurs API costs)   |
+| `make test-llm-infra`    | Run LLM infrastructure tests only (no API calls)              |
+
+## Trigger Phrases
+
+| User Says                            | Agent Action                                                      |
+| ------------------------------------ | ----------------------------------------------------------------- |
+| "integration test"                   | Run `make test-llm` — executes validation via real opencode + LLM |
+| "validation tests" / "run checklist" | Run `make test-llm` — same as above                               |
+| "unit tests" / "run tests"           | Run `npm test` — fast vitest suite                                |
+| "e2e tests"                          | Run `npm test -- tests/e2e/` — E2E vitest suite                   |
 
 ## E2E Test Coverage (maps to VALIDATION_GUIDE.md)
 
