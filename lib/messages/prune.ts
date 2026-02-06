@@ -5,6 +5,7 @@ import type { PluginConfig } from "../config"
 import { isMessageCompacted, isMessageCompleted } from "../shared-utils"
 import { generatePartHash } from "../utils/hash"
 import { getPruneCache } from "../state/utils"
+import { findInternalTags } from "./utils"
 
 /**
  * Filter out step-start and step-finish parts from messages.
@@ -324,6 +325,9 @@ export const injectHashesIntoAssistantMessages = (
                 continue
             }
 
+            // Strip existing hash tags before processing to ensure idempotency and stable offsets
+            part.text = stripHashTags(part.text)
+
             const partId = `${messageId}:${partIndex}`
 
             // Skip if already pruned
@@ -338,7 +342,12 @@ export const injectHashesIntoAssistantMessages = (
                 const baseHash = generateMessagePartHash(part.text)
                 let finalHash = baseHash
                 let seq = 2
-                while (state.hashRegistry.messages.has(finalHash)) {
+                while (
+                    state.hashRegistry.calls.has(finalHash) ||
+                    state.hashRegistry.messages.has(finalHash) ||
+                    state.hashRegistry.reasoning.has(finalHash) ||
+                    state.hashRegistry.segments.has(finalHash)
+                ) {
                     finalHash = `${baseHash}_${seq}`
                     seq++
                 }
@@ -348,13 +357,51 @@ export const injectHashesIntoAssistantMessages = (
                 logger.debug(`Generated hash ${hash} for assistant text part ${partId}`)
             }
 
-            // Skip if this specific hash is already in the content
-            if (hasHashTag(part.text, MESSAGE_HASH_TAG, hash)) {
-                continue
-            }
-
             // Inject hash tag if enabled (default: true)
             if (config.tools?.settings?.enableVisibleAssistantHashes !== false) {
+                // Handle internal tag segments first
+                const internalTags = findInternalTags(part.text)
+                if (internalTags.length > 0) {
+                    let newText = part.text
+                    let offsetShift = 0
+
+                    for (const tag of internalTags) {
+                        const segmentId = `${partId}:segment:${tag.tagName}:${tag.start}`
+                        let segmentHash = state.hashRegistry.segments.get(segmentId)
+
+                        if (!segmentHash) {
+                            const baseHash = generatePartHash(tag.content)
+                            let finalHash = baseHash
+                            let seq = 2
+                            while (
+                                state.hashRegistry.calls.has(finalHash) ||
+                                state.hashRegistry.messages.has(finalHash) ||
+                                state.hashRegistry.reasoning.has(finalHash) ||
+                                state.hashRegistry.segments.has(finalHash)
+                            ) {
+                                finalHash = `${baseHash}_${seq}`
+                                seq++
+                            }
+                            segmentHash = finalHash
+                            // Map hash to the specific location for pruning
+                            const location = `${partId}:${tag.tagName}:${tag.start}:${tag.end}`
+                            state.hashRegistry.segments.set(segmentHash, location)
+                            // Backward mapping for idempotency check
+                            state.hashRegistry.segments.set(segmentId, segmentHash)
+                            logger.debug(`Generated hash ${segmentHash} for segment ${segmentId}`)
+                        }
+
+                        const hashTag = `<${tag.tagName}_hash>${segmentHash}</${tag.tagName}_hash>`
+                        const injectionPoint = tag.end + offsetShift
+                        newText =
+                            newText.slice(0, injectionPoint) +
+                            hashTag +
+                            newText.slice(injectionPoint)
+                        offsetShift += hashTag.length
+                    }
+                    part.text = newText
+                }
+
                 part.text = `${part.text}${createHashTag(MESSAGE_HASH_TAG, hash)}`
                 logger.debug(`Injected hash ${hash} into assistant text part`)
             } else {
@@ -439,7 +486,12 @@ export const injectHashesIntoReasoningBlocks = (
                 const baseHash = generateReasoningPartHash(part.text)
                 let finalHash = baseHash
                 let seq = 2
-                while (state.hashRegistry.reasoning.has(finalHash)) {
+                while (
+                    state.hashRegistry.calls.has(finalHash) ||
+                    state.hashRegistry.messages.has(finalHash) ||
+                    state.hashRegistry.reasoning.has(finalHash) ||
+                    state.hashRegistry.segments.has(finalHash)
+                ) {
                     finalHash = `${baseHash}_${seq}`
                     seq++
                 }
@@ -586,13 +638,15 @@ export const prune = (
     messages: WithParts[],
 ): void => {
     // Use cached Sets for O(1) lookup
-    const { prunedToolIds, prunedMessagePartIds, prunedReasoningPartIds } = getPruneCache(state)
+    const { prunedToolIds, prunedMessagePartIds, prunedReasoningPartIds, prunedSegmentIds } =
+        getPruneCache(state)
 
     // Early exit if nothing to prune
     if (
         prunedToolIds.size === 0 &&
         prunedMessagePartIds.size === 0 &&
-        prunedReasoningPartIds.size === 0
+        prunedReasoningPartIds.size === 0 &&
+        prunedSegmentIds.size === 0
     ) {
         return
     }
@@ -639,12 +693,82 @@ export const prune = (
             }
 
             // Handle assistant text parts - keep preview for traceability
-            if (isAssistant && part.type === "text" && prunedMessagePartIds.size > 0) {
+            if (isAssistant && part.type === "text") {
                 const partId = `${messageId}:${partIndex}`
+
+                // 1. Handle full part pruning
                 if (prunedMessagePartIds.has(partId)) {
                     const originalText = part.text || ""
                     part.text = createPrunedPlaceholder(originalText)
                     logger.debug(`Pruned assistant message part ${partId}`)
+                    continue
+                }
+
+                // 2. Handle segment-level pruning (if not full part pruned)
+                if (prunedSegmentIds.size > 0) {
+                    let text = part.text || ""
+
+                    // Scan for all segment hash tags in the text
+                    const segmentHashMatches = Array.from(
+                        text.matchAll(
+                            /<([a-zA-Z0-9_]+)_hash>([a-f0-9]{6}(?:_\d+)?)<\/(\1)_hash>/gi,
+                        ),
+                    )
+
+                    if (segmentHashMatches.length > 0) {
+                        // Process in reverse order to keep offsets valid
+                        for (let i = segmentHashMatches.length - 1; i >= 0; i--) {
+                            const match = segmentHashMatches[i]
+                            if (!match || match.index === undefined) continue
+
+                            const tagName = match[1]
+                            const segmentHash = match[2]
+                            const fullHashTag = match[0]
+                            const hashTagIndex = match.index
+
+                            if (
+                                tagName &&
+                                segmentHash &&
+                                fullHashTag &&
+                                prunedSegmentIds.has(segmentHash)
+                            ) {
+                                // Find the preceding tag of the same type
+                                const closingTag = `</${tagName}>`
+                                const closingTagIndex = text.lastIndexOf(closingTag, hashTagIndex)
+
+                                if (
+                                    closingTagIndex !== -1 &&
+                                    closingTagIndex + closingTag.length === hashTagIndex
+                                ) {
+                                    const openingTag = `<${tagName}>`
+                                    const openingTagIndex = text.lastIndexOf(
+                                        openingTag,
+                                        closingTagIndex,
+                                    )
+
+                                    if (openingTagIndex !== -1) {
+                                        // Found the full segment: openingTag...closingTag + hashTag
+                                        const segmentContent = text.substring(
+                                            openingTagIndex + openingTag.length,
+                                            closingTagIndex,
+                                        )
+                                        const placeholder = `[${tagName} pruned: ${segmentContent
+                                            .trim()
+                                            .substring(0, 10)}...]`
+
+                                        text =
+                                            text.slice(0, openingTagIndex) +
+                                            placeholder +
+                                            text.slice(hashTagIndex + fullHashTag.length)
+                                        logger.debug(
+                                            `Pruned segment ${segmentHash} from part ${partId}`,
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                        part.text = text
+                    }
                 }
             }
 
@@ -679,9 +803,10 @@ export const prune = (
 /**
  * Regex for matching any *_hash XML tag pattern
  * Matches: <anything_hash>xxxxxx</anything_hash> or <anything_hash>xxxxxx_N</anything_hash>
+ * Supports optional preceding newline.
  * Supports collision suffix (_2, _3, etc.) for hash deduplication
  */
-const HASH_TAG_REGEX = /<([a-zA-Z_][a-zA-Z0-9_]*)_hash>[a-f0-9]{6}(?:_\d+)?<\/\1_hash>/gi
+const HASH_TAG_REGEX = /\n?<([a-zA-Z_][a-zA-Z0-9_]*)_hash>[a-f0-9]{6}(?:_\d+)?<\/\1_hash>/gi
 
 /**
  * Strip all *_hash tags from a string
@@ -711,29 +836,9 @@ export function stripAllHashTagsFromMessages(
 
             // DO NOT strip from text/reasoning parts - Agent needs to see hashes for pruning
             // The hashes are how the Agent knows what to discard or distill
-            /* 
-            if (part.type === "text" && part.text) {
-                const original = part.text
-                part.text = stripHashTags(part.text)
-                if (part.text !== original) {
-                    totalStripped++
-                }
-            }
-            */
 
             // DO NOT strip from tool outputs - LLM needs to see hashes for context tool
             // The hashes in tool outputs are how the LLM knows what to prune
-
-            // Strip from reasoning parts (user-facing in some UIs)
-            /*
-            if (part.type === "reasoning" && part.text) {
-                const original = part.text
-                part.text = stripHashTags(part.text)
-                if (part.text !== original) {
-                    totalStripped++
-                }
-            }
-            */
         }
     }
 

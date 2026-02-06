@@ -46,6 +46,7 @@ export interface Prune {
     toolIds: string[]
     messagePartIds: string[] // "msgId:partIndex" format for assistant text parts
     reasoningPartIds: string[] // "msgId:partIndex" format for reasoning parts
+    segmentIds: string[] // List of pruned segment hashes
 }
 
 export interface LastDiscardStats {
@@ -80,6 +81,7 @@ export interface RuntimeCache {
     prunedToolIds: Set<string>
     prunedMessagePartIds: Set<string>
     prunedReasoningPartIds: Set<string>
+    prunedSegmentIds: Set<string>
 }
 
 export interface SessionState {
@@ -112,6 +114,7 @@ export interface SessionState {
         reasoning: Map<string, string>
         reasoningPartIds: Map<string, string>
         fileParts: Map<string, string>
+        segments: Map<string, string>
     }
     discardHistory: DiscardStats[]
 

@@ -4,11 +4,14 @@ import type { SessionState } from "./types"
  * Generic hash entry supporting any *_hash type
  */
 export interface HashEntry {
-    type: string // "tool", "message", "reasoning", "thinking", etc.
+    type: string // "tool", "message", "reasoning", "thinking", "segment", etc.
     hash: string // 6-char hex value
     id: string // call_xxx or msg_xxx:part
     toolName?: string // For tool_hash: "read", "bash", "glob"
     preview: string // First 15 chars of content for display
+    start?: number // For segments: start offset
+    end?: number // For segments: end offset
+    tagName?: string // For segments: name of the tag
 }
 
 /**
@@ -90,6 +93,16 @@ export class UnifiedHashRegistry {
         return result
     }
 
+    get segments(): Map<string, string> {
+        const result = new Map<string, string>()
+        for (const [hash, entry] of this.entries) {
+            if (entry.type === "segment" || entry.type.endsWith("_segment")) {
+                result.set(hash, entry.id)
+            }
+        }
+        return result
+    }
+
     get fileParts(): Map<string, string> {
         // Keep for backward compatibility - not used in new system
         return new Map()
@@ -146,6 +159,8 @@ export class UnifiedHashRegistry {
             case "thinking":
             case "thinking_hash":
                 return "🧠"
+            case "segment":
+                return "✂"
             default:
                 return "☯" // Generic/unclassified
         }

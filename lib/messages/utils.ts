@@ -541,3 +541,53 @@ export function formatHashInventory(grouped: Record<string, string[]>): string {
 
     return lines.join("\n")
 }
+
+/**
+ * Result of internal tag detection
+ */
+export interface DetectedTag {
+    tagName: string
+    content: string
+    start: number
+    end: number
+}
+
+/**
+ * Find internal XML-like tags in content for segment-level hashing.
+ * Matches <tag>...</tag> patterns, excluding standard *_hash tags.
+ */
+export function findInternalTags(content: string): DetectedTag[] {
+    const results: DetectedTag[] = []
+    // Match <tag>...</tag> where tag is NOT *_hash
+    // Use non-greedy match for content to avoid capturing multiple tags as one
+    const tagRegex = /<([a-zA-Z][a-zA-Z0-9_]*)>(.*?)<\/\1>/gs
+
+    for (const match of content.matchAll(tagRegex)) {
+        const tagName = match[1]
+        const tagContent = match[2]
+
+        if (!tagName || tagContent === undefined) {
+            continue
+        }
+
+        // Skip standard *_hash tags and common structural tags
+        if (
+            tagName.endsWith("_hash") ||
+            tagName === "message" ||
+            tagName === "part" ||
+            tagName === "tool" ||
+            tagName === "thought" // Already handled by reasoning blocks in many cases
+        ) {
+            continue
+        }
+
+        results.push({
+            tagName,
+            content: tagContent,
+            start: match.index!,
+            end: match.index! + match[0].length,
+        })
+    }
+
+    return results
+}
