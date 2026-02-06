@@ -806,7 +806,7 @@ export const prune = (
  * Supports optional preceding newline.
  * Supports collision suffix (_2, _3, etc.) for hash deduplication
  */
-const HASH_TAG_REGEX = /\n?<([a-zA-Z_][a-zA-Z0-9_]*)_hash>[a-f0-9]{6}(?:_\d+)?<\/\1_hash>/gi
+const HASH_TAG_REGEX = /<([a-zA-Z_][a-zA-Z0-9_]*)_hash>[a-f0-9]{6}(?:_\d+)?<\/\1_hash>/gi
 
 /**
  * Strip all *_hash tags from a string
@@ -834,11 +834,25 @@ export function stripAllHashTagsFromMessages(
         for (const part of parts) {
             if (!part) continue
 
-            // DO NOT strip from text/reasoning parts - Agent needs to see hashes for pruning
-            // The hashes are how the Agent knows what to discard or distill
+            // Strip hash tags from text parts before UI display
+            if (part.type === "text" && typeof part.text === "string") {
+                const stripped = stripHashTags(part.text)
+                if (stripped !== part.text) {
+                    part.text = stripped
+                    totalStripped++
+                }
+            }
 
-            // DO NOT strip from tool outputs - LLM needs to see hashes for context tool
-            // The hashes in tool outputs are how the LLM knows what to prune
+            // Strip hash tags from reasoning parts before UI display
+            if (part.type === "reasoning" && typeof part.text === "string") {
+                const stripped = stripHashTags(part.text)
+                if (stripped !== part.text) {
+                    part.text = stripped
+                    totalStripped++
+                }
+            }
+
+            // NOTE: Tool outputs preserve hashes - LLM needs them for context tool
         }
     }
 
