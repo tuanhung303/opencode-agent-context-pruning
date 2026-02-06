@@ -95,6 +95,14 @@ export interface SessionState {
     lastDiscardStats: LastDiscardStats | null
     lastUserMessageId: string | null
 
+    // Last pruned content for status bar display (survives superseding)
+    lastPrunedContent: {
+        tools: string[]
+        messages: number
+        reasoning: number
+        timestamp: number
+    } | null
+
     // Hash-based discard system
     hashRegistry: {
         calls: Map<string, string>

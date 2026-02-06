@@ -82,6 +82,7 @@ export function createSessionState(): SessionState {
         currentTurn: 0,
         lastDiscardStats: null,
         lastUserMessageId: null,
+        lastPrunedContent: null,
         hashRegistry: {
             calls: new Map(),
             callIds: new Map(),
