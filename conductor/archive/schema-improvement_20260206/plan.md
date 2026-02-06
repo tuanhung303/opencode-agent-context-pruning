@@ -1,6 +1,7 @@
 # Plan: JSON Schema and Zod Definition Improvement
 
 ## Phase 1: Audit and Analysis
+
 - [ ] Task: Audit Configuration Codebase
     - [ ] Scan `lib/config/` and `defaultConfig` to list all active configuration options.
     - [ ] Identify `prune_behavior` and `aggressive_pruning` settings specifically.
@@ -11,6 +12,7 @@
 - [ ] Task: Conductor - User Manual Verification 'Audit and Analysis' (Protocol in workflow.md)
 
 ## Phase 2: Schema Synchronization
+
 - [ ] Task: Update Zod Definitions
     - [ ] Write/Update unit tests for config validation to cover new fields (TDD).
     - [ ] Add missing fields to the Zod schema in `lib/config/`.
@@ -22,6 +24,7 @@
 - [ ] Task: Conductor - User Manual Verification 'Schema Synchronization' (Protocol in workflow.md)
 
 ## Phase 3: Verification
+
 - [ ] Task: Verify Integrity
     - [ ] Run `npm run test` to ensure configuration loading works correctly.
     - [ ] Run `npm run typecheck` to ensure type definitions are consistent.
