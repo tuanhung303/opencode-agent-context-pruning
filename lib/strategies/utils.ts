@@ -82,6 +82,138 @@ function estimateTokensBatch(texts: string[]): number[] {
     return texts.map(countTokens)
 }
 
+/**
+ * Estimate tokens for a specific tool output by callId.
+ * Returns estimated token count using ~4 chars per token heuristic.
+ */
+export function estimateTokensForItem(
+    state: SessionState,
+    messages: WithParts[],
+    callId: string,
+): { callId: string; toolName: string; estimatedTokens: number; target?: string } | null {
+    for (const msg of messages) {
+        if (isMessageCompacted(state, msg)) continue
+        const parts = Array.isArray(msg.parts) ? msg.parts : []
+        for (const part of parts) {
+            if (part.type !== "tool" || part.callID !== callId) continue
+
+            let content = ""
+            let target: string | undefined
+
+            if (part.state.status === "completed" && part.state.output) {
+                content =
+                    typeof part.state.output === "string"
+                        ? part.state.output
+                        : JSON.stringify(part.state.output)
+            } else if (part.state.status === "error" && part.state.error) {
+                content =
+                    typeof part.state.error === "string"
+                        ? part.state.error
+                        : JSON.stringify(part.state.error)
+            }
+
+            // Extract target (file path, pattern, etc.) for display
+            const input = part.state.input as Record<string, unknown> | undefined
+            if (input) {
+                target =
+                    (input.filePath as string) ||
+                    (input.pattern as string) ||
+                    (input.command as string) ||
+                    (input.url as string) ||
+                    (input.query as string)
+                if (target && target.length > 30) {
+                    target = target.slice(0, 27) + "..."
+                }
+            }
+
+            return {
+                callId,
+                toolName: part.tool,
+                estimatedTokens: countTokens(content),
+                target,
+            }
+        }
+    }
+    return null
+}
+
+/**
+ * Rank pruning candidates by estimated token savings.
+ * Returns top N items sorted by tokens descending, excluding protected tools.
+ */
+export function rankPruningCandidates(
+    state: SessionState,
+    messages: WithParts[],
+    protectedTools: string[],
+    limit: number = 5,
+): Array<{
+    callId: string
+    hash: string
+    toolName: string
+    estimatedTokens: number
+    target?: string
+}> {
+    const candidates: Array<{
+        callId: string
+        hash: string
+        toolName: string
+        estimatedTokens: number
+        target?: string
+    }> = []
+
+    // Get all unpruned tool callIds with their hashes
+    for (const [callId, hash] of state.hashRegistry.callIds) {
+        // Skip already pruned
+        if (state.prune.toolIds.includes(callId)) continue
+
+        const estimate = estimateTokensForItem(state, messages, callId)
+        if (!estimate) continue
+
+        // Skip protected tools
+        if (protectedTools.includes(estimate.toolName)) continue
+
+        // Skip small outputs (< 100 tokens)
+        if (estimate.estimatedTokens < 100) continue
+
+        candidates.push({
+            callId,
+            hash,
+            toolName: estimate.toolName,
+            estimatedTokens: estimate.estimatedTokens,
+            target: estimate.target,
+        })
+    }
+
+    // Sort by tokens descending and take top N
+    return candidates.sort((a, b) => b.estimatedTokens - a.estimatedTokens).slice(0, limit)
+}
+
+/**
+ * Calculate total tokens in current context.
+ * Used for context pressure indicator.
+ */
+export function calculateTotalContextTokens(state: SessionState, messages: WithParts[]): number {
+    let total = 0
+    for (const msg of messages) {
+        if (isMessageCompacted(state, msg)) continue
+        const parts = Array.isArray(msg.parts) ? msg.parts : []
+        for (const part of parts) {
+            if (part.type === "text" && part.text) {
+                total += countTokens(part.text)
+            } else if (part.type === "tool" && part.state?.status === "completed") {
+                const output = (part.state as { output?: unknown }).output
+                if (output) {
+                    const content = typeof output === "string" ? output : JSON.stringify(output)
+                    total += countTokens(content)
+                }
+            } else if (part.type === "reasoning" && part.text) {
+                total += countTokens(part.text)
+            }
+        }
+    }
+    return total
+}
+
 export const calculateTokensSaved = (
     state: SessionState,
     messages: WithParts[],

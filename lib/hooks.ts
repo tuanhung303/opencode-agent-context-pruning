@@ -21,6 +21,7 @@ import { handleHelpCommand } from "./commands/help"
 import { handleSweepCommand } from "./commands/sweep"
 import { handleProtectedCommand } from "./commands/protected"
 import { handleBudgetCommand } from "./commands/budget"
+import { handleSuggestCommand } from "./commands/suggest"
 import { safeExecute } from "./safe-execute"
 import { sendUnifiedNotification } from "./ui/notification"
 import { getCurrentParams } from "./strategies/utils"
@@ -252,6 +253,19 @@ export function createCommandExecuteHandler(
                     messages,
                 })
                 throw new Error("__ACP_BUDGET_HANDLED__")
+            }
+
+            if (subcommand === "suggest") {
+                await handleSuggestCommand({
+                    client,
+                    state,
+                    logger,
+                    config,
+                    sessionId: input.sessionID,
+                    messages,
+                    args: _subArgs,
+                })
+                throw new Error("__ACP_SUGGEST_HANDLED__")
             }
 
             await handleHelpCommand({
