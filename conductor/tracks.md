@@ -11,3 +11,8 @@ This file tracks all major tracks for the project. Each track has its own detail
 
 - [ ] **Track: Add pruneAll flag to context tool for bulk pruning operations**
       _Link: [./conductor/tracks/context-tool-prune-all_20250203/](./conductor/tracks/context-tool-prune-all_20250203/)_
+
+---
+
+- [~] **Track: Review and improve json schema of the plugin**
+  _Link: [./conductor/tracks/schema-improvement_20260206/](./conductor/tracks/schema-improvement_20260206/)_

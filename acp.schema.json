@@ -13,23 +13,18 @@
         "enabled": {
             "type": "boolean",
             "default": true,
-            "description": "Enable or disable the ACP plugin"
+            "description": "Enable or disable the ACP plugin entirely"
         },
         "debug": {
             "type": "boolean",
             "default": false,
-            "description": "Enable debug logging"
+            "description": "Enable debug logging for troubleshooting"
         },
         "pruneNotification": {
             "type": "string",
             "enum": ["off", "minimal", "detailed"],
             "default": "minimal",
-            "description": "Level of notification shown when pruning occurs"
-        },
-        "autoPruneAfterTool": {
-            "type": "boolean",
-            "default": false,
-            "description": "Automatically run pruning after each tool execution"
+            "description": "Level of notification shown when pruning occurs: off (silent), minimal (summary), detailed (verbose)"
         },
         "commands": {
             "type": "object",
@@ -39,36 +34,26 @@
                 "enabled": {
                     "type": "boolean",
                     "default": true,
-                    "description": "Enable ACP slash commands (/acp)"
+                    "description": "Enable ACP slash commands (/acp) for manual pruning control"
                 },
                 "protectedTools": {
                     "type": "array",
                     "items": {
                         "type": "string"
                     },
-                    "default": [],
-                    "description": "Additional tool names to protect from pruning via commands (e.g., /acp sweep)"
-                }
-            },
-            "default": {
-                "enabled": true,
-                "protectedTools": []
-            }
-        },
-        "turnProtection": {
-            "type": "object",
-            "description": "Protect recent tool outputs from being pruned",
-            "additionalProperties": false,
-            "properties": {
-                "enabled": {
-                    "type": "boolean",
-                    "default": false,
-                    "description": "Enable turn-based protection"
-                },
-                "turns": {
-                    "type": "number",
-                    "default": 4,
-                    "description": "Number of recent turns to protect from pruning"
+                    "default": [
+                        "context_info",
+                        "task",
+                        "todowrite",
+                        "todoread",
+                        "context",
+                        "batch",
+                        "write",
+                        "edit",
+                        "plan_enter",
+                        "plan_exit"
+                    ],
+                    "description": "Additional tool names to protect from pruning via commands (e.g., /acp sweep). Default includes context_info, task, todowrite, todoread, context, batch, write, edit, plan_enter, and plan_exit"
                 }
             }
         },
@@ -77,8 +62,19 @@
             "items": {
                 "type": "string"
             },
-            "default": [],
-            "description": "Glob patterns for files that should be protected from pruning (e.g., '**/*.config.ts')"
+            "default": [
+                "**/.env",
+                "**/.env.*",
+                "**/credentials.json",
+                "**/secrets.json",
+                "**/*.pem",
+                "**/*.key",
+                "**/package.json",
+                "**/tsconfig.json",
+                "**/pyproject.toml",
+                "**/Cargo.toml"
+            ],
+            "description": "Glob patterns for files that should be protected from pruning (e.g., '**/*.config.ts'). Default includes env files, credentials, and config files"
         },
         "tools": {
             "type": "object",
@@ -96,32 +92,47 @@
                                 "type": "string"
                             },
                             "default": [
+                                "context_info",
                                 "task",
                                 "todowrite",
                                 "todoread",
-                                "discard",
-                                "distill",
+                                "context",
                                 "batch",
                                 "write",
                                 "edit",
                                 "plan_enter",
                                 "plan_exit"
                             ],
-                            "description": "Tool names that should be protected from automatic pruning"
+                            "description": "Tool names that should be protected from automatic pruning. Default includes context_info, task, todowrite, todoread, context, batch, write, edit, plan_enter, and plan_exit"
+                        },
+                        "enableAssistantMessagePruning": {
+                            "type": "boolean",
+                            "default": true,
+                            "description": "Enable pruning of large assistant messages to reduce context size"
+                        },
+                        "enableReasoningPruning": {
+                            "type": "boolean",
+                            "default": true,
+                            "description": "Enable pruning of reasoning/thinking blocks from assistant messages"
+                        },
+                        "enableVisibleAssistantHashes": {
+                            "type": "boolean",
+                            "default": true,
+                            "description": "Show visible hash markers when assistant messages are pruned for transparency"
                         }
                     }
                 },
                 "discard": {
-                    "description": "Configure the discard tool for manually removing specific tool outputs from context",
                     "type": "object",
+                    "description": "Configure the discard tool for manually removing specific tool outputs from context",
+                    "additionalProperties": false,
                     "properties": {
                         "enabled": {
-                            "description": "Enable the discard tool",
                             "type": "boolean",
-                            "default": true
+                            "default": true,
+                            "description": "Enable the discard tool for manually removing specific tool outputs from context"
                         }
-                    },
-                    "additionalProperties": false
+                    }
                 },
                 "distill": {
                     "type": "object",
@@ -131,12 +142,12 @@
                         "enabled": {
                             "type": "boolean",
                             "default": true,
-                            "description": "Enable the distill tool"
+                            "description": "Enable the distill tool for summarizing tool outputs"
                         },
                         "showDistillation": {
                             "type": "boolean",
                             "default": false,
-                            "description": "Show distillation output in the UI"
+                            "description": "Show distillation output in the UI for debugging"
                         }
                     }
                 },
@@ -148,22 +159,27 @@
                         "enabled": {
                             "type": "boolean",
                             "default": true,
-                            "description": "Enable todo reminder injection"
+                            "description": "Enable todo reminder injection to remind agent to review/update todo list when stale"
                         },
                         "initialTurns": {
                             "type": "number",
-                            "default": 12,
-                            "description": "Turns before first reminder"
+                            "default": 5,
+                            "description": "Number of turns before the first todo reminder is shown"
                         },
                         "repeatTurns": {
                             "type": "number",
-                            "default": 6,
-                            "description": "Turns between subsequent reminders"
+                            "default": 4,
+                            "description": "Number of turns between subsequent todo reminders"
                         },
                         "stuckTaskTurns": {
                             "type": "number",
                             "default": 12,
-                            "description": "Turns a task can be in_progress before suggesting breakdown"
+                            "description": "Number of turns a task can be in_progress before suggesting breakdown"
+                        },
+                        "maxContextTokens": {
+                            "type": "number",
+                            "default": 100000,
+                            "description": "Maximum context token threshold for todo reminders"
                         }
                     }
                 },
@@ -175,12 +191,12 @@
                         "enabled": {
                             "type": "boolean",
                             "default": true,
-                            "description": "Enable automata mode reflection injection"
+                            "description": "Enable automata mode reflection injection for autonomous strategic prompts"
                         },
                         "initialTurns": {
                             "type": "number",
                             "default": 8,
-                            "description": "Turns of continuous work before first reflection"
+                            "description": "Number of turns of continuous work before first reflection prompt"
                         }
                     }
                 }
@@ -191,49 +207,6 @@
             "description": "Automatic pruning strategies",
             "additionalProperties": false,
             "properties": {
-                "deduplication": {
-                    "type": "object",
-                    "description": "Remove duplicate tool outputs",
-                    "additionalProperties": false,
-                    "properties": {
-                        "enabled": {
-                            "type": "boolean",
-                            "default": false,
-                            "description": "Enable deduplication strategy"
-                        },
-                        "protectedTools": {
-                            "type": "array",
-                            "items": {
-                                "type": "string"
-                            },
-                            "default": [
-                                "task",
-                                "todowrite",
-                                "todoread",
-                                "discard",
-                                "distill",
-                                "batch",
-                                "write",
-                                "edit",
-                                "plan_enter",
-                                "plan_exit"
-                            ],
-                            "description": "Tool names excluded from deduplication"
-                        }
-                    }
-                },
-                "supersedeWrites": {
-                    "type": "object",
-                    "description": "Replace older write/edit outputs when new ones target the same file",
-                    "additionalProperties": false,
-                    "properties": {
-                        "enabled": {
-                            "type": "boolean",
-                            "default": false,
-                            "description": "Enable supersede writes strategy"
-                        }
-                    }
-                },
                 "purgeErrors": {
                     "type": "object",
                     "description": "Remove tool outputs that resulted in errors",
@@ -242,60 +215,82 @@
                         "enabled": {
                             "type": "boolean",
                             "default": false,
-                            "description": "Enable purge errors strategy"
+                            "description": "Enable automatic purging of tool outputs that resulted in errors"
                         },
                         "turns": {
                             "type": "number",
                             "default": 4,
-                            "description": "Number of turns after which errors are purged"
+                            "description": "Number of turns after which error outputs are purged"
                         },
                         "protectedTools": {
                             "type": "array",
                             "items": {
                                 "type": "string"
                             },
-                            "default": [
-                                "task",
-                                "todowrite",
-                                "todoread",
-                                "discard",
-                                "distill",
-                                "batch",
-                                "write",
-                                "edit",
-                                "plan_enter",
-                                "plan_exit"
-                            ],
+                            "default": [],
                             "description": "Tool names excluded from error purging"
                         }
                     }
                 },
-                "truncation": {
+                "aggressivePruning": {
                     "type": "object",
-                    "description": "Truncate large tool outputs when they exceed token limits",
+                    "description": "Aggressive context pruning strategies for long sessions",
                     "additionalProperties": false,
                     "properties": {
-                        "enabled": {
-                            "type": "boolean",
-                            "default": false,
-                            "description": "Enable truncation strategy"
+                        "preset": {
+                            "type": "string",
+                            "enum": ["compact", "balanced", "verbose"],
+                            "description": "Preset configuration to use as base. Options: compact (maximum cleanup), balanced (good for most use cases), verbose (minimal cleanup). Individual flags override preset values"
                         },
-                        "maxTokens": {
-                            "type": "number",
-                            "default": 2000,
-                            "description": "Maximum tokens allowed per tool output before truncation"
-                        }
-                    }
-                },
-                "thinkingCompression": {
-                    "type": "object",
-                    "description": "Compress or remove large thinking blocks from assistant messages",
-                    "additionalProperties": false,
-                    "properties": {
-                        "enabled": {
+                        "pruneSourceUrls": {
                             "type": "boolean",
-                            "default": false,
-                            "description": "Enable thinking compression strategy"
+                            "default": true,
+                            "description": "Prune source-url parts (web search citations) to reduce context size"
+                        },
+                        "pruneFiles": {
+                            "type": "boolean",
+                            "default": true,
+                            "description": "Prune file attachment parts (images, documents) from old messages"
+                        },
+                        "pruneSnapshots": {
+                            "type": "boolean",
+                            "default": true,
+                            "description": "Prune snapshot parts, keeping only the latest snapshot per file"
+                        },
+                        "pruneStepMarkers": {
+                            "type": "boolean",
+                            "default": true,
+                            "description": "Filter out step-start/step-finish markers entirely from context"
+                        },
+                        "pruneToolInputs": {
+                            "type": "boolean",
+                            "default": true,
+                            "description": "Strip verbose tool inputs (write/edit content) when superseded by newer operations"
+                        },
+                        "pruneRetryParts": {
+                            "type": "boolean",
+                            "default": true,
+                            "description": "Auto-prune retry parts after successful completion of the operation"
+                        },
+                        "pruneUserCodeBlocks": {
+                            "type": "boolean",
+                            "default": true,
+                            "description": "Truncate large code blocks in old user messages to save tokens"
+                        },
+                        "aggressiveFilePrune": {
+                            "type": "boolean",
+                            "default": true,
+                            "description": "One-file-one-view: any file operation supersedes ALL previous operations on the same file"
+                        },
+                        "stateQuerySupersede": {
+                            "type": "boolean",
+                            "default": true,
+                            "description": "State query supersede: ls, find, pwd, git status - keep only the latest execution"
+                        },
+                        "truncateOldErrors": {
+                            "type": "boolean",
+                            "default": true,
+                            "description": "Truncate old error outputs to first line only, removing stack traces"
                         }
                     }
                 }
