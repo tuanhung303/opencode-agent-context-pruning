@@ -13,6 +13,8 @@ import {
     detectAutomataActivation,
     injectAutomataReflection,
     ensureReasoningContentSync,
+    stripAllHashTagsFromMessages,
+    scanAndRegisterHashTags,
 } from "./messages"
 import { loadPrompt } from "./prompts"
 import { handleStatsCommand } from "./commands/stats"
@@ -130,6 +132,14 @@ export function createChatMessageTransformHandler(
             "injectHashesIntoAssistantMessages",
         )
 
+        // Scan for any *_hash tags from LLM and register them for pruning
+        // This supports non-standard hash types like <thinking_hash> from different LLMs
+        safeExecute(
+            () => scanAndRegisterHashTags(output.messages, state, logger),
+            logger,
+            "scanAndRegisterHashTags",
+        )
+
         // Run pruning strategies in pipeline
         for (const [name, strategy] of Object.entries(PRUNE_STRATEGIES)) {
             safeExecute(() => strategy(state, logger, config, output.messages), logger, name)
@@ -155,6 +165,14 @@ export function createChatMessageTransformHandler(
             () => injectAutomataReflection(state, logger, config, output.messages),
             logger,
             "injectAutomataReflection",
+        )
+
+        // CRITICAL: Strip all hash tags before output to prevent leakage
+        // Hash tags are for internal tracking only - must never reach users/LLM
+        safeExecute(
+            () => stripAllHashTagsFromMessages(output.messages, state, logger),
+            logger,
+            "stripAllHashTagsFromMessages",
         )
 
         logger.debug("Transform complete", {
