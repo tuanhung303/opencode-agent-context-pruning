@@ -154,10 +154,11 @@ export class UnifiedHashRegistry {
 
 /**
  * Regex for detecting any *_hash XML tag pattern
- * Matches: <anything_hash>xxxxxx</anything_hash>
- * Captures: type and hash value
+ * Matches: <anything_hash>xxxxxx</anything_hash> or <anything_hash>xxxxxx_N</anything_hash>
+ * Captures: type and hash value (including collision suffix)
+ * Supports collision suffix (_2, _3, etc.) for hash deduplication
  */
-export const HASH_TAG_REGEX = /<([a-zA-Z_][a-zA-Z0-9_]*)_hash>([a-f0-9]{6})<\/\1_hash>/gi
+export const HASH_TAG_REGEX = /<([a-zA-Z_][a-zA-Z0-9_]*)_hash>([a-f0-9]{6}(?:_\d+)?)<\/\1_hash>/gi
 
 /**
  * Strip all *_hash tags from content

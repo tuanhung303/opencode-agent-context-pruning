@@ -77,9 +77,9 @@ const REASONING_HASH_TAG = "reasoning_hash"
 const createHashTag = (tagName: string, hash: string): string =>
     `\n<${tagName}>${hash}</${tagName}>`
 
-/** Check if content already has trailing hash tag */
-const hasTrailingHashTag = (content: string, tagName: string): boolean => {
-    const regex = new RegExp(`<${tagName}>[a-f0-9]{6}</${tagName}>$`, "i")
+/** Check if content already has hash tag with specific hash anywhere in content */
+const hasHashTag = (content: string, tagName: string, hash: string): boolean => {
+    const regex = new RegExp(`<${tagName}>${hash}</${tagName}>`, "i")
     return regex.test(content)
 }
 
@@ -268,8 +268,8 @@ export const injectHashesIntoToolOutputs = (
             }
 
             // Skip if already has hash prefix (format: xxxxxx - 6 hex chars)
-            // Skip if already has trailing hash tag
-            if (part.state.output && hasTrailingHashTag(part.state.output, TOOL_HASH_TAG)) {
+            // Skip if already has this specific hash tag anywhere in content
+            if (part.state.output && hasHashTag(part.state.output, TOOL_HASH_TAG, hash)) {
                 continue
             }
 
@@ -324,11 +324,6 @@ export const injectHashesIntoAssistantMessages = (
                 continue
             }
 
-            // Skip if already has trailing hash tag
-            if (hasTrailingHashTag(part.text, MESSAGE_HASH_TAG)) {
-                continue
-            }
-
             const partId = `${messageId}:${partIndex}`
 
             // Skip if already pruned
@@ -351,6 +346,11 @@ export const injectHashesIntoAssistantMessages = (
                 state.hashRegistry.messages.set(hash, partId)
                 state.hashRegistry.messagePartIds.set(partId, hash)
                 logger.debug(`Generated hash ${hash} for assistant text part ${partId}`)
+            }
+
+            // Skip if this specific hash is already in the content
+            if (hasHashTag(part.text, MESSAGE_HASH_TAG, hash)) {
+                continue
             }
 
             // Inject hash tag if enabled (default: true)
@@ -419,11 +419,6 @@ export const injectHashesIntoReasoningBlocks = (
                 continue
             }
 
-            // Skip if already has trailing hash tag
-            if (hasTrailingHashTag(part.text, REASONING_HASH_TAG)) {
-                continue
-            }
-
             const partId = `${messageId}:${partIndex}`
 
             // Skip if already pruned
@@ -446,6 +441,11 @@ export const injectHashesIntoReasoningBlocks = (
                 state.hashRegistry.reasoning.set(hash, partId)
                 state.hashRegistry.reasoningPartIds.set(partId, hash)
                 logger.debug(`Generated hash ${hash} for reasoning part ${partId}`)
+            }
+
+            // Skip if this specific hash is already in the content
+            if (hasHashTag(part.text, REASONING_HASH_TAG, hash)) {
+                continue
             }
 
             // Append trailing hash tag
@@ -651,9 +651,10 @@ export const prune = (
 
 /**
  * Regex for matching any *_hash XML tag pattern
- * Matches: <anything_hash>xxxxxx</anything_hash>
+ * Matches: <anything_hash>xxxxxx</anything_hash> or <anything_hash>xxxxxx_N</anything_hash>
+ * Supports collision suffix (_2, _3, etc.) for hash deduplication
  */
-const HASH_TAG_REGEX = /<([a-zA-Z_][a-zA-Z0-9_]*)_hash>[a-f0-9]{6}<\/\1_hash>/gi
+const HASH_TAG_REGEX = /<([a-zA-Z_][a-zA-Z0-9_]*)_hash>[a-f0-9]{6}(?:_\d+)?<\/\1_hash>/gi
 
 /**
  * Strip all *_hash tags from a string

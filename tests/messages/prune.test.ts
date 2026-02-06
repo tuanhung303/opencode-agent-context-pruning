@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest"
-import { prune, injectHashesIntoToolOutputs } from "../../lib/messages/prune"
+import { prune, injectHashesIntoToolOutputs, stripHashTags } from "../../lib/messages/prune"
 import type { SessionState, WithParts } from "../../lib/state"
 import type { PluginConfig } from "../../lib/config"
 
@@ -455,6 +455,45 @@ describe("prune", () => {
 
             const output = (messages[0].parts[0] as any).state.output
             expect(output).toBe("file content here\n<tool_hash>abc123</tool_hash>")
+        })
+    })
+
+    describe("stripHashTags", () => {
+        it("should strip standard 6-char hash tags", () => {
+            const content = "file content here\n<tool_hash>abc123</tool_hash>"
+            expect(stripHashTags(content)).toBe("file content here\n")
+        })
+
+        it("should strip collision hash tags with suffix", () => {
+            const content = "file content here\n<tool_hash>abc123_2</tool_hash>"
+            expect(stripHashTags(content)).toBe("file content here\n")
+        })
+
+        it("should strip multiple collision hash tags", () => {
+            const content =
+                "content1\n<tool_hash>abc123</tool_hash>\ncontent2\n<message_hash>def456_3</message_hash>\ncontent3\n<reasoning_hash>789abc_15</reasoning_hash>"
+            expect(stripHashTags(content)).toBe("content1\n\ncontent2\n\ncontent3\n")
+        })
+
+        it("should strip hash tags with various collision suffixes", () => {
+            expect(stripHashTags("<tool_hash>abc123_2</tool_hash>")).toBe("")
+            expect(stripHashTags("<tool_hash>abc123_99</tool_hash>")).toBe("")
+            expect(stripHashTags("<message_hash>def456_100</message_hash>")).toBe("")
+        })
+
+        it("should not strip malformed hash tags", () => {
+            // Too short hash
+            expect(stripHashTags("<tool_hash>abc12</tool_hash>")).toBe(
+                "<tool_hash>abc12</tool_hash>",
+            )
+            // Invalid suffix format
+            expect(stripHashTags("<tool_hash>abc123_</tool_hash>")).toBe(
+                "<tool_hash>abc123_</tool_hash>",
+            )
+            // Non-numeric suffix
+            expect(stripHashTags("<tool_hash>abc123_x</tool_hash>")).toBe(
+                "<tool_hash>abc123_x</tool_hash>",
+            )
         })
     })
 })

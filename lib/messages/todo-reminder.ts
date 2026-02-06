@@ -2,8 +2,7 @@ import type { SessionState, WithParts } from "../state/types"
 import type { PluginConfig } from "../config"
 import type { Logger } from "../logger"
 import { isMessageCompacted } from "../shared-utils"
-import { groupHashesByToolName, formatHashInventory } from "./utils"
-import { calculateTotalContextTokens, rankPruningCandidates } from "../strategies/utils"
+import { calculateTotalContextTokens } from "../strategies/utils"
 
 /**
  * Format token count for display (e.g., 1234 -> "1.2K", 12345 -> "12.3K")
@@ -23,7 +22,7 @@ I've noticed your todo list hasn't been updated for {turns} turns. Before contin
 ### 2. Update — Call \`todowrite\` to sync progress
 ### 3. Prune — Call \`context\` to discard/distill noise
 Use hash tags from outputs (\`<tool_hash>\`, \`<message_hash>\`, \`<reasoning_hash>\`) to target content.
-{prunable_hashes}{stuck_task_guidance}
+{stuck_task_guidance}
 ---
 `
 
@@ -151,27 +150,6 @@ export function injectTodoReminder(
     const pressurePercent = Math.min(100, Math.round((currentTokens / maxTokens) * 100))
     const contextPressure = `\n⚡ **Context: ${pressurePercent}%** (${formatTokens(currentTokens)}/${formatTokens(maxTokens)} tokens)\n`
 
-    // Generate ranked pruning suggestions with token estimates
-    const protectedTools = config.tools?.settings?.protectedTools ?? []
-    const candidates = rankPruningCandidates(state, messages, protectedTools, 5)
-
-    let prunableSection = "\n"
-    if (candidates.length > 0) {
-        const lines = candidates.map((c) => {
-            const target = c.target ? `(${c.target})` : ""
-            return `- ${c.toolName}${target}: \`${c.hash}\` (~${formatTokens(c.estimatedTokens)} tokens)`
-        })
-        const totalSavings = candidates.reduce((sum, c) => sum + c.estimatedTokens, 0)
-        prunableSection = `\n**Top Pruning Candidates** (potential savings: ~${formatTokens(totalSavings)} tokens):\n${lines.join("\n")}\n`
-    } else {
-        // Fallback to simple hash inventory if no ranked candidates
-        const grouped = groupHashesByToolName(state)
-        const hashInventory = formatHashInventory(grouped)
-        if (hashInventory) {
-            prunableSection = `\n**Prunable Outputs:**\n${hashInventory}\n`
-        }
-    }
-
     // Detect stuck tasks (in_progress for too long)
     const stuckTaskTurns = config.tools.todoReminder.stuckTaskTurns ?? 12
     const stuckTasks = state.todos.filter(
@@ -195,7 +173,7 @@ export function injectTodoReminder(
 
     // Create reminder content
     const reminderContent = REMINDER_TEMPLATE.replace("{turns}", String(turnsSinceTodo))
-        .replace("{prunable_hashes}", prunableSection)
+        .replace("{context_pressure}", contextPressure)
         .replace("{stuck_task_guidance}", stuckTaskSection)
 
     // Create a new user message with the reminder
