@@ -14,5 +14,5 @@ This file tracks all major tracks for the project. Each track has its own detail
 
 ---
 
-- [~] **Track: Review and improve json schema of the plugin**
-  _Link: [./conductor/tracks/schema-improvement_20260206/](./conductor/tracks/schema-improvement_20260206/)_
+- [x] **Track: Review and improve json schema of the plugin**
+      _Link: [./conductor/tracks/schema-improvement_20260206/](./conductor/tracks/schema-improvement_20260206/)_
