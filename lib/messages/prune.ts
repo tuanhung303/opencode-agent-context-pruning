@@ -68,10 +68,6 @@ function createPrunedPlaceholder(originalText: string): string {
 function createPrunedToolPlaceholder(toolName: string): string {
     return `[${toolName}() output pruned]`
 }
-/** Wrap content with ACP hash tag: <acp:type prunable_hash="x">content</acp:type> */
-const wrapWithHash = (type: string, hash: string, content: string): string =>
-    `<acp:${type} prunable_hash="${hash}">${content}</acp:${type}>`
-
 /** Self-closing hash reference: \n<acp:type prunable_hash="x"/> */
 const createHashRef = (type: string, hash: string): string =>
     `\n<acp:${type} prunable_hash="${hash}"/>`
