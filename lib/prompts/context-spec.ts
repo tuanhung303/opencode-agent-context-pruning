@@ -9,6 +9,18 @@ Manage conversation context. Remove noise, preserve essentials.
 | distill | Replace with summary | [["hash", "summary"], ...] |
 | replace | Replace by pattern | [["start", "end", "replacement"], ...] |
 
+## Hash Locations
+
+All hash tags appear in **tool outputs** (the primary visible channel):
+
+| Hash Type | What It Targets | Where You Find It |
+|-----------|----------------|-------------------|
+| \`<tool_hash>\` | Tool call output (read, glob, bash, etc.) | In that tool's output |
+| \`<reasoning_hash>\` | Thinking/reasoning block | In the last tool output of the same response |
+| \`<message_hash>\` | Assistant text response | In the last tool output of the same response |
+
+All hash types use the same 6-char hex format (e.g., \`a1b2c3\`). Use any hash with discard/distill.
+
 ## Why Prune: Before & After
 
 **BEFORE (~3500 tokens):**
@@ -17,18 +29,13 @@ Manage conversation context. Remove noise, preserve essentials.
 
   Assistant: Here is my analysis...
 
-  <thinking>
-  Analyzing auth module structure...
-  [500 lines of detailed reasoning]
-  Conclusion: Use JWT for stateless auth
-  <reasoning_hash>abc123</reasoning_hash>
-  </thinking>
-
   [glob: found 47 files in src/]
   <tool_hash>a1b2c3</tool_hash>
 
   [read: auth.ts - 200 lines of code]
   <tool_hash>d4e5f6</tool_hash>
+  <reasoning_hash>abc123</reasoning_hash>
+  <message_hash>fed987</message_hash>
 
   Detailed findings from analysis:
   - Authentication: Currently using sessions...
@@ -41,7 +48,7 @@ Manage conversation context. Remove noise, preserve essentials.
 **PRUNE (one call, all three actions):**
 
   context_prune({ action: "distill", targets: [["abc123", "Chose JWT: stateless, scalable"]] })
-  context_prune({ action: "discard", targets: [["a1b2c3"], ["d4e5f6"]] })
+  context_prune({ action: "discard", targets: [["a1b2c3"], ["d4e5f6"], ["fed987"]] })
   context_prune({ action: "replace", targets: [["Detailed findings from analysis:", "End of detailed findings.", "[analysis complete]"]] })
 
 **AFTER (~150 tokens):**
@@ -50,9 +57,8 @@ Manage conversation context. Remove noise, preserve essentials.
 
   Assistant: Here is my analysis...
 
-  — (Chose JWT: stateless, scalable)
-
   [glob() output pruned]
+
   [read() output pruned]
 
   [analysis complete]

@@ -6,6 +6,7 @@ import { isMessageCompacted, isMessageCompleted } from "../shared-utils"
 import { generatePartHash } from "../utils/hash"
 import { getPruneCache } from "../state/utils"
 import { findInternalTags } from "./utils"
+import { stripHashTags, stripHashTagsSelective } from "../state/hash-registry"
 
 /**
  * Filter out step-start and step-finish parts from messages.
@@ -32,8 +33,6 @@ export const filterStepMarkers = (
             }
             return true
         })
-
-        totalRemoved += originalLength - msg.parts.length
     }
 
     if (totalRemoved > 0) {
@@ -161,49 +160,6 @@ export const maskFileParts = (
     }
 }
 
-/** Keys to preserve when stripping tool inputs (metadata only) */
-const INPUT_METADATA_KEYS: Record<string, string[]> = {
-    read: ["filePath", "offset", "limit"],
-    write: ["filePath"],
-    edit: ["filePath"],
-    glob: ["pattern", "path"],
-    grep: ["pattern", "path", "include"],
-    bash: ["command", "description", "workdir"],
-    webfetch: ["url", "format"],
-    websearch: ["query"],
-    task: ["description", "subagent_type"],
-    skill: ["name"],
-    todowrite: [],
-    todoread: [],
-}
-
-/**
- * Strip tool input to metadata-only object.
- * Removes verbose content like file contents, keeping only key identifiers.
- * @internal Reserved for future use in input stripping strategies
- */
-function _stripInputToMetadata(
-    tool: string,
-    input: Record<string, unknown>,
-): Record<string, unknown> {
-    const keysToKeep = INPUT_METADATA_KEYS[tool] || Object.keys(input).slice(0, 3)
-    const stripped: Record<string, unknown> = {}
-
-    for (const key of keysToKeep) {
-        if (input[key] !== undefined) {
-            const value = input[key]
-            if (typeof value === "string" && value.length > 100) {
-                stripped[key] = value.slice(0, 97) + "..."
-            } else {
-                stripped[key] = value
-            }
-        }
-    }
-
-    return stripped
-}
-void _stripInputToMetadata
-
 /**
  * Generates a deterministic hash for message parts.
  * Format: xxxxxx (6 hex chars from SHA256 of content)
@@ -314,6 +270,9 @@ export const injectHashesIntoAssistantMessages = (
         const messageId = msg.info.id
         const parts = Array.isArray(msg.parts) ? msg.parts : []
 
+        // Collect all message hashes for this message to inject into tool output
+        const messageHashes: string[] = []
+
         for (let partIndex = 0; partIndex < parts.length; partIndex++) {
             const part = parts[partIndex]
             if (!part) {
@@ -326,7 +285,9 @@ export const injectHashesIntoAssistantMessages = (
             }
 
             // Strip existing hash tags before processing to ensure idempotency and stable offsets
-            part.text = stripHashTags(part.text)
+            // CRITICAL: Preserve reasoning_hash tags — they were injected by the prior pipeline step
+            // and must survive for LLM visibility when no tool output exists as fallback channel
+            part.text = stripHashTagsSelective(part.text, ["reasoning"])
 
             const partId = `${messageId}:${partIndex}`
 
@@ -357,7 +318,9 @@ export const injectHashesIntoAssistantMessages = (
                 logger.debug(`Generated hash ${hash} for assistant text part ${partId}`)
             }
 
-            // Inject hash tag if enabled (default: true)
+            // Inject hash tag into text part if enabled (default: true)
+            // NOTE: This will be stripped from text parts before UI display,
+            // but we also inject into tool outputs below for agent visibility.
             if (config.tools?.settings?.enableVisibleAssistantHashes !== false) {
                 // Handle internal tag segments first
                 const internalTags = findInternalTags(part.text)
@@ -407,6 +370,40 @@ export const injectHashesIntoAssistantMessages = (
             } else {
                 logger.debug(`Registered hash ${hash} for assistant text part (no injection)`)
             }
+
+            messageHashes.push(hash)
+        }
+
+        // Inject collected message hashes into last completed tool output (primary visible channel)
+        if (messageHashes.length > 0) {
+            const lastToolPart = [...parts]
+                .reverse()
+                .find(
+                    (p) =>
+                        p?.type === "tool" &&
+                        (p as any).state?.status === "completed" &&
+                        typeof (p as any).state?.output === "string",
+                )
+
+            if (lastToolPart) {
+                const toolState = (lastToolPart as any).state
+                const hashesToInject = messageHashes.filter(
+                    (hash) => !hasHashTag(toolState.output, MESSAGE_HASH_TAG, hash),
+                )
+                if (hashesToInject.length > 0) {
+                    const tags = hashesToInject
+                        .map((hash) => createHashTag(MESSAGE_HASH_TAG, hash))
+                        .join("")
+                    toolState.output = `${toolState.output}${tags}`
+                    logger.debug(
+                        `Injected ${hashesToInject.length} message hash(es) into tool output (primary channel)`,
+                    )
+                }
+            }
+            // If no tool output available, hashes remain in text parts only.
+            // They will be stripped from text by stripAllHashTagsFromMessages,
+            // but the hash registry still allows the agent to use them if referenced
+            // from a todo reminder or other synthetic message.
         }
     }
 }
@@ -420,11 +417,13 @@ function generateReasoningPartHash(content: string): string {
 }
 
 /**
- * Injects hash identifiers for reasoning blocks into VISIBLE text parts.
- * Hash is appended to the first text part of the message (agent's visible response).
+ * Injects hash identifiers for reasoning blocks into VISIBLE channels.
+ * Priority: 1) Last completed tool output (primary — survives stripping)
+ *           2) First text part (fallback — preserved by selective stripping)
+ *           3) Synthetic text part (last resort — created when no other target exists)
  *
- * CRITICAL: Hash must be in text part (visible to agent), NOT inside reasoning part.
- * Reasoning content is hidden from agent view, so hashes inside it are invisible.
+ * CRITICAL: Reasoning content is hidden from agent view, so hashes inside it are invisible.
+ * Tool outputs are never stripped, making them the reliable channel for hash visibility.
  *
  * This allows agents to discard their own thinking/reasoning blocks when they're
  * no longer needed, saving significant tokens in long conversations.
@@ -445,11 +444,6 @@ export const injectHashesIntoReasoningBlocks = (
             continue
         }
 
-        // Skip messages still streaming - only inject into completed messages
-        if (!isMessageCompleted(msg)) {
-            continue
-        }
-
         // Only process assistant messages
         if (msg.info.role !== "assistant") {
             continue
@@ -457,6 +451,11 @@ export const injectHashesIntoReasoningBlocks = (
 
         const messageId = msg.info.id
         const parts = Array.isArray(msg.parts) ? msg.parts : []
+
+        // Skip messages still streaming - only inject into completed messages
+        if (!isMessageCompleted(msg)) {
+            continue
+        }
 
         // Collect all reasoning hashes for this message
         const reasoningHashes: string[] = []
@@ -504,31 +503,70 @@ export const injectHashesIntoReasoningBlocks = (
             reasoningHashes.push(hash)
         }
 
-        // If we have reasoning hashes, inject them into the first text part (visible to agent)
+        // If we have reasoning hashes, inject them into a visible channel.
+        // Priority: 1) last completed tool output (survives stripping)
+        //           2) first text part (fallback, preserved by selective stripping)
+        //           3) synthetic text part (last resort)
         if (reasoningHashes.length > 0) {
-            const firstTextPart = parts.find(
-                (p): p is Part & { type: "text"; text: string } =>
-                    p?.type === "text" && typeof p.text === "string",
-            )
+            const hashTags = reasoningHashes
+                .map((hash) => createHashTag(REASONING_HASH_TAG, hash))
+                .join("")
 
-            if (firstTextPart) {
-                // Check which hashes are not already in the text
-                const hashesToInject = reasoningHashes.filter(
-                    (hash) => !hasHashTag(firstTextPart.text, REASONING_HASH_TAG, hash),
+            // Primary: inject into last completed tool output (never stripped)
+            const lastToolPart = [...parts]
+                .reverse()
+                .find(
+                    (p) =>
+                        p?.type === "tool" &&
+                        (p as any).state?.status === "completed" &&
+                        typeof (p as any).state?.output === "string",
                 )
 
+            if (lastToolPart) {
+                const toolState = (lastToolPart as any).state
+                // Filter hashes already present in tool output
+                const hashesToInject = reasoningHashes.filter(
+                    (hash) => !hasHashTag(toolState.output, REASONING_HASH_TAG, hash),
+                )
                 if (hashesToInject.length > 0) {
-                    // Append all reasoning hashes at the end of the text part
-                    const hashTags = hashesToInject
+                    const tags = hashesToInject
                         .map((hash) => createHashTag(REASONING_HASH_TAG, hash))
                         .join("")
-                    firstTextPart.text = `${firstTextPart.text}${hashTags}`
+                    toolState.output = `${toolState.output}${tags}`
                     logger.debug(
-                        `Injected ${hashesToInject.length} reasoning hash(es) into text part (visible to agent)`,
+                        `Injected ${hashesToInject.length} reasoning hash(es) into tool output (primary channel)`,
                     )
                 }
             } else {
-                logger.debug(`No text part found for reasoning hashes in message ${messageId}`)
+                // Fallback: inject into first text part (preserved by selective stripping)
+                const firstTextPart = parts.find(
+                    (p): p is Part & { type: "text"; text: string } =>
+                        p?.type === "text" && typeof p.text === "string",
+                )
+
+                if (firstTextPart) {
+                    const hashesToInject = reasoningHashes.filter(
+                        (hash) => !hasHashTag(firstTextPart.text, REASONING_HASH_TAG, hash),
+                    )
+                    if (hashesToInject.length > 0) {
+                        const tags = hashesToInject
+                            .map((hash) => createHashTag(REASONING_HASH_TAG, hash))
+                            .join("")
+                        firstTextPart.text = `${firstTextPart.text}${tags}`
+                        logger.debug(
+                            `Injected ${hashesToInject.length} reasoning hash(es) into text part (fallback channel)`,
+                        )
+                    }
+                } else {
+                    // Last resort: create synthetic text part with just the hash tags
+                    parts.push({
+                        type: "text" as const,
+                        text: hashTags,
+                    } as any)
+                    logger.debug(
+                        `Created synthetic text part for ${reasoningHashes.length} reasoning hash(es) in message ${messageId}`,
+                    )
+                }
             }
         }
     }
@@ -801,25 +839,11 @@ export const prune = (
 }
 
 /**
- * Regex for matching any *_hash XML tag pattern
- * Matches: <anything_hash>xxxxxx</anything_hash> or <anything_hash>xxxxxx_N</anything_hash>
- * Supports optional preceding newline.
- * Supports collision suffix (_2, _3, etc.) for hash deduplication
- */
-const HASH_TAG_REGEX = /<([a-zA-Z_][a-zA-Z0-9_]*)_hash>[a-f0-9]{6}(?:_\d+)?<\/\1_hash>/gi
-
-/**
- * Strip all *_hash tags from a string
- */
-export function stripHashTags(content: string): string {
-    return content.replace(HASH_TAG_REGEX, "")
-}
-
-/**
- * Strip all hash tags from all message parts before output
- * NOTE: We intentionally DO NOT strip from tool outputs - the LLM needs to see
- * hash tags to use the context tool for pruning. Only strip from text/reasoning
- * parts that might leak to user-facing UI.
+ * Strip hash tags from message parts before output.
+ * - Tool outputs: NEVER stripped (primary channel for LLM to see hashes)
+ * - Text parts: Selectively stripped — preserve reasoning_hash and message_hash
+ *   so the LLM can still see them when no tool output exists as fallback
+ * - Reasoning parts: Fully stripped (hidden from agent view anyway)
  */
 export function stripAllHashTagsFromMessages(
     messages: WithParts[],
@@ -834,9 +858,10 @@ export function stripAllHashTagsFromMessages(
         for (const part of parts) {
             if (!part) continue
 
-            // Strip hash tags from text parts before UI display
+            // Text parts: preserve reasoning_hash and message_hash for LLM visibility
+            // Only strip tool_hash (already visible in tool outputs) and segment hashes
             if (part.type === "text" && typeof part.text === "string") {
-                const stripped = stripHashTags(part.text)
+                const stripped = stripHashTagsSelective(part.text, ["reasoning", "message"])
                 if (stripped !== part.text) {
                     part.text = stripped
                     totalStripped++
@@ -844,9 +869,8 @@ export function stripAllHashTagsFromMessages(
             }
 
             // DO NOT strip from tool outputs - LLM needs to see hashes for context tool
-            // The hashes in tool outputs are how the LLM knows what to prune
 
-            // Strip hash tags from reasoning parts before UI display
+            // Reasoning parts: fully strip (hidden from agent view, no value keeping hashes here)
             if (part.type === "reasoning" && typeof part.text === "string") {
                 const stripped = stripHashTags(part.text)
                 if (stripped !== part.text) {

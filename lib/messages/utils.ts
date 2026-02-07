@@ -4,35 +4,11 @@ import type { SessionState, WithParts } from "../state"
 import type { UserMessage } from "@opencode-ai/sdk/v2"
 import { getPruneCache } from "../state/utils"
 import type { Logger } from "../logger"
+import { stableStringify } from "../utils/object"
+// Re-export for backward compatibility (tests and other consumers)
+export { stableStringify }
 
 const SYNTHETIC_MESSAGE_ID = "msg_01234567890123456789012345"
-
-/**
- * Stable JSON stringify with sorted keys for deterministic hashing.
- * Ensures that {a: 1, b: 2} and {b: 2, a: 1} produce the same string.
- */
-export function stableStringify(obj: unknown): string {
-    if (obj === null || obj === undefined) {
-        return JSON.stringify(obj)
-    }
-    if (typeof obj !== "object") {
-        return JSON.stringify(obj)
-    }
-    if (Array.isArray(obj)) {
-        return "[" + obj.map(stableStringify).join(",") + "]"
-    }
-    const keys = Object.keys(obj).sort()
-    return (
-        "{" +
-        keys
-            .map(
-                (k) =>
-                    `${JSON.stringify(k)}:${stableStringify((obj as Record<string, unknown>)[k])}`,
-            )
-            .join(",") +
-        "}"
-    )
-}
 
 /**
  * Generate a short, stable hash for a tool call.
@@ -40,7 +16,7 @@ export function stableStringify(obj: unknown): string {
  * - 6 hex chars from SHA256 hash of stable-stringified params
  */
 export function generateToolHash(_tool: string, params: unknown): string {
-    const paramsStr = stableStringify(params)
+    const paramsStr = stableStringify(params) ?? "undefined"
     const hash = createHash("sha256").update(paramsStr).digest("hex").substring(0, 6)
     return hash
 }
@@ -149,109 +125,61 @@ export const createSyntheticToolPart = (baseMessage: WithParts, content: string)
     }
 }
 
-/**
- * Extracts a human-readable key from tool metadata for display purposes.
- */
-export const extractParameterKey = (tool: string, parameters: any): string => {
-    if (!parameters) return ""
-
-    if (tool === "read" && parameters.filePath) {
-        const offset = parameters.offset
-        const limit = parameters.limit
-        if (offset !== undefined && limit !== undefined) {
-            return `${parameters.filePath} (lines ${offset}-${offset + limit})`
-        }
-        if (offset !== undefined) {
-            return `${parameters.filePath} (lines ${offset}+)`
-        }
-        if (limit !== undefined) {
-            return `${parameters.filePath} (lines 0-${limit})`
-        }
-        return parameters.filePath
-    }
-    if (tool === "write" && parameters.filePath) {
-        return parameters.filePath
-    }
-    if (tool === "edit" && parameters.filePath) {
-        return parameters.filePath
-    }
-
-    if (tool === "list") {
-        return parameters.path || "(current directory)"
-    }
-    if (tool === "glob") {
-        if (parameters.pattern) {
-            const pathInfo = parameters.path ? ` in ${parameters.path}` : ""
-            return `"${parameters.pattern}"${pathInfo}`
-        }
-        return "(unknown pattern)"
-    }
-    if (tool === "grep") {
-        if (parameters.pattern) {
-            const pathInfo = parameters.path ? ` in ${parameters.path}` : ""
-            return `"${parameters.pattern}"${pathInfo}`
-        }
-        return "(unknown pattern)"
-    }
-
-    if (tool === "bash") {
-        if (parameters.description) return parameters.description
-        if (parameters.command) {
-            return parameters.command.length > 50
-                ? parameters.command.substring(0, 50) + "..."
-                : parameters.command
-        }
-    }
-
-    if (tool === "webfetch" && parameters.url) {
-        return parameters.url
-    }
-    if (tool === "websearch" && parameters.query) {
-        return `"${parameters.query}"`
-    }
-    if (tool === "codesearch" && parameters.query) {
-        return `"${parameters.query}"`
-    }
-
-    if (tool === "todowrite") {
-        return `${parameters.todos?.length || 0} todos`
-    }
-    if (tool === "todoread") {
-        return "read todo list"
-    }
-
-    if (tool === "task" && parameters.description) {
-        return parameters.description
-    }
-    if (tool === "skill" && parameters.name) {
-        return parameters.name
-    }
-
-    if (tool === "lsp") {
-        const op = parameters.operation || "lsp"
-        const path = parameters.filePath || ""
-        const line = parameters.line
-        const char = parameters.character
-        if (path && line !== undefined && char !== undefined) {
-            return `${op} ${path}:${line}:${char}`
-        }
-        if (path) {
-            return `${op} ${path}`
-        }
+/** Map of tool name → parameter key extractor function */
+const TOOL_PARAMETER_KEY_MAP: Record<string, (p: any) => string> = {
+    read: (p) => {
+        if (!p.filePath) return ""
+        const offset = p.offset
+        const limit = p.limit
+        if (offset !== undefined && limit !== undefined)
+            return `${p.filePath} (lines ${offset}-${offset + limit})`
+        if (offset !== undefined) return `${p.filePath} (lines ${offset}+)`
+        if (limit !== undefined) return `${p.filePath} (lines 0-${limit})`
+        return p.filePath
+    },
+    write: (p) => p.filePath || "",
+    edit: (p) => p.filePath || "",
+    list: (p) => p.path || "(current directory)",
+    glob: (p) => {
+        if (!p.pattern) return "(unknown pattern)"
+        const pathInfo = p.path ? ` in ${p.path}` : ""
+        return `"${p.pattern}"${pathInfo}`
+    },
+    grep: (p) => {
+        if (!p.pattern) return "(unknown pattern)"
+        const pathInfo = p.path ? ` in ${p.path}` : ""
+        return `"${p.pattern}"${pathInfo}`
+    },
+    bash: (p) => {
+        if (p.description) return p.description
+        if (p.command) return p.command.length > 50 ? p.command.substring(0, 50) + "..." : p.command
+        return ""
+    },
+    webfetch: (p) => p.url || "",
+    websearch: (p) => (p.query ? `"${p.query}"` : ""),
+    codesearch: (p) => (p.query ? `"${p.query}"` : ""),
+    todowrite: (p) => `${p.todos?.length || 0} todos`,
+    todoread: () => "read todo list",
+    task: (p) => p.description || "",
+    skill: (p) => p.name || "",
+    lsp: (p) => {
+        const op = p.operation || "lsp"
+        const path = p.filePath || ""
+        const line = p.line
+        const char = p.character
+        if (path && line !== undefined && char !== undefined) return `${op} ${path}:${line}:${char}`
+        if (path) return `${op} ${path}`
         return op
-    }
-
-    if (tool === "question") {
-        const questions = parameters.questions
+    },
+    question: (p) => {
+        const questions = p.questions
         if (Array.isArray(questions) && questions.length > 0) {
             const headers = questions
                 .map((q: any) => q.header || "")
                 .filter(Boolean)
                 .slice(0, 3)
-
             const count = questions.length
             const plural = count > 1 ? "s" : ""
-
             if (headers.length > 0) {
                 const suffix = count > 3 ? ` (+${count - 3} more)` : ""
                 return `${count} question${plural}: ${headers.join(", ")}${suffix}`
@@ -259,12 +187,21 @@ export const extractParameterKey = (tool: string, parameters: any): string => {
             return `${count} question${plural}`
         }
         return "question"
-    }
+    },
+}
 
+/**
+ * Extracts a human-readable key from tool metadata for display purposes.
+ */
+export const extractParameterKey = (tool: string, parameters: any): string => {
+    if (!parameters) return ""
+
+    const extractor = TOOL_PARAMETER_KEY_MAP[tool]
+    if (extractor) return extractor(parameters)
+
+    // Fallback: stringify first 50 chars
     const paramStr = JSON.stringify(parameters)
-    if (paramStr === "{}" || paramStr === "[]" || paramStr === "null") {
-        return ""
-    }
+    if (paramStr === "{}" || paramStr === "[]" || paramStr === "null") return ""
     return paramStr.substring(0, 50)
 }
 

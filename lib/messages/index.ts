@@ -5,9 +5,9 @@ export {
     injectHashesIntoReasoningBlocks,
     ensureReasoningContentSync,
     stripAllHashTagsFromMessages,
-    stripHashTags,
-    applyPatternReplacements,
 } from "./prune"
+export { stripHashTags } from "../state/hash-registry"
+export { applyPatternReplacements } from "../strategies/replace"
 export { scanAndRegisterHashTags, detectTargetType } from "./utils"
 export { insertPruneToolContext } from "./inject"
 export { injectTodoReminder, removeTodoReminder } from "./todo-reminder"

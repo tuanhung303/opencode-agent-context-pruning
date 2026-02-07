@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest"
-import { prune, injectHashesIntoToolOutputs, stripHashTags } from "../../lib/messages/prune"
+import { prune, injectHashesIntoToolOutputs } from "../../lib/messages/prune"
+import { stripHashTags } from "../../lib/state/hash-registry"
 import type { SessionState, WithParts } from "../../lib/state"
 import type { PluginConfig } from "../../lib/config"
 

@@ -183,6 +183,23 @@ export function stripHashTags(content: string): string {
 }
 
 /**
+ * Strip *_hash tags from content, but preserve specified types.
+ * @param content - The text content to process
+ * @param keepTypes - Array of type prefixes to preserve (e.g., ["reasoning", "message"])
+ *                    These match the prefix before "_hash" in the tag name.
+ * @returns Content with non-kept hash tags removed
+ */
+export function stripHashTagsSelective(content: string, keepTypes: string[]): string {
+    const keepSet = new Set(keepTypes.map((t) => t.toLowerCase()))
+    return content.replace(HASH_TAG_REGEX, (match, type: string) => {
+        if (keepSet.has(type.toLowerCase())) {
+            return match
+        }
+        return ""
+    })
+}
+
+/**
  * Extract hash entries from content
  * Returns array of detected hash entries with type and hash
  */
