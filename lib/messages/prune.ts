@@ -285,7 +285,9 @@ export const injectHashesIntoAssistantMessages = (
             }
 
             // Strip existing hash tags before processing to ensure idempotency and stable offsets
-            part.text = stripHashTags(part.text)
+            // CRITICAL: Preserve reasoning_hash tags — they were injected by the prior pipeline step
+            // and must survive for LLM visibility when no tool output exists as fallback channel
+            part.text = stripHashTagsSelective(part.text, ["reasoning"])
 
             const partId = `${messageId}:${partIndex}`
 
@@ -442,11 +444,6 @@ export const injectHashesIntoReasoningBlocks = (
             continue
         }
 
-        // Skip messages still streaming - only inject into completed messages
-        if (!isMessageCompleted(msg)) {
-            continue
-        }
-
         // Only process assistant messages
         if (msg.info.role !== "assistant") {
             continue
@@ -454,6 +451,11 @@ export const injectHashesIntoReasoningBlocks = (
 
         const messageId = msg.info.id
         const parts = Array.isArray(msg.parts) ? msg.parts : []
+
+        // Skip messages still streaming - only inject into completed messages
+        if (!isMessageCompleted(msg)) {
+            continue
+        }
 
         // Collect all reasoning hashes for this message
         const reasoningHashes: string[] = []
