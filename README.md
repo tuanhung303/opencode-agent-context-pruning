@@ -144,18 +144,19 @@ ACP provides the `context` tool for intelligent context management:
 
 ```typescript
 context({
-    action: "discard" | "distill",
-    targets: [string, string?][]  // [[target, summary?], ...]
+    action: "discard" | "distill" | "replace",
+    targets: [string, string?, string?][]  // Format depends on action
 })
 ```
 
 ### Target Types
 
-| Type                | Format      | Example            |
-| ------------------- | ----------- | ------------------ |
-| **Tool outputs**    | 6 hex chars | `44136f`, `01cb91` |
-| **Thinking blocks** | 6 hex chars | `abc123`           |
-| **Messages**        | 6 hex chars | `def456`           |
+| Type                | Format                    | Example                                        |
+| ------------------- | ------------------------- | ---------------------------------------------- |
+| **Tool outputs**    | 6 hex chars               | `44136f`, `01cb91`                             |
+| **Thinking blocks** | 6 hex chars               | `abc123`                                       |
+| **Messages**        | 6 hex chars               | `def456`                                       |
+| **Pattern replace** | [start, end, replacement] | `["Start marker:", "End marker.", "[pruned]"]` |
 
 ### Batch Operations
 
@@ -178,7 +179,24 @@ context({
         ["01cb91", "Research phase complete"],
     ],
 })
+
+// Pattern replace - replace content between markers
+context({
+    action: "replace",
+    targets: [
+        ["Detailed findings from analysis:", "End of detailed findings.", "[analysis complete]"],
+        ["Debug output started:", "Debug output ended.", "[debug pruned]"],
+    ],
+})
 ```
+
+### Pattern Replace Constraints
+
+- Match content must be ≥30 characters
+- Start OR end pattern must be >15 characters
+- Literal matching only (no regex)
+- Exactly one match per pattern
+- No overlapping patterns
 
 ---
 
@@ -240,7 +258,19 @@ Identical URL fetches are deduplicated—only the latest response is retained.
 
 ### 5. State Query Supersede
 
-State queries (`ls`, `find`, `git status`) are deduplicated—only the latest results matter.
+State queries (`ls`, `find`, `pwd`, `git status`) are deduplicated—only the latest results matter.
+
+### 6. Context-Based Supersede
+
+New `context` tool calls supersede previous context operations, preventing context management overhead from accumulating.
+
+### 7. Snapshot-Based Supersede
+
+Only the latest snapshot per file is retained. Previous snapshots are automatically pruned.
+
+### 8. Retry-Based Supersede
+
+Failed tool attempts are automatically removed when the operation succeeds on retry.
 
 ---
 
@@ -249,7 +279,7 @@ State queries (`ls`, `find`, `git status`) are deduplicated—only the latest re
 These tools are exempt from pruning to ensure operational continuity:
 
 ```
-task, todowrite, todoread, context, batch, write, edit, plan_enter, plan_exit
+context_info, task, todowrite, todoread, context, batch, write, edit, plan_enter, plan_exit
 ```
 
 Additional tools can be protected via configuration:
@@ -282,49 +312,97 @@ Priority: Defaults → Global → Config Dir → Project
 {
     "$schema": "https://raw.githubusercontent.com/tuanhung303/opencode-agent-context-pruning/master/acp.schema.json",
     "enabled": true,
-    "autoPruneAfterTool": false,
+    "debug": false,
     "pruneNotification": "minimal",
 
     "commands": {
         "enabled": true,
-        "protectedTools": [],
+        "protectedTools": [], // Additional tools to protect (merged with defaults)
     },
 
+    "protectedFilePatterns": [
+        "**/.env",
+        "**/.env.*",
+        "**/credentials.json",
+        "**/secrets.json",
+        "**/*.pem",
+        "**/*.key",
+        "**/package.json",
+        "**/tsconfig.json",
+        "**/pyproject.toml",
+        "**/Cargo.toml",
+    ],
+
     "tools": {
+        "settings": {
+            "protectedTools": [], // Merged with built-in protected tools
+            "enableAssistantMessagePruning": true,
+            "enableReasoningPruning": true,
+            "enableVisibleAssistantHashes": true,
+        },
         "discard": { "enabled": true },
-        "distill": { "enabled": true },
-        "todoReminder": { "enabled": true },
-        "automataMode": { "enabled": true },
+        "distill": { "enabled": true, "showDistillation": false },
+        "todoReminder": {
+            "enabled": true,
+            "initialTurns": 5,
+            "repeatTurns": 4,
+            "stuckTaskTurns": 12,
+        },
+        "automataMode": { "enabled": true, "initialTurns": 8 },
     },
 
     "strategies": {
-        "deduplication": { "enabled": false },
-        "purgeErrors": { "enabled": false },
-        "truncation": { "enabled": false },
-        "thinkingCompression": { "enabled": false },
-        "supersedeWrites": { "enabled": false },
+        "purgeErrors": { "enabled": false, "turns": 4 },
+        "aggressivePruning": {
+            // All enabled by default - see Aggressive Pruning section
+        },
     },
 }
 ```
 
-### Aggressive Pruning (Opt-In)
+### Aggressive Pruning (Enabled by Default)
 
-Enable for up to **50% token savings**:
+All aggressive pruning options are **enabled by default** for up to **50% token savings**.
+
+#### Pruning Presets
+
+Use presets for quick configuration:
 
 ```jsonc
 {
     "strategies": {
         "aggressivePruning": {
-            "pruneToolInputs": true, // Strip verbose inputs
-            "pruneStepMarkers": true, // Remove step markers
+            "preset": "balanced", // Options: "compact", "balanced", "verbose"
+        },
+    },
+}
+```
+
+| Preset       | Description                               | Use Case                         |
+| ------------ | ----------------------------------------- | -------------------------------- |
+| **compact**  | Maximum cleanup, all options enabled      | Long sessions, token-constrained |
+| **balanced** | Good defaults, preserves user code blocks | Most use cases (default)         |
+| **verbose**  | Minimal cleanup, preserves everything     | Debugging, audit trails          |
+
+#### Individual Options
+
+Override preset values with individual flags:
+
+```jsonc
+{
+    "strategies": {
+        "aggressivePruning": {
+            "preset": "balanced",
+            "pruneToolInputs": true, // Strip verbose inputs on supersede
+            "pruneStepMarkers": true, // Remove step markers entirely
             "pruneSourceUrls": true, // Dedup URL fetches
             "pruneFiles": true, // Mask file attachments
-            "pruneSnapshots": true, // Keep latest snapshot
-            "pruneRetryParts": true, // Prune failed retries
-            "pruneUserCodeBlocks": true, // Truncate old code blocks
-            "truncateOldErrors": true, // Truncate old errors
+            "pruneSnapshots": true, // Keep only latest snapshot
+            "pruneRetryParts": true, // Prune failed retries on success
+            "pruneUserCodeBlocks": false, // Keep user code blocks (balanced default)
+            "truncateOldErrors": false, // Keep full errors (balanced default)
             "aggressiveFilePrune": true, // One-file-one-view
-            "stateQuerySupersede": true, // Dedup state queries
+            "stateQuerySupersede": true, // Dedup state queries (ls, git status)
         },
     },
 }
@@ -442,12 +520,15 @@ ACP hooks into OpenCode's message flow to reduce context size before sending to 
 
 ## 📝 Commands
 
-| Command          | Description                       |
-| ---------------- | --------------------------------- |
-| `/acp`           | List available commands           |
-| `/acp context`   | Show token usage breakdown        |
-| `/acp stats`     | Show aggregate pruning statistics |
-| `/acp sweep [n]` | Prune last N tool outputs         |
+| Command          | Description                                          |
+| ---------------- | ---------------------------------------------------- |
+| `/acp`           | List available commands                              |
+| `/acp context`   | Show token usage breakdown for current session       |
+| `/acp stats`     | Show aggregate pruning statistics                    |
+| `/acp sweep [n]` | Prune tools since last user message, or last n tools |
+| `/acp protected` | Show protected tools and file patterns               |
+| `/acp budget`    | Show context budget and recommendations              |
+| `/acp suggest`   | Show ranked pruning candidates with token estimates  |
 
 ---
 
