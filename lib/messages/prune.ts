@@ -367,7 +367,7 @@ export const injectHashesIntoAssistantMessages = (
                     part.text = newText
                 }
 
-                part.text = wrapWithHash("message", hash, part.text)
+                part.text = `${part.text}${createHashRef("message", hash)}`
                 logger.debug(`Injected hash ${hash} into assistant text part`)
             } else {
                 logger.debug(`Registered hash ${hash} for assistant text part (no injection)`)
