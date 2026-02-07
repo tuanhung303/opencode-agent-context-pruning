@@ -21,7 +21,7 @@ I've noticed your todo list hasn't been updated for {turns} turns. Before contin
 ### 1. Reflect — What changed? Any new risks or blockers?
 ### 2. Update — Call \`todowrite\` to sync progress
 ### 3. Prune — Call \`context\` to discard/distill noise
-Use hash tags from outputs (\`<tool_hash>\`, \`<message_hash>\`, \`<reasoning_hash>\`) to target content.
+Use prunable_hash values from \`<acp:tool>\`, \`<acp:message>\`, \`<acp:reasoning>\` tags to target content.
 {stuck_task_guidance}
 ---
 `

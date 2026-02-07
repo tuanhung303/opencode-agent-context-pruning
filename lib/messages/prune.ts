@@ -68,18 +68,14 @@ function createPrunedPlaceholder(originalText: string): string {
 function createPrunedToolPlaceholder(toolName: string): string {
     return `[${toolName}() output pruned]`
 }
-// Hash tag names for trailing format
-const TOOL_HASH_TAG = "tool_hash"
-const MESSAGE_HASH_TAG = "message_hash"
-const REASONING_HASH_TAG = "reasoning_hash"
+/** Self-closing hash reference: \n<acp:type prunable_hash="x"/> */
+const createHashRef = (type: string, hash: string): string =>
+    `\n<acp:${type} prunable_hash="${hash}"/>`
 
-/** Create trailing hash tag */
-const createHashTag = (tagName: string, hash: string): string =>
-    `\n<${tagName}>${hash}</${tagName}>`
-
-/** Check if content already has hash tag with specific hash anywhere in content */
-const hasHashTag = (content: string, tagName: string, hash: string): boolean => {
-    const regex = new RegExp(`<${tagName}>${hash}</${tagName}>`, "i")
+/** Check if content already has an ACP hash tag with specific type and hash */
+const hasHashTag = (content: string, type: string, hash: string): boolean => {
+    const escaped = hash.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+    const regex = new RegExp(`<acp:${type}\\s+prunable_hash="${escaped}"`, "i")
     return regex.test(content)
 }
 
@@ -226,13 +222,13 @@ export const injectHashesIntoToolOutputs = (
 
             // Skip if already has hash prefix (format: xxxxxx - 6 hex chars)
             // Skip if already has this specific hash tag anywhere in content
-            if (part.state.output && hasHashTag(part.state.output, TOOL_HASH_TAG, hash)) {
+            if (part.state.output && hasHashTag(part.state.output, "tool", hash)) {
                 continue
             }
 
-            // Append trailing hash tag
+            // Append self-closing hash ref to tool output
             if (part.state.output) {
-                part.state.output = `${part.state.output}${createHashTag(TOOL_HASH_TAG, hash)}`
+                part.state.output = `${part.state.output}${createHashRef("tool", hash)}`
                 logger.debug(`Injected hash ${hash} into ${part.tool} output`)
             }
         }
@@ -354,18 +350,20 @@ export const injectHashesIntoAssistantMessages = (
                             logger.debug(`Generated hash ${segmentHash} for segment ${segmentId}`)
                         }
 
-                        const hashTag = `<${tag.tagName}_hash>${segmentHash}</${tag.tagName}_hash>`
-                        const injectionPoint = tag.end + offsetShift
+                        const openTag = `<${tag.tagName}>`
+                        const newOpenTag = `<${tag.tagName} prunable_hash="${segmentHash}">`
+                        // Replace the opening tag with the attributed version
+                        const openTagStart = tag.start + offsetShift
                         newText =
-                            newText.slice(0, injectionPoint) +
-                            hashTag +
-                            newText.slice(injectionPoint)
-                        offsetShift += hashTag.length
+                            newText.slice(0, openTagStart) +
+                            newOpenTag +
+                            newText.slice(openTagStart + openTag.length)
+                        offsetShift += newOpenTag.length - openTag.length
                     }
                     part.text = newText
                 }
 
-                part.text = `${part.text}${createHashTag(MESSAGE_HASH_TAG, hash)}`
+                part.text = `${part.text}${createHashRef("message", hash)}`
                 logger.debug(`Injected hash ${hash} into assistant text part`)
             } else {
                 logger.debug(`Registered hash ${hash} for assistant text part (no injection)`)
@@ -388,11 +386,11 @@ export const injectHashesIntoAssistantMessages = (
             if (lastToolPart) {
                 const toolState = (lastToolPart as any).state
                 const hashesToInject = messageHashes.filter(
-                    (hash) => !hasHashTag(toolState.output, MESSAGE_HASH_TAG, hash),
+                    (hash) => !hasHashTag(toolState.output, "message", hash),
                 )
                 if (hashesToInject.length > 0) {
                     const tags = hashesToInject
-                        .map((hash) => createHashTag(MESSAGE_HASH_TAG, hash))
+                        .map((hash) => createHashRef("message", hash))
                         .join("")
                     toolState.output = `${toolState.output}${tags}`
                     logger.debug(
@@ -509,7 +507,7 @@ export const injectHashesIntoReasoningBlocks = (
         //           3) synthetic text part (last resort)
         if (reasoningHashes.length > 0) {
             const hashTags = reasoningHashes
-                .map((hash) => createHashTag(REASONING_HASH_TAG, hash))
+                .map((hash) => createHashRef("reasoning", hash))
                 .join("")
 
             // Primary: inject into last completed tool output (never stripped)
@@ -526,11 +524,11 @@ export const injectHashesIntoReasoningBlocks = (
                 const toolState = (lastToolPart as any).state
                 // Filter hashes already present in tool output
                 const hashesToInject = reasoningHashes.filter(
-                    (hash) => !hasHashTag(toolState.output, REASONING_HASH_TAG, hash),
+                    (hash) => !hasHashTag(toolState.output, "reasoning", hash),
                 )
                 if (hashesToInject.length > 0) {
                     const tags = hashesToInject
-                        .map((hash) => createHashTag(REASONING_HASH_TAG, hash))
+                        .map((hash) => createHashRef("reasoning", hash))
                         .join("")
                     toolState.output = `${toolState.output}${tags}`
                     logger.debug(
@@ -546,11 +544,11 @@ export const injectHashesIntoReasoningBlocks = (
 
                 if (firstTextPart) {
                     const hashesToInject = reasoningHashes.filter(
-                        (hash) => !hasHashTag(firstTextPart.text, REASONING_HASH_TAG, hash),
+                        (hash) => !hasHashTag(firstTextPart.text, "reasoning", hash),
                     )
                     if (hashesToInject.length > 0) {
                         const tags = hashesToInject
-                            .map((hash) => createHashTag(REASONING_HASH_TAG, hash))
+                            .map((hash) => createHashRef("reasoning", hash))
                             .join("")
                         firstTextPart.text = `${firstTextPart.text}${tags}`
                         logger.debug(
@@ -746,10 +744,10 @@ export const prune = (
                 if (prunedSegmentIds.size > 0) {
                     let text = part.text || ""
 
-                    // Scan for all segment hash tags in the text
+                    // Scan for all segment tags with prunable_hash attribute
                     const segmentHashMatches = Array.from(
                         text.matchAll(
-                            /<([a-zA-Z0-9_]+)_hash>([a-f0-9]{6}(?:_\d+)?)<\/(\1)_hash>/gi,
+                            /<([a-zA-Z0-9_]+)\s+prunable_hash="([a-f0-9]{6}(?:_\d+)?)">([\s\S]*?)<\/\1>/gi,
                         ),
                     )
 
@@ -761,48 +759,20 @@ export const prune = (
 
                             const tagName = match[1]
                             const segmentHash = match[2]
-                            const fullHashTag = match[0]
-                            const hashTagIndex = match.index
+                            const segmentContent = match[3]
+                            const fullMatch = match[0]
+                            const matchIndex = match.index
 
-                            if (
-                                tagName &&
-                                segmentHash &&
-                                fullHashTag &&
-                                prunedSegmentIds.has(segmentHash)
-                            ) {
-                                // Find the preceding tag of the same type
-                                const closingTag = `</${tagName}>`
-                                const closingTagIndex = text.lastIndexOf(closingTag, hashTagIndex)
+                            if (tagName && segmentHash && prunedSegmentIds.has(segmentHash)) {
+                                const placeholder = `[${tagName} pruned: ${(segmentContent || "")
+                                    .trim()
+                                    .substring(0, 10)}...]`
 
-                                if (
-                                    closingTagIndex !== -1 &&
-                                    closingTagIndex + closingTag.length === hashTagIndex
-                                ) {
-                                    const openingTag = `<${tagName}>`
-                                    const openingTagIndex = text.lastIndexOf(
-                                        openingTag,
-                                        closingTagIndex,
-                                    )
-
-                                    if (openingTagIndex !== -1) {
-                                        // Found the full segment: openingTag...closingTag + hashTag
-                                        const segmentContent = text.substring(
-                                            openingTagIndex + openingTag.length,
-                                            closingTagIndex,
-                                        )
-                                        const placeholder = `[${tagName} pruned: ${segmentContent
-                                            .trim()
-                                            .substring(0, 10)}...]`
-
-                                        text =
-                                            text.slice(0, openingTagIndex) +
-                                            placeholder +
-                                            text.slice(hashTagIndex + fullHashTag.length)
-                                        logger.debug(
-                                            `Pruned segment ${segmentHash} from part ${partId}`,
-                                        )
-                                    }
-                                }
+                                text =
+                                    text.slice(0, matchIndex) +
+                                    placeholder +
+                                    text.slice(matchIndex + fullMatch.length)
+                                logger.debug(`Pruned segment ${segmentHash} from part ${partId}`)
                             }
                         }
                         part.text = text
@@ -858,10 +828,9 @@ export function stripAllHashTagsFromMessages(
         for (const part of parts) {
             if (!part) continue
 
-            // Text parts: preserve reasoning_hash and message_hash for LLM visibility
-            // Only strip tool_hash (already visible in tool outputs) and segment hashes
+            // Text parts: strip all hash tags (LLM sees hashes via refs in tool outputs)
             if (part.type === "text" && typeof part.text === "string") {
-                const stripped = stripHashTagsSelective(part.text, ["reasoning", "message"])
+                const stripped = stripHashTags(part.text)
                 if (stripped !== part.text) {
                     part.text = stripped
                     totalStripped++

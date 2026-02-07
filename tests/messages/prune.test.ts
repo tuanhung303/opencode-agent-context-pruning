@@ -227,7 +227,7 @@ describe("prune", () => {
             injectHashesIntoToolOutputs(state, mockConfig, messages, mockLogger as any)
 
             const output = (messages[0].parts[0] as any).state.output
-            expect(output).toBe("file content here\n<tool_hash>abc123</tool_hash>")
+            expect(output).toBe('file content here\n<acp:tool prunable_hash="abc123"/>')
         })
 
         it("should not inject hash if tool is already pruned", () => {
@@ -287,7 +287,7 @@ describe("prune", () => {
         it("should not inject hash if output already has hash prefix", () => {
             const hashMappings = new Map([["call_123", "abc123"]])
             const state = createMockState([], hashMappings)
-            const alreadyHashedOutput = "file content here\n<tool_hash>abc123</tool_hash>"
+            const alreadyHashedOutput = 'file content here\n<acp:tool prunable_hash="abc123"/>'
             const messages: WithParts[] = [
                 createCompletedMessage("msg_1", [
                     createToolPart(
@@ -379,13 +379,13 @@ describe("prune", () => {
             injectHashesIntoToolOutputs(state, mockConfig, messages, mockLogger as any)
 
             expect((messages[0].parts[0] as any).state.output).toBe(
-                "content1\n<tool_hash>r_abc12</tool_hash>",
+                'content1\n<acp:tool prunable_hash="r_abc12"/>',
             )
             expect((messages[0].parts[1] as any).state.output).toBe(
-                "content2\n<tool_hash>g_def34</tool_hash>",
+                'content2\n<acp:tool prunable_hash="g_def34"/>',
             )
             expect((messages[0].parts[2] as any).state.output).toBe(
-                "content3\n<tool_hash>b_ghi56</tool_hash>",
+                'content3\n<acp:tool prunable_hash="b_ghi56"/>',
             )
         })
 
@@ -461,45 +461,51 @@ describe("prune", () => {
             injectHashesIntoToolOutputs(state, mockConfig, messages, mockLogger as any)
 
             const output = (messages[0].parts[0] as any).state.output
-            expect(output).toBe("file content here\n<tool_hash>abc123</tool_hash>")
+            expect(output).toBe('file content here\n<acp:tool prunable_hash="abc123"/>')
         })
     })
 
     describe("stripHashTags", () => {
-        it("should strip standard 6-char hash tags", () => {
-            const content = "file content here\n<tool_hash>abc123</tool_hash>"
-            expect(stripHashTags(content)).toBe("file content here\n")
+        it("should strip/unwrap acp wrapping tags", () => {
+            const content = '<acp:tool prunable_hash="abc123">file content here</acp:tool>'
+            expect(stripHashTags(content)).toBe("file content here")
         })
 
-        it("should strip collision hash tags with suffix", () => {
-            const content = "file content here\n<tool_hash>abc123_2</tool_hash>"
-            expect(stripHashTags(content)).toBe("file content here\n")
+        it("should strip acp wrapping tags with collision suffix", () => {
+            const content = '<acp:tool prunable_hash="abc123_2">file content here</acp:tool>'
+            expect(stripHashTags(content)).toBe("file content here")
         })
 
-        it("should strip multiple collision hash tags", () => {
+        it("should strip multiple acp tags of different types", () => {
             const content =
-                "content1\n<tool_hash>abc123</tool_hash>\ncontent2\n<message_hash>def456_3</message_hash>\ncontent3\n<reasoning_hash>789abc_15</reasoning_hash>"
-            expect(stripHashTags(content)).toBe("content1\n\ncontent2\n\ncontent3\n")
+                '<acp:tool prunable_hash="abc123">content1</acp:tool>\ncontent2\n<acp:reasoning prunable_hash="789abc_15"/>'
+            expect(stripHashTags(content)).toBe("content1\ncontent2\n")
         })
 
-        it("should strip hash tags with various collision suffixes", () => {
-            expect(stripHashTags("<tool_hash>abc123_2</tool_hash>")).toBe("")
-            expect(stripHashTags("<tool_hash>abc123_99</tool_hash>")).toBe("")
-            expect(stripHashTags("<message_hash>def456_100</message_hash>")).toBe("")
+        it("should strip acp tags with various collision suffixes", () => {
+            expect(stripHashTags('<acp:tool prunable_hash="abc123_2">x</acp:tool>')).toBe("x")
+            expect(stripHashTags('<acp:tool prunable_hash="abc123_99">y</acp:tool>')).toBe("y")
+            expect(stripHashTags('<acp:message prunable_hash="def456_100">z</acp:message>')).toBe(
+                "z",
+            )
         })
 
-        it("should not strip malformed hash tags", () => {
+        it("should remove self-closing refs", () => {
+            expect(stripHashTags('<acp:reasoning prunable_hash="abc123"/>')).toBe("")
+            expect(stripHashTags('<acp:message prunable_hash="def456"/>')).toBe("")
+        })
+
+        it("should strip plain attribute tags back to plain tags", () => {
+            const content = '<file prunable_hash="abc123">some content</file>'
+            expect(stripHashTags(content)).toBe("<file>some content</file>")
+        })
+
+        it("should not strip malformed tags", () => {
+            // Missing prunable_hash attribute
+            expect(stripHashTags("<acp:tool>abc12</acp:tool>")).toBe("<acp:tool>abc12</acp:tool>")
             // Too short hash
-            expect(stripHashTags("<tool_hash>abc12</tool_hash>")).toBe(
-                "<tool_hash>abc12</tool_hash>",
-            )
-            // Invalid suffix format
-            expect(stripHashTags("<tool_hash>abc123_</tool_hash>")).toBe(
-                "<tool_hash>abc123_</tool_hash>",
-            )
-            // Non-numeric suffix
-            expect(stripHashTags("<tool_hash>abc123_x</tool_hash>")).toBe(
-                "<tool_hash>abc123_x</tool_hash>",
+            expect(stripHashTags('<acp:tool prunable_hash="abc12">x</acp:tool>')).toBe(
+                '<acp:tool prunable_hash="abc12">x</acp:tool>',
             )
         })
     })
