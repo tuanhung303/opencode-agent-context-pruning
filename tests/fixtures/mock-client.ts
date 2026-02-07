@@ -104,6 +104,8 @@ export function createMockState(overrides: Partial<SessionState> = {}): SessionS
             toolIds: [],
             messagePartIds: [],
             reasoningPartIds: [],
+            segmentIds: [],
+            replacements: [],
         },
         stats: {
             pruneTokenCounter: 0,
@@ -136,6 +138,7 @@ export function createMockState(overrides: Partial<SessionState> = {}): SessionS
         currentTurn: 0,
         lastDiscardStats: null,
         lastUserMessageId: null,
+        lastPrunedContent: null,
         hashRegistry: {
             calls: new Map<string, string>(),
             callIds: new Map<string, string>(),
@@ -144,6 +147,7 @@ export function createMockState(overrides: Partial<SessionState> = {}): SessionS
             reasoning: new Map<string, string>(),
             reasoningPartIds: new Map<string, string>(),
             fileParts: new Map<string, string>(),
+            segments: new Map<string, string>(),
         },
         discardHistory: [],
         cursors: {

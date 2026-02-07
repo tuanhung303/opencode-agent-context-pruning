@@ -42,6 +42,12 @@ vi.mock("../../lib/prompts", () => ({
 }))
 
 import { createContextTool } from "../../lib/strategies/context"
+import {
+    injectHashesIntoReasoningBlocks,
+    injectHashesIntoAssistantMessages,
+    stripAllHashTagsFromMessages,
+} from "../../lib/messages/prune"
+import type { WithParts } from "../../lib/state/types"
 
 /**
  * Creates a mock plugin config with full settings.
@@ -440,6 +446,363 @@ describe("Thinking Block & Message Pruning (t29-t32)", () => {
 
             expect(result1).toBeDefined()
             expect(result2).toBeDefined()
+        })
+    })
+
+    describe("Round-trip Pipeline: reasoning_hash visibility", () => {
+        /**
+         * Helper to create a completed assistant message with specified parts.
+         */
+        function createAssistantMessage(id: string, parts: any[]): WithParts {
+            return {
+                info: {
+                    id,
+                    role: "assistant",
+                    time: { created: Date.now() - 1000, completed: Date.now() },
+                } as any,
+                parts,
+            } as WithParts
+        }
+
+        function createPipelineConfig() {
+            return {
+                enabled: true,
+                tools: {
+                    settings: {
+                        protectedTools: ["task", "todowrite", "context_prune"],
+                        enableAssistantMessagePruning: true,
+                        enableReasoningPruning: true,
+                        enableVisibleAssistantHashes: true,
+                    },
+                    discard: { enabled: true },
+                    distill: { enabled: true },
+                },
+            }
+        }
+
+        it("reasoning_hash survives full pipeline when tool output exists", () => {
+            const messages = [
+                createAssistantMessage("msg_pipe_1", [
+                    {
+                        type: "reasoning",
+                        text: "Deep analysis of authentication patterns and JWT vs sessions trade-offs...",
+                    },
+                    { type: "text", text: "Based on my analysis, I recommend using JWT." },
+                    {
+                        type: "tool",
+                        tool: "read",
+                        callID: "call_pipe_1",
+                        state: { status: "completed", output: "file contents here" },
+                    },
+                ]),
+            ]
+
+            const pipeState = createMockState()
+            const pipeConfig = createPipelineConfig()
+            const pipeLogger = createMockLogger()
+
+            // Run injection pipeline (same order as hooks.ts)
+            injectHashesIntoReasoningBlocks(
+                pipeState,
+                pipeConfig as any,
+                messages,
+                pipeLogger as any,
+            )
+            injectHashesIntoAssistantMessages(
+                pipeState,
+                pipeConfig as any,
+                messages,
+                pipeLogger as any,
+            )
+
+            // Run strip pipeline
+            stripAllHashTagsFromMessages(messages, pipeState, pipeLogger as any)
+
+            // Verify: reasoning_hash must be visible in tool output
+            const toolPart = messages[0].parts.find((p: any) => p.type === "tool") as any
+            expect(toolPart.state.output).toMatch(/<reasoning_hash>[a-f0-9]{6}<\/reasoning_hash>/)
+
+            // Verify: text part should be clean (stripped)
+            const textPart = messages[0].parts.find((p: any) => p.type === "text") as any
+            expect(textPart.text).not.toMatch(/<reasoning_hash>/)
+        })
+
+        it("reasoning_hash survives when no text part exists (reasoning + tool only)", () => {
+            const messages = [
+                createAssistantMessage("msg_pipe_2", [
+                    {
+                        type: "reasoning",
+                        text: "Thinking about the best approach to solve this problem...",
+                    },
+                    {
+                        type: "tool",
+                        tool: "bash",
+                        callID: "call_pipe_2",
+                        state: { status: "completed", output: "command output" },
+                    },
+                ]),
+            ]
+
+            const pipeState = createMockState()
+            const pipeConfig = createPipelineConfig()
+            const pipeLogger = createMockLogger()
+
+            injectHashesIntoReasoningBlocks(
+                pipeState,
+                pipeConfig as any,
+                messages,
+                pipeLogger as any,
+            )
+            stripAllHashTagsFromMessages(messages, pipeState, pipeLogger as any)
+
+            // Verify: reasoning_hash in tool output
+            const toolPart = messages[0].parts.find((p: any) => p.type === "tool") as any
+            expect(toolPart.state.output).toMatch(/<reasoning_hash>[a-f0-9]{6}<\/reasoning_hash>/)
+        })
+
+        it("reasoning_hash creates synthetic text part when no tool output and no text part", () => {
+            const messages = [
+                createAssistantMessage("msg_pipe_3", [
+                    {
+                        type: "reasoning",
+                        text: "Internal reasoning with no visible output or tool calls...",
+                    },
+                ]),
+            ]
+
+            const pipeState = createMockState()
+            const pipeConfig = createPipelineConfig()
+            const pipeLogger = createMockLogger()
+
+            injectHashesIntoReasoningBlocks(
+                pipeState,
+                pipeConfig as any,
+                messages,
+                pipeLogger as any,
+            )
+
+            // Should have created a synthetic text part
+            expect(messages[0].parts.length).toBe(2)
+            const syntheticPart = messages[0].parts[1] as any
+            expect(syntheticPart.type).toBe("text")
+            expect(syntheticPart.text).toMatch(/<reasoning_hash>[a-f0-9]{6}<\/reasoning_hash>/)
+        })
+
+        it("multiple reasoning blocks all get hashes in tool output", () => {
+            const messages = [
+                createAssistantMessage("msg_pipe_4", [
+                    { type: "reasoning", text: "First thinking block about architecture..." },
+                    { type: "text", text: "Here is my response." },
+                    { type: "reasoning", text: "Second thinking block about implementation..." },
+                    {
+                        type: "tool",
+                        tool: "glob",
+                        callID: "call_pipe_4",
+                        state: { status: "completed", output: "glob results" },
+                    },
+                ]),
+            ]
+
+            const pipeState = createMockState()
+            const pipeConfig = createPipelineConfig()
+            const pipeLogger = createMockLogger()
+
+            injectHashesIntoReasoningBlocks(
+                pipeState,
+                pipeConfig as any,
+                messages,
+                pipeLogger as any,
+            )
+            stripAllHashTagsFromMessages(messages, pipeState, pipeLogger as any)
+
+            // Verify: both reasoning hashes in tool output
+            const toolPart = messages[0].parts.find((p: any) => p.type === "tool") as any
+            const matches = toolPart.state.output.match(
+                /<reasoning_hash>[a-f0-9]{6}<\/reasoning_hash>/g,
+            )
+            expect(matches).toHaveLength(2)
+        })
+
+        it("reasoning_hash is registered in state for later pruning", () => {
+            const messages = [
+                createAssistantMessage("msg_pipe_5", [
+                    { type: "reasoning", text: "Analysis of database query performance..." },
+                    {
+                        type: "tool",
+                        tool: "read",
+                        callID: "call_pipe_5",
+                        state: { status: "completed", output: "file data" },
+                    },
+                ]),
+            ]
+
+            const pipeState = createMockState()
+            const pipeConfig = createPipelineConfig()
+            const pipeLogger = createMockLogger()
+
+            injectHashesIntoReasoningBlocks(
+                pipeState,
+                pipeConfig as any,
+                messages,
+                pipeLogger as any,
+            )
+
+            // Verify hash is registered
+            expect(pipeState.hashRegistry.reasoning.size).toBe(1)
+            expect(pipeState.hashRegistry.reasoningPartIds.size).toBe(1)
+
+            // Verify the hash maps to the correct part
+            const partId = "msg_pipe_5:0"
+            const hash = pipeState.hashRegistry.reasoningPartIds.get(partId)
+            expect(hash).toBeDefined()
+            expect(pipeState.hashRegistry.reasoning.get(hash!)).toBe(partId)
+        })
+    })
+
+    describe("Round-trip Pipeline: message_hash visibility", () => {
+        function createAssistantMessage(id: string, parts: any[]): WithParts {
+            return {
+                info: {
+                    id,
+                    role: "assistant",
+                    time: { created: Date.now() - 1000, completed: Date.now() },
+                } as any,
+                parts,
+            } as WithParts
+        }
+
+        function createPipelineConfig() {
+            return {
+                enabled: true,
+                tools: {
+                    settings: {
+                        protectedTools: ["task", "todowrite", "context_prune"],
+                        enableAssistantMessagePruning: true,
+                        enableReasoningPruning: true,
+                        enableVisibleAssistantHashes: true,
+                    },
+                    discard: { enabled: true },
+                    distill: { enabled: true },
+                },
+            }
+        }
+
+        it("message_hash survives full pipeline when tool output exists", () => {
+            const messages = [
+                createAssistantMessage("msg_mpipe_1", [
+                    {
+                        type: "text",
+                        text: "Here is a detailed explanation of the authentication flow that spans multiple paragraphs...",
+                    },
+                    {
+                        type: "tool",
+                        tool: "read",
+                        callID: "call_mpipe_1",
+                        state: { status: "completed", output: "file contents" },
+                    },
+                ]),
+            ]
+
+            const pipeState = createMockState()
+            const pipeConfig = createPipelineConfig()
+            const pipeLogger = createMockLogger()
+
+            // Run injection pipeline
+            injectHashesIntoAssistantMessages(
+                pipeState,
+                pipeConfig as any,
+                messages,
+                pipeLogger as any,
+            )
+
+            // Run strip pipeline
+            stripAllHashTagsFromMessages(messages, pipeState, pipeLogger as any)
+
+            // Verify: message_hash in tool output (primary channel)
+            const toolPart = messages[0].parts.find((p: any) => p.type === "tool") as any
+            expect(toolPart.state.output).toMatch(/<message_hash>[a-f0-9]{6}<\/message_hash>/)
+
+            // Verify: text part preserves message_hash (selective stripping keeps it for LLM visibility)
+            const textPart = messages[0].parts.find((p: any) => p.type === "text") as any
+            expect(textPart.text).toMatch(/<message_hash>[a-f0-9]{6}<\/message_hash>/)
+        })
+
+        it("message_hash is registered even without tool output", () => {
+            const messages = [
+                createAssistantMessage("msg_mpipe_2", [
+                    {
+                        type: "text",
+                        text: "A response with no tool calls, just text content that is substantial enough.",
+                    },
+                ]),
+            ]
+
+            const pipeState = createMockState()
+            const pipeConfig = createPipelineConfig()
+            const pipeLogger = createMockLogger()
+
+            injectHashesIntoAssistantMessages(
+                pipeState,
+                pipeConfig as any,
+                messages,
+                pipeLogger as any,
+            )
+
+            // Hash should be registered in state even if no tool output to inject into
+            expect(pipeState.hashRegistry.messages.size).toBe(1)
+            expect(pipeState.hashRegistry.messagePartIds.size).toBe(1)
+        })
+
+        it("both message_hash and reasoning_hash survive in same message", () => {
+            const messages = [
+                createAssistantMessage("msg_mpipe_3", [
+                    {
+                        type: "reasoning",
+                        text: "Thinking about the best approach to implement caching...",
+                    },
+                    {
+                        type: "text",
+                        text: "I recommend using Redis for caching. Here is the implementation plan with details.",
+                    },
+                    {
+                        type: "tool",
+                        tool: "write",
+                        callID: "call_mpipe_3",
+                        state: { status: "completed", output: "file written" },
+                    },
+                ]),
+            ]
+
+            const pipeState = createMockState()
+            const pipeConfig = createPipelineConfig()
+            const pipeLogger = createMockLogger()
+
+            // Run both injection pipelines
+            injectHashesIntoReasoningBlocks(
+                pipeState,
+                pipeConfig as any,
+                messages,
+                pipeLogger as any,
+            )
+            injectHashesIntoAssistantMessages(
+                pipeState,
+                pipeConfig as any,
+                messages,
+                pipeLogger as any,
+            )
+
+            // Run strip pipeline
+            stripAllHashTagsFromMessages(messages, pipeState, pipeLogger as any)
+
+            // Verify: both hash types in tool output
+            const toolPart = messages[0].parts.find((p: any) => p.type === "tool") as any
+            expect(toolPart.state.output).toMatch(/<reasoning_hash>[a-f0-9]{6}<\/reasoning_hash>/)
+            expect(toolPart.state.output).toMatch(/<message_hash>[a-f0-9]{6}<\/message_hash>/)
+
+            // Verify: text part has reasoning_hash stripped (goes via tool output) but message_hash preserved
+            const textPart = messages[0].parts.find((p: any) => p.type === "text") as any
+            expect(textPart.text).not.toMatch(/<reasoning_hash>/)
+            expect(textPart.text).toMatch(/<message_hash>[a-f0-9]{6}<\/message_hash>/)
         })
     })
 })
