@@ -51,6 +51,7 @@ export function createSessionState(): SessionState {
             messagePartIds: [],
             reasoningPartIds: [],
             segmentIds: [],
+            replacements: [],
         },
         stats: {
             pruneTokenCounter: 0,
@@ -228,6 +229,7 @@ export async function ensureSessionInitialized(
         messagePartIds: persisted.prune?.messagePartIds || [],
         reasoningPartIds: persisted.prune?.reasoningPartIds || [],
         segmentIds: persisted.prune?.segmentIds || [],
+        replacements: persisted.prune?.replacements || [],
     }
     state.stats = {
         pruneTokenCounter: persisted.stats?.pruneTokenCounter || 0,

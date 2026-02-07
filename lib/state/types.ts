@@ -42,11 +42,21 @@ export interface SessionStats {
     }
 }
 
+export interface ReplacementEntry {
+    messageId: string
+    partIndex: number
+    startIndex: number
+    endIndex: number
+    replacement: string
+    originalLength: number
+}
+
 export interface Prune {
     toolIds: string[]
     messagePartIds: string[] // "msgId:partIndex" format for assistant text parts
     reasoningPartIds: string[] // "msgId:partIndex" format for reasoning parts
     segmentIds: string[] // List of pruned segment hashes
+    replacements: ReplacementEntry[] // Pattern-based replacements to apply
 }
 
 export interface LastDiscardStats {
@@ -82,6 +92,7 @@ export interface RuntimeCache {
     prunedMessagePartIds: Set<string>
     prunedReasoningPartIds: Set<string>
     prunedSegmentIds: Set<string>
+    replacements: Map<string, ReplacementEntry[]> // messageId:partIndex -> replacements
 }
 
 export interface SessionState {

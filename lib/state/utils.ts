@@ -24,11 +24,21 @@ export async function isSubAgentSession(
  */
 export function getPruneCache(state: SessionState): RuntimeCache {
     if (!state._cache) {
+        // Build replacements map for O(1) lookup
+        const replacementsMap = new Map<string, import("./types").ReplacementEntry[]>()
+        for (const entry of state.prune.replacements) {
+            const key = `${entry.messageId}:${entry.partIndex}`
+            const list = replacementsMap.get(key) || []
+            list.push(entry)
+            replacementsMap.set(key, list)
+        }
+
         state._cache = {
             prunedToolIds: new Set(state.prune.toolIds),
             prunedMessagePartIds: new Set(state.prune.messagePartIds),
             prunedReasoningPartIds: new Set(state.prune.reasoningPartIds),
             prunedSegmentIds: new Set(state.prune.segmentIds),
+            replacements: replacementsMap,
         }
     }
     return state._cache

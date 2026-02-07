@@ -3,7 +3,7 @@
  */
 
 import { tool } from "@opencode-ai/plugin"
-import type { PruneToolContext } from "./_types"
+import type { PruneToolContext, ReplaceOperation } from "./_types"
 import type { WithParts } from "../state"
 import { ensureSessionInitialized } from "../state"
 import { loadPrompt } from "../prompts"
@@ -14,6 +14,7 @@ import {
     executeContextMessageDistill,
     executeContextReasoningDistill,
 } from "./distill"
+import { executeReplace, formatReplaceResult } from "./replace"
 
 const CONTEXT_TOOL_SPEC = loadPrompt("context-spec")
 
@@ -289,6 +290,22 @@ export async function executeContext(
 }
 
 /**
+ * Execute replace action.
+ */
+async function executeReplaceAction(
+    ctx: PruneToolContext,
+    toolCtx: { sessionID: string },
+    operations: ReplaceOperation[],
+): Promise<string> {
+    const { logger } = ctx
+
+    logger.info(`Context tool invoked: replace`)
+    logger.info(JSON.stringify({ action: "replace", operationCount: operations.length }))
+
+    return executeReplace(ctx, toolCtx, operations)
+}
+
+/**
  * Create the unified context tool.
  */
 export function createContextTool(ctx: PruneToolContext): ReturnType<typeof tool> {
@@ -296,11 +313,12 @@ export function createContextTool(ctx: PruneToolContext): ReturnType<typeof tool
         description: CONTEXT_TOOL_SPEC,
         args: {
             action: tool.schema
-                .enum(["discard", "distill"])
-                .describe("The action to perform: discard or distill"),
+                .enum(["discard", "distill", "replace"])
+                .describe("The action to perform: discard, distill, or replace"),
             targets: tool.schema
                 .array(
                     tool.schema.union([
+                        // Hash-based targets (discard/distill)
                         tool.schema.tuple([
                             tool.schema.string().describe("Target hash (6 hex chars)"),
                         ]),
@@ -308,16 +326,33 @@ export function createContextTool(ctx: PruneToolContext): ReturnType<typeof tool
                             tool.schema.string().describe("Target hash (6 hex chars)"),
                             tool.schema.string().describe("Summary for distill action"),
                         ]),
+                        // Pattern-based replace target [start, end, replacement]
+                        tool.schema.tuple([
+                            tool.schema.string().describe("Start pattern"),
+                            tool.schema.string().describe("End pattern"),
+                            tool.schema.string().describe("Replacement text"),
+                        ]),
                     ]),
                 )
                 .describe(
-                    "Array of [hash] or [hash, summary] tuples. Use [hash] for discard, [hash, summary] for distill. " +
-                        "Hash format: 6 hex characters (e.g., 'a1b2c3'). " +
-                        "Hashes are shown in tool outputs as <tool_hash>xxxxxx</tool_hash>.",
+                    "Array of targets: [hash] for discard, [hash, summary] for distill, [start, end, replacement] for replace",
                 ),
         },
         async execute(args, toolCtx) {
             const { action, targets } = args
+
+            if (action === "replace") {
+                // Parse replace operations from [start, end, replacement] tuples
+                const operations: ReplaceOperation[] = []
+                for (const target of targets) {
+                    if (Array.isArray(target) && target.length === 3) {
+                        const [start, end, replacement] = target as [string, string, string]
+                        operations.push({ start, end, replacement })
+                    }
+                }
+                return executeReplaceAction(ctx, toolCtx, operations)
+            }
+
             return executeContext(
                 ctx,
                 toolCtx,

@@ -1,4 +1,4 @@
-import type { SessionState, WithParts } from "../state"
+import type { SessionState, WithParts, ReplacementEntry } from "../state"
 import type { Part } from "@opencode-ai/sdk/v2"
 import type { Logger } from "../logger"
 import type { PluginConfig } from "../config"
@@ -860,4 +860,88 @@ export function stripAllHashTagsFromMessages(
     if (totalStripped > 0) {
         logger.debug(`Stripped ${totalStripped} hash tag(s) from text/reasoning parts`)
     }
+}
+
+/**
+ * Apply stored pattern replacements to messages.
+ * This function is called during message processing (like prune filtering).
+ *
+ * Pattern replacements are stored in state.prune.replacements and are applied
+ * to text parts during message processing, similar to how pruning works.
+ *
+ * @param messages - Messages to process
+ * @param state - Session state containing replacement entries
+ * @returns Modified messages with replacements applied
+ */
+export function applyPatternReplacements(messages: WithParts[], state: SessionState): WithParts[] {
+    if (!state.prune.replacements || state.prune.replacements.length === 0) {
+        return messages
+    }
+
+    // Group replacements by message:part for efficient processing
+    const replacementsByPart = new Map<string, ReplacementEntry[]>()
+    for (const entry of state.prune.replacements) {
+        const key = `${entry.messageId}:${entry.partIndex}`
+        const list = replacementsByPart.get(key) || []
+        list.push(entry)
+        replacementsByPart.set(key, list)
+    }
+
+    // Process each message
+    return messages.map((msg) => {
+        const relevantReplacements: Array<{ partIndex: number; entry: ReplacementEntry }> = []
+
+        // Find all replacements for this message
+        for (const [key, entries] of replacementsByPart) {
+            const [msgId, partIdxStr] = key.split(":")
+            if (msgId === msg.info.id) {
+                const partIndex = parseInt(partIdxStr!, 10)
+                for (const entry of entries) {
+                    relevantReplacements.push({ partIndex, entry })
+                }
+            }
+        }
+
+        if (relevantReplacements.length === 0) {
+            return msg
+        }
+
+        // Clone the message and apply replacements
+        const newParts = [...msg.parts]
+
+        // Group by part index
+        const byPartIndex = new Map<number, ReplacementEntry[]>()
+        for (const { partIndex, entry } of relevantReplacements) {
+            const list = byPartIndex.get(partIndex) || []
+            list.push(entry)
+            byPartIndex.set(partIndex, list)
+        }
+
+        // Apply replacements to each part (in reverse order to maintain indices)
+        for (const [partIndex, entries] of byPartIndex) {
+            const part = newParts[partIndex]
+            if (!part || part.type !== "text" || !part.text) continue
+
+            // Sort entries by startIndex descending (bottom-up)
+            const sortedEntries = [...entries].sort((a, b) => b.startIndex - a.startIndex)
+
+            let newText = part.text
+            for (const entry of sortedEntries) {
+                newText =
+                    newText.substring(0, entry.startIndex) +
+                    entry.replacement +
+                    newText.substring(entry.endIndex)
+            }
+
+            newParts[partIndex] = {
+                ...part,
+                text: newText,
+            }
+        }
+
+        return {
+            ...msg,
+            parts: newParts,
+        }
+    })
 }

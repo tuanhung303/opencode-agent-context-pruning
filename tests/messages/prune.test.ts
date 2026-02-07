@@ -29,6 +29,10 @@ const createMockState = (
     ({
         prune: {
             toolIds: prunedToolIds,
+            messagePartIds: [],
+            reasoningPartIds: [],
+            segmentIds: [],
+            replacements: [],
         },
         compactedMessageIds: new Set<string>(),
         lastCompaction: 0, // No compaction, so all messages are processed
@@ -39,6 +43,8 @@ const createMockState = (
             messagePartIds: new Map(),
             reasoning: new Map(),
             reasoningPartIds: new Map(),
+            fileParts: new Map(),
+            segments: new Map(),
         },
     }) as any
 
