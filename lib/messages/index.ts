@@ -6,6 +6,7 @@ export {
     ensureReasoningContentSync,
     stripAllHashTagsFromMessages,
     stripHashTags,
+    applyPatternReplacements,
 } from "./prune"
 export { scanAndRegisterHashTags, detectTargetType } from "./utils"
 export { insertPruneToolContext } from "./inject"

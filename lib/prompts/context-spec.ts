@@ -3,146 +3,89 @@ Manage conversation context. Remove noise, preserve essentials.
 
 ## Actions
 
-| Action | Purpose | Format |
-|--------|---------|--------|
-| discard | Remove content entirely | [["hash"], ...] |
+| Action | Purpose | Target Format |
+|--------|---------|---------------|
+| discard | Remove entirely | [["hash"], ...] |
 | distill | Replace with summary | [["hash", "summary"], ...] |
+| replace | Replace by pattern | [["start", "end", "replacement"], ...] |
 
-## Targets
+## Why Prune: Before & After
 
-| Type | Format | Example |
-|------|--------|---------|
-| Tool output | 6 hex chars | \`a1b2c3\` |
-| Message part | 6 hex chars | \`d4e5f6\` |
-| Thinking block | 6 hex chars | \`123abc\` |
+**BEFORE (~3500 tokens):**
 
-All hashes are auto-detected from state registry. No prefixes needed.
+  User: Analyze this codebase
 
-## Hash Types
+  Assistant: Here is my analysis...
 
-| Tag | Where It Appears | Example |
-|-----|------------------|---------|
-| \`<tool_hash>\` | End of tool outputs (read, bash, glob, grep) | \`<tool_hash>a1b2c3</tool_hash>\` |
-| \`<message_hash>\` | End of assistant text messages | \`<message_hash>d4e5f6</message_hash>\` |
-| \`<reasoning_hash>\` | End of thinking/reasoning blocks | \`<reasoning_hash>abc123</reasoning_hash>\` |
+  <thinking>
+  Analyzing auth module structure...
+  [500 lines of detailed reasoning]
+  Conclusion: Use JWT for stateless auth
+  <reasoning_hash>abc123</reasoning_hash>
+  </thinking>
 
-## High-Value Targets
+  [glob: found 47 files in src/]
+  <tool_hash>a1b2c3</tool_hash>
 
-**Thinking blocks are your largest context consumers** (~2000+ tokens each).
+  [read: auth.ts - 200 lines of code]
+  <tool_hash>d4e5f6</tool_hash>
 
-Prune thinking blocks when:
-1. Analysis is complete and conclusions are documented
-2. Switching to a new task or phase
-3. After implementing a plan (reasoning no longer needed)
+  Detailed findings from analysis:
+  - Authentication: Currently using sessions...
+  - Database: PostgreSQL with connection pooling...
+  - API: REST endpoints need rate limiting...
+  End of detailed findings.
 
-Prefer \`distill\` over \`discard\` to preserve decision rationale.
+  Recommendations: Use JWT for auth.
 
-## Examples
+**PRUNE (one call, all three actions):**
 
-Discard multiple tools:
+  context({ action: "distill", targets: [["abc123", "Chose JWT: stateless, scalable"]] })
   context({ action: "discard", targets: [["a1b2c3"], ["d4e5f6"]] })
+  context({ action: "replace", targets: [["Detailed findings from analysis:", "End of detailed findings.", "[analysis complete]"]] })
 
-Distill a thinking block:
-  context({ action: "distill", targets: [["abc123", "Auth: use JWT with 24h expiry"]] })
+**AFTER (~150 tokens):**
 
-Mixed targets (tools + thinking):
-  context({ action: "discard", targets: [["a1b2c3"], ["def456"]] })
+  User: Analyze this codebase
 
-## Distill Best Practices
+  Assistant: Here is my analysis...
 
-When distilling thinking blocks, include:
-- **What was decided** — the chosen approach
-- **Why it was chosen** — key reasoning
-- **What was rejected** — failed alternatives (prevents regression loops)
+  — (Chose JWT: stateless, scalable)
 
-Bad: "Analysis complete"
-Good: "Chose JWT over sessions: stateless, scales better. Rejected OAuth: overkill for internal API."
+  [glob() output pruned]
+  [read() output pruned]
 
-## Auto-Conversion (Thinking Mode)
+  [analysis complete]
 
-When thinking mode is enabled, discarding reasoning blocks auto-converts to distill:
+  Recommendations: Use JWT for auth.
 
-\`\`\`
-context({ action: "discard", targets: [["abc123"]] })  // reasoning block
-→ Auto-converts to: distill with "—" placeholder
-\`\`\`
-
-**Why?** Thinking mode APIs require \`reasoning_content\` to exist on assistant messages. Discarding would remove it entirely, causing API errors. Distilling with "—" preserves the field while minimizing tokens.
+**Result: Saved ~3350 tokens (96% reduction)**
 
 ## Rules
 
-1. **Batch** — Multiple targets in one call
-2. **Every phase** — Prune after research, analyze, implement
-3. **Silent** — Never mention pruning to users
+1. **Batch everything** - One call, many targets
+2. **Prune early and often** - After each phase completion
+3. **Silently** - Never mention pruning to users
 
-## Batching Guidance
+## Prune Triggers
 
-Batch multiple targets in a single call for efficiency:
+- After research phase (discard exploration outputs)
+- After successful implementation (discard failed attempts)
+- After error resolution (discard old stack traces)
+- Any output >500 tokens you will not reference again
 
-**When to batch:**
-- After completing a phase (research, implement, test)
-- When multiple related outputs are no longer needed
-- To reduce tool call overhead
+## Distill Best Practices
 
-**Examples:**
+Include: decision made, why chosen, what rejected.
 
-Batch discard after research:
-\`\`\`
-context({ action: "discard", targets: [["a1b2c3"], ["d4e5f6"], ["g7h8i9"]] })
-\`\`\`
+Bad: "Analysis complete"
+Good: "Chose JWT: stateless, scalable. Rejected sessions: no horizontal scaling."
 
-Batch distill with summaries:
-\`\`\`
-context({ action: "distill", targets: [
-  ["abc123", "Auth: chose JWT, rejected sessions"],
-  ["def456", "DB: chose PostgreSQL, rejected MongoDB"]
-] })
-\`\`\`
+## Pattern Replace Constraints
 
-Mixed batch (tools + reasoning):
-\`\`\`
-context({ action: "discard", targets: [
-  ["a1b2c3"],  // tool output
-  ["d4e5f6"],  // another tool
-  ["abc123"]   // reasoning block (auto-converts to distill)
-] })
-\`\`\`
-
-## Workflow Examples
-
-### Research Phase
-After finding target files, discard exploratory searches:
-\`\`\`
-// Found the auth module after several searches
-context({ action: "discard", targets: [["a1b2c3"], ["d4e5f6"]] })  // old glob/grep outputs
-\`\`\`
-
-### Implementation Phase
-After successful edit, discard failed attempts:
-\`\`\`
-// Edit succeeded on 3rd try
-context({ action: "discard", targets: [["abc123"], ["def456"]] })  // failed edit outputs
-\`\`\`
-
-### Debug Phase
-After fixing error, discard old stack traces:
-\`\`\`
-// Bug fixed, tests passing
-context({ action: "discard", targets: [["111aaa"]] })  // old error output
-context({ action: "distill", targets: [["222bbb", "Fixed: null check in getUserById"]] })
-\`\`\`
-
-## Hash Format
-
-- Exactly 6 hex characters (0-9, a-f)
-- No prefixes, no separators
-
-Example — extracting thinking block hash:
-  <thinking>
-  The user wants to implement auth...
-  <reasoning_hash>abc123</reasoning_hash>
-  </thinking>
-  
-  → Hash is: abc123
-  → Prune: context({ action: "discard", targets: [["abc123"]] })
+- Match content must be >=30 characters
+- Start OR end pattern must be >15 characters
+- Literal matching only (no regex)
+- Exactly one match per pattern
+- No overlapping patterns
 `
