@@ -9,6 +9,7 @@ import { sendIgnoredMessage } from "../ui/notification"
 import { formatTokenCount } from "../ui/utils"
 import { loadAllSessionStats, type AggregatedStats } from "../state/persistence"
 import { getCurrentParams } from "../strategies/utils"
+import packageJson from "../../package.json" with { type: "json" }
 
 export interface StatsCommandContext {
     client: any
@@ -26,8 +27,9 @@ function formatStatsMessage(
 ): string {
     const lines: string[] = []
 
+    const version = packageJson.version
     lines.push("╭───────────────────────────────────────────────────────────╮")
-    lines.push("│                    ACP Statistics                         │")
+    lines.push(`│                  ACP Statistics v${version.padEnd(24)}│`)
     lines.push("╰───────────────────────────────────────────────────────────╯")
     lines.push("")
     lines.push("Session:")

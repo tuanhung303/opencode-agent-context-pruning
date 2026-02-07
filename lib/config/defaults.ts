@@ -18,7 +18,7 @@ export const DEFAULT_PROTECTED_TOOLS = [
     "task",
     "todowrite",
     "todoread",
-    "context",
+    "agent_context_optimize",
     "batch",
     "write",
     "edit",

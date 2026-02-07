@@ -40,13 +40,13 @@ Prefer \`distill\` over \`discard\` to preserve decision rationale.
 ## Examples
 
 Discard multiple tools:
-  context({ action: "discard", targets: [["a1b2c3"], ["d4e5f6"]] })
+  agent_context_optimize({ action: "discard", targets: [["a1b2c3"], ["d4e5f6"]] })
 
 Distill a thinking block:
-  context({ action: "distill", targets: [["abc123", "Auth: use JWT with 24h expiry"]] })
+  agent_context_optimize({ action: "distill", targets: [["abc123", "Auth: use JWT with 24h expiry"]] })
 
 Mixed targets (tools + thinking):
-  context({ action: "discard", targets: [["a1b2c3"], ["def456"]] })
+  agent_context_optimize({ action: "discard", targets: [["a1b2c3"], ["def456"]] })
 
 ## Distill Best Practices
 
@@ -63,7 +63,7 @@ Good: "Chose JWT over sessions: stateless, scales better. Rejected OAuth: overki
 When thinking mode is enabled, discarding reasoning blocks auto-converts to distill:
 
 \`\`\`
-context({ action: "discard", targets: [["abc123"]] })  // reasoning block
+agent_context_optimize({ action: "discard", targets: [["abc123"]] })  // reasoning block
 → Auto-converts to: distill with "—" placeholder
 \`\`\`
 
@@ -88,12 +88,12 @@ Batch multiple targets in a single call for efficiency:
 
 Batch discard after research:
 \`\`\`
-context({ action: "discard", targets: [["a1b2c3"], ["d4e5f6"], ["g7h8i9"]] })
+agent_context_optimize({ action: "discard", targets: [["a1b2c3"], ["d4e5f6"], ["g7h8i9"]] })
 \`\`\`
 
 Batch distill with summaries:
 \`\`\`
-context({ action: "distill", targets: [
+agent_context_optimize({ action: "distill", targets: [
   ["abc123", "Auth: chose JWT, rejected sessions"],
   ["def456", "DB: chose PostgreSQL, rejected MongoDB"]
 ] })
@@ -101,7 +101,7 @@ context({ action: "distill", targets: [
 
 Mixed batch (tools + reasoning):
 \`\`\`
-context({ action: "discard", targets: [
+agent_context_optimize({ action: "discard", targets: [
   ["a1b2c3"],  // tool output
   ["d4e5f6"],  // another tool
   ["abc123"]   // reasoning block (auto-converts to distill)
@@ -114,22 +114,22 @@ context({ action: "discard", targets: [
 After finding target files, discard exploratory searches:
 \`\`\`
 // Found the auth module after several searches
-context({ action: "discard", targets: [["a1b2c3"], ["d4e5f6"]] })  // old glob/grep outputs
+agent_context_optimize({ action: "discard", targets: [["a1b2c3"], ["d4e5f6"]] })  // old glob/grep outputs
 \`\`\`
 
 ### Implementation Phase
 After successful edit, discard failed attempts:
 \`\`\`
 // Edit succeeded on 3rd try
-context({ action: "discard", targets: [["abc123"], ["def456"]] })  // failed edit outputs
+agent_context_optimize({ action: "discard", targets: [["abc123"], ["def456"]] })  // failed edit outputs
 \`\`\`
 
 ### Debug Phase
 After fixing error, discard old stack traces:
 \`\`\`
 // Bug fixed, tests passing
-context({ action: "discard", targets: [["111aaa"]] })  // old error output
-context({ action: "distill", targets: [["222bbb", "Fixed: null check in getUserById"]] })
+agent_context_optimize({ action: "discard", targets: [["111aaa"]] })  // old error output
+agent_context_optimize({ action: "distill", targets: [["222bbb", "Fixed: null check in getUserById"]] })
 \`\`\`
 
 ## Hash Format
@@ -144,5 +144,5 @@ Example — extracting thinking block hash:
   </thinking>
   
   → Hash is: abc123
-  → Prune: context({ action: "discard", targets: [["abc123"]] })
+  → Prune: agent_context_optimize({ action: "discard", targets: [["abc123"]] })
 `

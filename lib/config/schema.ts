@@ -14,7 +14,7 @@ export const DEFAULT_PROTECTED_TOOLS = [
     "task",
     "todowrite",
     "todoread",
-    "context",
+    "agent_context_optimize",
     "batch",
     "write",
     "edit",
@@ -47,7 +47,7 @@ export const ToolSettingsSchema = z.object({
         .array(z.string())
         .default([...DEFAULT_PROTECTED_TOOLS])
         .describe(
-            "Tool names that should be protected from automatic pruning. Default includes context_info, task, todowrite, todoread, context, batch, write, edit, plan_enter, and plan_exit",
+            "Tool names that should be protected from automatic pruning. Default includes context_info, task, todowrite, todoread, agent_context_optimize, batch, write, edit, plan_enter, and plan_exit",
         ),
     enableAssistantMessagePruning: z
         .boolean()
