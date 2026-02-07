@@ -27,6 +27,7 @@ vi.mock("@opencode-ai/plugin", () => {
         union: vi.fn(() => schema),
         tuple: vi.fn(() => schema),
         enum: vi.fn(() => schema),
+        object: vi.fn(() => schema),
         describe: vi.fn(() => schema),
     }
     const toolMock: any = vi.fn((spec) => ({
