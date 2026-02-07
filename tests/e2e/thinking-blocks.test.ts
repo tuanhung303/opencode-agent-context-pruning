@@ -728,9 +728,9 @@ describe("Thinking Block & Message Pruning (t29-t32)", () => {
                 /<acp:message\s+prunable_hash="[a-f0-9]{6}"\s*\/>/,
             )
 
-            // Verify: text part preserves message_hash (selective stripping keeps it for LLM visibility)
+            // Verify: text part should be clean (all hash tags stripped)
             const textPart = messages[0].parts.find((p: any) => p.type === "text") as any
-            expect(textPart.text).toMatch(/<acp:message\s+prunable_hash="[a-f0-9]{6}">/)
+            expect(textPart.text).not.toMatch(/<acp:message\s+prunable_hash=/)
         })
 
         it("message_hash is registered even without tool output", () => {

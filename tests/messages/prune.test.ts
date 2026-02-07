@@ -227,7 +227,7 @@ describe("prune", () => {
             injectHashesIntoToolOutputs(state, mockConfig, messages, mockLogger as any)
 
             const output = (messages[0].parts[0] as any).state.output
-            expect(output).toBe('<acp:tool prunable_hash="abc123">file content here</acp:tool>')
+            expect(output).toBe('file content here\n<acp:tool prunable_hash="abc123"/>')
         })
 
         it("should not inject hash if tool is already pruned", () => {
@@ -287,8 +287,7 @@ describe("prune", () => {
         it("should not inject hash if output already has hash prefix", () => {
             const hashMappings = new Map([["call_123", "abc123"]])
             const state = createMockState([], hashMappings)
-            const alreadyHashedOutput =
-                '<acp:tool prunable_hash="abc123">file content here</acp:tool>'
+            const alreadyHashedOutput = 'file content here\n<acp:tool prunable_hash="abc123"/>'
             const messages: WithParts[] = [
                 createCompletedMessage("msg_1", [
                     createToolPart(
@@ -380,13 +379,13 @@ describe("prune", () => {
             injectHashesIntoToolOutputs(state, mockConfig, messages, mockLogger as any)
 
             expect((messages[0].parts[0] as any).state.output).toBe(
-                '<acp:tool prunable_hash="r_abc12">content1</acp:tool>',
+                'content1\n<acp:tool prunable_hash="r_abc12"/>',
             )
             expect((messages[0].parts[1] as any).state.output).toBe(
-                '<acp:tool prunable_hash="g_def34">content2</acp:tool>',
+                'content2\n<acp:tool prunable_hash="g_def34"/>',
             )
             expect((messages[0].parts[2] as any).state.output).toBe(
-                '<acp:tool prunable_hash="b_ghi56">content3</acp:tool>',
+                'content3\n<acp:tool prunable_hash="b_ghi56"/>',
             )
         })
 
@@ -462,7 +461,7 @@ describe("prune", () => {
             injectHashesIntoToolOutputs(state, mockConfig, messages, mockLogger as any)
 
             const output = (messages[0].parts[0] as any).state.output
-            expect(output).toBe('<acp:tool prunable_hash="abc123">file content here</acp:tool>')
+            expect(output).toBe('file content here\n<acp:tool prunable_hash="abc123"/>')
         })
     })
 

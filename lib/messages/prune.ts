@@ -230,9 +230,9 @@ export const injectHashesIntoToolOutputs = (
                 continue
             }
 
-            // Wrap tool output with ACP hash tag
+            // Append self-closing hash ref to tool output
             if (part.state.output) {
-                part.state.output = wrapWithHash("tool", hash, part.state.output)
+                part.state.output = `${part.state.output}${createHashRef("tool", hash)}`
                 logger.debug(`Injected hash ${hash} into ${part.tool} output`)
             }
         }
@@ -832,10 +832,9 @@ export function stripAllHashTagsFromMessages(
         for (const part of parts) {
             if (!part) continue
 
-            // Text parts: preserve reasoning_hash and message_hash for LLM visibility
-            // Only strip tool_hash (already visible in tool outputs) and segment hashes
+            // Text parts: strip all hash tags (LLM sees hashes via refs in tool outputs)
             if (part.type === "text" && typeof part.text === "string") {
-                const stripped = stripHashTagsSelective(part.text, ["reasoning", "message"])
+                const stripped = stripHashTags(part.text)
                 if (stripped !== part.text) {
                     part.text = stripped
                     totalStripped++
