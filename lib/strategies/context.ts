@@ -316,30 +316,22 @@ export function createContextTool(ctx: PruneToolContext): ReturnType<typeof tool
                 .enum(["discard", "distill", "replace"])
                 .describe("The action to perform: discard, distill, or replace"),
             targets: tool.schema
-                .array(
-                    tool.schema.union([
-                        // Hash-based targets (discard/distill)
-                        tool.schema.tuple([
-                            tool.schema.string().describe("Target hash (6 hex chars)"),
-                        ]),
-                        tool.schema.tuple([
-                            tool.schema.string().describe("Target hash (6 hex chars)"),
-                            tool.schema.string().describe("Summary for distill action"),
-                        ]),
-                        // Pattern-based replace target [start, end, replacement]
-                        tool.schema.tuple([
-                            tool.schema.string().describe("Start pattern"),
-                            tool.schema.string().describe("End pattern"),
-                            tool.schema.string().describe("Replacement text"),
-                        ]),
-                    ]),
-                )
+                .array(tool.schema.array(tool.schema.string()))
                 .describe(
                     "Array of targets: [hash] for discard, [hash, summary] for distill, [start, end, replacement] for replace",
                 ),
         },
         async execute(args, toolCtx) {
             const { action, targets } = args
+
+            // Validate target tuple lengths (schema no longer enforces this for Gemini compat)
+            for (const target of targets) {
+                if (!Array.isArray(target) || target.length < 1 || target.length > 3) {
+                    throw new Error(
+                        `Invalid target: expected array of 1-3 strings, got ${JSON.stringify(target)}`,
+                    )
+                }
+            }
 
             if (action === "replace") {
                 // Parse replace operations from [start, end, replacement] tuples

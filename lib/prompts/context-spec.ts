@@ -15,9 +15,9 @@ All hash tags appear in **tool outputs** (the primary visible channel):
 
 | Hash Type | What It Targets | Where You Find It |
 |-----------|----------------|-------------------|
-| \`<tool_hash>\` | Tool call output (read, glob, bash, etc.) | In that tool's output |
-| \`<reasoning_hash>\` | Thinking/reasoning block | In the last tool output of the same response |
-| \`<message_hash>\` | Assistant text response | In the last tool output of the same response |
+| \`<acp:tool prunable_hash>\` | Tool call output (read, glob, bash, etc.) | Wraps the tool's output |
+| \`<acp:reasoning prunable_hash>\` | Thinking/reasoning block | Self-closing ref in last tool output |
+| \`<acp:message prunable_hash>\` | Assistant text response | Self-closing ref in last tool output |
 
 All hash types use the same 6-char hex format (e.g., \`a1b2c3\`). Use any hash with discard/distill.
 
@@ -29,13 +29,11 @@ All hash types use the same 6-char hex format (e.g., \`a1b2c3\`). Use any hash w
 
   Assistant: Here is my analysis...
 
-  [glob: found 47 files in src/]
-  <tool_hash>a1b2c3</tool_hash>
+  <acp:tool prunable_hash="a1b2c3">[glob: found 47 files in src/]</acp:tool>
 
-  [read: auth.ts - 200 lines of code]
-  <tool_hash>d4e5f6</tool_hash>
-  <reasoning_hash>abc123</reasoning_hash>
-  <message_hash>fed987</message_hash>
+  <acp:tool prunable_hash="d4e5f6">[read: auth.ts - 200 lines of code]</acp:tool>
+  <acp:reasoning prunable_hash="abc123"/>
+  <acp:message prunable_hash="fed987"/>
 
   Detailed findings from analysis:
   - Authentication: Currently using sessions...

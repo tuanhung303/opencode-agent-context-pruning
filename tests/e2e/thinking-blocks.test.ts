@@ -520,11 +520,13 @@ describe("Thinking Block & Message Pruning (t29-t32)", () => {
 
             // Verify: reasoning_hash must be visible in tool output
             const toolPart = messages[0].parts.find((p: any) => p.type === "tool") as any
-            expect(toolPart.state.output).toMatch(/<reasoning_hash>[a-f0-9]{6}<\/reasoning_hash>/)
+            expect(toolPart.state.output).toMatch(
+                /<acp:reasoning\s+prunable_hash="[a-f0-9]{6}"\s*\/>/,
+            )
 
             // Verify: text part should be clean (stripped)
             const textPart = messages[0].parts.find((p: any) => p.type === "text") as any
-            expect(textPart.text).not.toMatch(/<reasoning_hash>/)
+            expect(textPart.text).not.toMatch(/<acp:reasoning\s+prunable_hash=/)
         })
 
         it("reasoning_hash survives when no text part exists (reasoning + tool only)", () => {
@@ -557,7 +559,9 @@ describe("Thinking Block & Message Pruning (t29-t32)", () => {
 
             // Verify: reasoning_hash in tool output
             const toolPart = messages[0].parts.find((p: any) => p.type === "tool") as any
-            expect(toolPart.state.output).toMatch(/<reasoning_hash>[a-f0-9]{6}<\/reasoning_hash>/)
+            expect(toolPart.state.output).toMatch(
+                /<acp:reasoning\s+prunable_hash="[a-f0-9]{6}"\s*\/>/,
+            )
         })
 
         it("reasoning_hash creates synthetic text part when no tool output and no text part", () => {
@@ -585,7 +589,7 @@ describe("Thinking Block & Message Pruning (t29-t32)", () => {
             expect(messages[0].parts.length).toBe(2)
             const syntheticPart = messages[0].parts[1] as any
             expect(syntheticPart.type).toBe("text")
-            expect(syntheticPart.text).toMatch(/<reasoning_hash>[a-f0-9]{6}<\/reasoning_hash>/)
+            expect(syntheticPart.text).toMatch(/<acp:reasoning\s+prunable_hash="[a-f0-9]{6}"\s*\/>/)
         })
 
         it("multiple reasoning blocks all get hashes in tool output", () => {
@@ -618,7 +622,7 @@ describe("Thinking Block & Message Pruning (t29-t32)", () => {
             // Verify: both reasoning hashes in tool output
             const toolPart = messages[0].parts.find((p: any) => p.type === "tool") as any
             const matches = toolPart.state.output.match(
-                /<reasoning_hash>[a-f0-9]{6}<\/reasoning_hash>/g,
+                /<acp:reasoning\s+prunable_hash="[a-f0-9]{6}"\s*\/>/g,
             )
             expect(matches).toHaveLength(2)
         })
@@ -720,11 +724,13 @@ describe("Thinking Block & Message Pruning (t29-t32)", () => {
 
             // Verify: message_hash in tool output (primary channel)
             const toolPart = messages[0].parts.find((p: any) => p.type === "tool") as any
-            expect(toolPart.state.output).toMatch(/<message_hash>[a-f0-9]{6}<\/message_hash>/)
+            expect(toolPart.state.output).toMatch(
+                /<acp:message\s+prunable_hash="[a-f0-9]{6}"\s*\/>/,
+            )
 
             // Verify: text part preserves message_hash (selective stripping keeps it for LLM visibility)
             const textPart = messages[0].parts.find((p: any) => p.type === "text") as any
-            expect(textPart.text).toMatch(/<message_hash>[a-f0-9]{6}<\/message_hash>/)
+            expect(textPart.text).toMatch(/<acp:message\s+prunable_hash="[a-f0-9]{6}">/)
         })
 
         it("message_hash is registered even without tool output", () => {
@@ -796,13 +802,12 @@ describe("Thinking Block & Message Pruning (t29-t32)", () => {
 
             // Verify: both hash types in tool output
             const toolPart = messages[0].parts.find((p: any) => p.type === "tool") as any
-            expect(toolPart.state.output).toMatch(/<reasoning_hash>[a-f0-9]{6}<\/reasoning_hash>/)
-            expect(toolPart.state.output).toMatch(/<message_hash>[a-f0-9]{6}<\/message_hash>/)
-
-            // Verify: text part has reasoning_hash stripped (goes via tool output) but message_hash preserved
-            const textPart = messages[0].parts.find((p: any) => p.type === "text") as any
-            expect(textPart.text).not.toMatch(/<reasoning_hash>/)
-            expect(textPart.text).toMatch(/<message_hash>[a-f0-9]{6}<\/message_hash>/)
+            expect(toolPart.state.output).toMatch(
+                /<acp:reasoning\s+prunable_hash="[a-f0-9]{6}"\s*\/>/,
+            )
+            expect(toolPart.state.output).toMatch(
+                /<acp:message\s+prunable_hash="[a-f0-9]{6}"\s*\/>/,
+            )
         })
     })
 })
