@@ -15,6 +15,7 @@ import {
     ensureReasoningContentSync,
     stripAllHashTagsFromMessages,
     scanAndRegisterHashTags,
+    applyPatternReplacements,
 } from "./messages"
 import { loadPrompt } from "./prompts"
 import { handleStatsCommand } from "./commands/stats"
@@ -138,6 +139,15 @@ export function createChatMessageTransformHandler(
         for (const [name, strategy] of Object.entries(PRUNE_STRATEGIES)) {
             safeExecute(() => strategy(state, logger, config, output.messages), logger, name)
         }
+
+        // Apply pattern-based replacements (stored in state.prune.replacements)
+        safeExecute(
+            () => {
+                output.messages = applyPatternReplacements(output.messages, state)
+            },
+            logger,
+            "applyPatternReplacements",
+        )
 
         // CRITICAL: Ensure reasoning_content is synced on all assistant messages with tool calls
         // This is required for thinking mode API compatibility (DeepSeek, Kimi, etc.)

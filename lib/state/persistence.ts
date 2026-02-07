@@ -150,6 +150,20 @@ export async function saveSessionState(
                 reasoningPartIds: Object.fromEntries(sessionState.hashRegistry.reasoningPartIds),
                 fileParts: Object.fromEntries(sessionState.hashRegistry.fileParts),
             },
+            cursors: {
+                todo: sessionState.cursors.todo,
+                context: sessionState.cursors.context,
+                automata: sessionState.cursors.automata,
+                files: {
+                    pathToCallIds: Object.fromEntries(
+                        Array.from(sessionState.cursors.files.pathToCallIds.entries()).map(
+                            ([k, v]) => [k, Array.from(v)],
+                        ),
+                    ),
+                },
+            },
+            discardHistory: sessionState.discardHistory,
+            todos: sessionState.todos,
         }
 
         const filePath = getSessionFilePath(sessionState.sessionId)

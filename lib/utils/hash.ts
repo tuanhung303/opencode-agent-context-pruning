@@ -4,6 +4,7 @@
  */
 
 import { createHash } from "node:crypto"
+import { stableStringify } from "./object"
 
 /**
  * Create a fast, deterministic hash from any serializable value
@@ -26,37 +27,9 @@ export function createContentHash(content: unknown): string {
         return createHash("sha256").update(String(content)).digest("hex").slice(0, 16)
     }
 
-    // For objects, use a faster serialization approach
-    // We use a compact representation instead of pretty-printed JSON
-    const serialized = deterministicStringify(content)
+    // For objects, use stableStringify for deterministic serialization with sorted keys
+    const serialized = stableStringify(content) ?? "undefined"
     return createHash("sha256").update(serialized).digest("hex").slice(0, 16)
-}
-
-/**
- * Fast deterministic JSON stringification without sorting
- * Uses depth-first traversal with ordered keys
- */
-function deterministicStringify(obj: unknown): string {
-    if (obj === null) return "null"
-    if (obj === undefined) return "undefined"
-
-    const type = typeof obj
-    if (type === "string") return `"${obj}"`
-    if (type === "number" || type === "boolean") return String(obj)
-    if (type !== "object") return String(obj)
-
-    if (Array.isArray(obj)) {
-        const items = obj.map(deterministicStringify)
-        return `[${items.join(",")}]`
-    }
-
-    // Object: iterate keys in sorted order for determinism
-    const keys = Object.keys(obj as Record<string, unknown>).sort()
-    const pairs = keys.map((key) => {
-        const value = (obj as Record<string, unknown>)[key]
-        return `"${key}":${deterministicStringify(value)}`
-    })
-    return `{${pairs.join(",")}}`
 }
 
 /**

@@ -6,6 +6,7 @@ import { isMessageCompacted, isMessageCompleted } from "../shared-utils"
 import { generatePartHash } from "../utils/hash"
 import { getPruneCache } from "../state/utils"
 import { findInternalTags } from "./utils"
+import { stripHashTags } from "../state/hash-registry"
 
 /**
  * Filter out step-start and step-finish parts from messages.
@@ -32,8 +33,6 @@ export const filterStepMarkers = (
             }
             return true
         })
-
-        totalRemoved += originalLength - msg.parts.length
     }
 
     if (totalRemoved > 0) {
@@ -160,49 +159,6 @@ export const maskFileParts = (
         logger.debug(`Masked ${totalMasked} file parts`)
     }
 }
-
-/** Keys to preserve when stripping tool inputs (metadata only) */
-const INPUT_METADATA_KEYS: Record<string, string[]> = {
-    read: ["filePath", "offset", "limit"],
-    write: ["filePath"],
-    edit: ["filePath"],
-    glob: ["pattern", "path"],
-    grep: ["pattern", "path", "include"],
-    bash: ["command", "description", "workdir"],
-    webfetch: ["url", "format"],
-    websearch: ["query"],
-    task: ["description", "subagent_type"],
-    skill: ["name"],
-    todowrite: [],
-    todoread: [],
-}
-
-/**
- * Strip tool input to metadata-only object.
- * Removes verbose content like file contents, keeping only key identifiers.
- * @internal Reserved for future use in input stripping strategies
- */
-function _stripInputToMetadata(
-    tool: string,
-    input: Record<string, unknown>,
-): Record<string, unknown> {
-    const keysToKeep = INPUT_METADATA_KEYS[tool] || Object.keys(input).slice(0, 3)
-    const stripped: Record<string, unknown> = {}
-
-    for (const key of keysToKeep) {
-        if (input[key] !== undefined) {
-            const value = input[key]
-            if (typeof value === "string" && value.length > 100) {
-                stripped[key] = value.slice(0, 97) + "..."
-            } else {
-                stripped[key] = value
-            }
-        }
-    }
-
-    return stripped
-}
-void _stripInputToMetadata
 
 /**
  * Generates a deterministic hash for message parts.
@@ -798,21 +754,6 @@ export const prune = (
             }
         }
     }
-}
-
-/**
- * Regex for matching any *_hash XML tag pattern
- * Matches: <anything_hash>xxxxxx</anything_hash> or <anything_hash>xxxxxx_N</anything_hash>
- * Supports optional preceding newline.
- * Supports collision suffix (_2, _3, etc.) for hash deduplication
- */
-const HASH_TAG_REGEX = /<([a-zA-Z_][a-zA-Z0-9_]*)_hash>[a-f0-9]{6}(?:_\d+)?<\/\1_hash>/gi
-
-/**
- * Strip all *_hash tags from a string
- */
-export function stripHashTags(content: string): string {
-    return content.replace(HASH_TAG_REGEX, "")
 }
 
 /**
