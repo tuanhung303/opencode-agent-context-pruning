@@ -33,7 +33,7 @@ Each test follows this pattern:
 
 1. **Generate** content (tool call, message, or thinking)
 2. **Capture** the hash from output
-3. **Prune** using `context()` tool
+3. **Prune** using `context_prune()` tool
 4. **Verify** the result
 
 ---
@@ -77,7 +77,7 @@ Analyzing requirements...
 You can prune it:
 
 ```typescript
-context({
+context_prune({
     action: "discard",
     targets: [["abc123"]],
 })
@@ -87,7 +87,7 @@ context({
 
 ```typescript
 // Prune multiple thinking blocks by hash
-context({
+context_prune({
     action: "discard",
     targets: [["abc123"], ["def456"]],
 })
@@ -109,7 +109,7 @@ read({ filePath: "package.json" })
 // → Note the hash (e.g., 44136f) from output
 
 // 2. Discard it
-context({
+context_prune({
     action: "discard",
     targets: [["44136f"]], // Replace with actual hash
 })
@@ -134,7 +134,7 @@ write({
 // → Assistant response will have message_hash
 
 // 2. Discard the message part
-context({
+context_prune({
     action: "discard",
     targets: [["msg_abc123"]], // Replace with actual hash
 })
@@ -152,7 +152,7 @@ read({ filePath: "package.json" })
 write({ filePath: "test.txt", content: "test" })
 
 // Prune both (use actual hashes)
-context({
+context_prune({
     action: "discard",
     targets: [
         ["44136f"], // Tool hash
@@ -173,7 +173,7 @@ glob({ pattern: "*.ts" })
 // → Hash: 01cb91 (example)
 
 // 2. Distill with summary
-context({
+context_prune({
     action: "distill",
     targets: [["01cb91", "Found 8 TypeScript files"]],
 })
@@ -192,7 +192,7 @@ context({
 bash({ command: "echo 'test'" })
 
 // 2. Distill message (use actual hash)
-context({
+context_prune({
     action: "distill",
     targets: [["msg_def456", "Test command executed"]],
 })
@@ -210,7 +210,7 @@ read({ filePath: "README.md" })
 bash({ command: "ls" })
 
 // Distill both with summaries
-context({
+context_prune({
     action: "distill",
     targets: [
         ["hash1", "README contains project docs"],
@@ -237,7 +237,7 @@ read({ filePath: "lib/config/defaults.ts" })
 todowrite({ todos: [...] }) // Hash: todo123
 
 // Attempt to discard it directly
-context({ action: "discard", targets: [["todo123"]] })
+context_prune({ action: "discard", targets: [["todo123"]] })
 
 // Verify: todowrite remains (protected tools cannot be discarded)
 ```
@@ -251,17 +251,17 @@ context({ action: "discard", targets: [["todo123"]] })
 ```typescript
 // Test 12a: Invalid hash
 try {
-    context({ action: "discard", targets: [["invalid_hash"]] })
+    context_prune({ action: "discard", targets: [["invalid_hash"]] })
 } catch (e) {
     // Should gracefully handle, not crash
 }
 
 // Test 12b: Non-existent hash
-context({ action: "discard", targets: [["zzzzzz"]] })
+context_prune({ action: "discard", targets: [["zzzzzz"]] })
 // Expected: "No eligible tool outputs to discard"
 
 // Test 12c: Distill without summary (should fail gracefully)
-context({ action: "distill", targets: [["abc123"]] })
+context_prune({ action: "distill", targets: [["abc123"]] })
 // Expected: Error or graceful skip (distill requires summary)
 ```
 
@@ -684,7 +684,7 @@ read({ filePath: "lib/strategies/distill.ts" })
 // Analyze and document findings...
 
 // Look for reasoning_hash in output, then prune:
-context({
+context_prune({
     action: "discard",
     targets: [["abc123"]], // Replace with actual hash
 })
@@ -704,7 +704,7 @@ write({ filePath: "test.txt", content: "test" })
 // → Assistant responds with message_hash
 
 // Prune the message
-context({
+context_prune({
     action: "discard",
     targets: [["msg_abc123"]], // Replace with actual hash
 })
@@ -723,7 +723,7 @@ context({
 // Look for reasoning_hash
 
 // Distill with summary
-context({
+context_prune({
     action: "distill",
     targets: [["abc123", "Analysis: 3 optimization opportunities found"]],
 })
@@ -912,7 +912,7 @@ async function smokeTest() {
     const hash2 = "01cb91" // Replace with actual
 
     // Prune
-    await context({ action: "discard", targets: [[hash1], [hash2]] })
+    await context_prune({ action: "discard", targets: [[hash1], [hash2]] })
 
     return "Smoke test complete"
 }

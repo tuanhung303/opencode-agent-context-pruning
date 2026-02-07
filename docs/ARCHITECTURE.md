@@ -198,18 +198,18 @@ if (part.state.time?.compacted) {
 
 ### Protected Tools (Cannot Be Pruned)
 
-| Tool           | Reason                                     |
-| -------------- | ------------------------------------------ |
-| `context_info` | System context critical for operation      |
-| `task`         | Long-running operations must persist       |
-| `todowrite`    | Todo state management is essential         |
-| `todoread`     | Todo retrieval must remain available       |
-| `context`      | The pruning tool cannot prune itself       |
-| `batch`        | Batch operations need to persist           |
-| `write`        | File writes protected to prevent data loss |
-| `edit`         | File edits protected to prevent data loss  |
-| `plan_enter`   | Planning mode entry points                 |
-| `plan_exit`    | Planning mode exit points                  |
+| Tool            | Reason                                     |
+| --------------- | ------------------------------------------ |
+| `context_info`  | System context critical for operation      |
+| `task`          | Long-running operations must persist       |
+| `todowrite`     | Todo state management is essential         |
+| `todoread`      | Todo retrieval must remain available       |
+| `context_prune` | The pruning tool cannot prune itself       |
+| `batch`         | Batch operations need to persist           |
+| `write`         | File writes protected to prevent data loss |
+| `edit`          | File edits protected to prevent data loss  |
+| `plan_enter`    | Planning mode entry points                 |
+| `plan_exit`     | Planning mode exit points                  |
 
 ### What Cannot Be Pruned
 
@@ -235,9 +235,9 @@ START: Do you need to prune context?
 │        │
 │        ├─ MODERATE (50-75% used)
 │        │   └─ What type of content dominates?
-│        │       ├─ Old tool outputs → context({ action: "discard", targets: [[hash]] })
-│        │       ├─ Old messages → context({ action: "discard", targets: [[msg_hash]] })
-│        │       └─ Large thinking → context({ action: "distill", targets: [[hash, "summary"]] })
+│        │       ├─ Old tool outputs → context_prune({ action: "discard", targets: [[hash]] })
+│        │       ├─ Old messages → context_prune({ action: "discard", targets: [[msg_hash]] })
+│        │       └─ Large thinking → context_prune({ action: "distill", targets: [[hash, "summary"]] })
 │        │
 │        ├─ HIGH (75-90% used)
 │        │   └─ Is there critical information to preserve?
@@ -296,7 +296,7 @@ START: Do you need to prune context?
 
 ### When It Appears
 
-✅ After successful `context()` operations that actually prune items
+✅ After successful `context_prune()` operations that actually prune items
 
 ### When It Disappears
 
@@ -340,13 +340,13 @@ For reasoning blocks, ACP automatically converts `discard` to `distill` with a m
 ```typescript
 // Discarding reasoning would remove reasoning_content field → API error
 // Instead, distill with "—" preserves field structure
-context({ action: "discard", targets: [["reasoning_hash"]] })
+context_prune({ action: "discard", targets: [["reasoning_hash"]] })
 // → Internally converted to distill with "—" summary
 ```
 
 ### The Fix (v3.0.0)
 
-All context tool paths now **always** fetch messages and initialize session state:
+All context_prune tool paths now **always** fetch messages and initialize session state:
 
 ```typescript
 // Always fetch messages (required for thinking mode API compatibility)

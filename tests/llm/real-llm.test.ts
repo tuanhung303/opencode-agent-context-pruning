@@ -98,18 +98,18 @@ describe.skipIf(!RUN_LLM_TESTS)("LLM Integration Tests", () => {
         expect(result.exitCode).toBe(0)
     }, 120000)
 
-    it("agent_context_optimize tool is available", async () => {
+    it("context_prune tool is available", async () => {
         const result = await runOpencode({
-            prompt: 'If you have a "agent_context_optimize" tool available, respond "context-available". Otherwise respond "no-context".',
+            prompt: 'If you have a "context_prune" tool available, respond "context-available". Otherwise respond "no-context".',
             timeout: 60000,
             stream: true,
         })
 
         expect(result.exitCode).toBe(0)
-        // Check if agent_context_optimize tool is mentioned
+        // Check if context_prune tool is mentioned
         const hasContext =
             result.stdout.toLowerCase().includes("context-available") ||
-            result.stdout.toLowerCase().includes("agent_context_optimize")
+            result.stdout.toLowerCase().includes("context_prune")
         console.log("\nAgent context optimize tool available:", hasContext)
     }, 120000)
 })

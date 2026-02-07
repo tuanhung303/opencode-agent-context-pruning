@@ -223,9 +223,9 @@ export async function syncToolCache(
                     continue
                 }
 
-                // Track agent_context_optimize tool completion and capture pruned content for status bar
+                // Track context_prune tool completion and capture pruned content for status bar
                 // DEDUPLICATION: Only track if we haven't already tracked this call ID
-                if (part.tool === "agent_context_optimize" && part.state?.status === "completed") {
+                if (part.tool === "context_prune" && part.state?.status === "completed") {
                     // Check if we've already processed this context call
                     const alreadyProcessed =
                         state.lastPrunedContent?.timestamp &&
@@ -784,8 +784,8 @@ function trackContextInteractions(
                 continue
             }
 
-            // Track agent_context_optimize calls
-            if (part.tool === "agent_context_optimize" && part.state?.status === "completed") {
+            // Track context_prune calls
+            if (part.tool === "context_prune" && part.state?.status === "completed") {
                 allContextCallIds.push({ callId: part.callID, turn: turnCounter })
                 latestContextCallId = part.callID
                 latestContextTurn = turnCounter

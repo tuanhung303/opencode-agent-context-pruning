@@ -61,7 +61,7 @@ const plugin: Plugin = (async (ctx) => {
             ctx.directory,
         ),
         tool: {
-            agent_context_optimize: createContextTool({
+            context_prune: createContextTool({
                 client: ctx.client,
                 state,
                 logger,
@@ -81,11 +81,9 @@ const plugin: Plugin = (async (ctx) => {
             const existingPrimaryTools = opencodeConfig.experimental?.primary_tools ?? []
             opencodeConfig.experimental = {
                 ...opencodeConfig.experimental,
-                primary_tools: [...existingPrimaryTools, "agent_context_optimize"],
+                primary_tools: [...existingPrimaryTools, "context_prune"],
             }
-            logger.info(
-                "Added 'agent_context_optimize' to experimental.primary_tools via config mutation",
-            )
+            logger.info("Added 'context_prune' to experimental.primary_tools via config mutation")
         },
     }
 }) satisfies Plugin
