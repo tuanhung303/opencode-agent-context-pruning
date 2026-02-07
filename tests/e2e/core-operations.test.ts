@@ -52,7 +52,7 @@ function createMockConfig(overrides: Record<string, unknown> = {}) {
         enabled: true,
         tools: {
             settings: {
-                protectedTools: ["task", "todowrite", "todoread", "context", "write", "edit"],
+                protectedTools: ["task", "todowrite", "todoread", "context_prune", "write", "edit"],
                 enableAssistantMessagePruning: true,
                 enableReasoningPruning: true,
                 enableVisibleAssistantHashes: true,

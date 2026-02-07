@@ -477,7 +477,7 @@ describe("tool-cache auto-supersede", () => {
                     createStepPart(), // Turn 1
                     createToolPart(
                         "call_001",
-                        "context",
+                        "context_prune",
                         { action: "discard", targets: [["abc123"]] },
                         "completed",
                         "Discarded 1 item",
@@ -488,7 +488,7 @@ describe("tool-cache auto-supersede", () => {
                     createStepPart(), // Turn 3
                     createToolPart(
                         "call_002",
-                        "context",
+                        "context_prune",
                         { action: "distill", targets: [["def456", "summary"]] },
                         "completed",
                         "Distilled 1 item",
@@ -512,7 +512,7 @@ describe("tool-cache auto-supersede", () => {
                     createStepPart(), // Turn 1
                     createToolPart(
                         "call_001",
-                        "context",
+                        "context_prune",
                         { action: "discard", targets: [["abc123"]] },
                         "completed",
                         "Discarded 1 item",
@@ -535,7 +535,7 @@ describe("tool-cache auto-supersede", () => {
                     createStepPart(), // Turn 1
                     createToolPart(
                         "call_001",
-                        "context",
+                        "context_prune",
                         { action: "discard", targets: [["abc123"]] },
                         "completed",
                         "Discarded 1 item",
@@ -545,7 +545,7 @@ describe("tool-cache auto-supersede", () => {
                     createStepPart(), // Turn 2
                     createToolPart(
                         "call_002",
-                        "context",
+                        "context_prune",
                         { action: "distill", targets: [["def456", "summary"]] },
                         "completed",
                         "Distilled 1 item",
@@ -555,7 +555,7 @@ describe("tool-cache auto-supersede", () => {
                     createStepPart(), // Turn 3
                     createToolPart(
                         "call_003",
-                        "context",
+                        "context_prune",
                         { action: "discard", targets: [["ghi789"]] },
                         "completed",
                         "Discarded 1 item",
@@ -1040,7 +1040,7 @@ describe("tool-cache auto-supersede", () => {
             state.cursors.context.lastCallId = "call-old"
             // Add call-old FIRST so it's oldest (FIFO eviction)
             state.toolParameters.set("call-old", {
-                tool: "context",
+                tool: "context_prune",
                 parameters: {},
                 turn: 1,
             })

@@ -105,16 +105,16 @@ ACP handles most pruning automatically. The following tools give agents granular
 
 ```typescript
 // Discard completed work
-context({ action: "discard", targets: [["a1b2c3"]] })
+context_prune({ action: "discard", targets: [["a1b2c3"]] })
 
 // Distill large outputs
-context({
+context_prune({
     action: "distill",
     targets: [["d4e5f6", "Found 15 TypeScript files"]],
 })
 
 // Batch operations
-context({
+context_prune({
     action: "discard",
     targets: [["hash1"], ["hash2"], ["hash3"]],
 })
@@ -138,30 +138,31 @@ context({
 
 ## 🤖 Agent Auto Mode
 
-ACP provides the `context` tool for intelligent context management:
+ACP provides the `context_prune` tool for intelligent context management:
 
 ### Tool Interface
 
 ```typescript
-context({
-    action: "discard" | "distill",
-    targets: [string, string?][]  // [[target, summary?], ...]
+context_prune({
+    action: "discard" | "distill" | "replace",
+    targets: [string, string?, string?][]  // Format depends on action
 })
 ```
 
 ### Target Types
 
-| Type                | Format      | Example            |
-| ------------------- | ----------- | ------------------ |
-| **Tool outputs**    | 6 hex chars | `44136f`, `01cb91` |
-| **Thinking blocks** | 6 hex chars | `abc123`           |
-| **Messages**        | 6 hex chars | `def456`           |
+| Type                | Format                    | Example                                        |
+| ------------------- | ------------------------- | ---------------------------------------------- |
+| **Tool outputs**    | 6 hex chars               | `44136f`, `01cb91`                             |
+| **Thinking blocks** | 6 hex chars               | `abc123`                                       |
+| **Messages**        | 6 hex chars               | `def456`                                       |
+| **Pattern replace** | [start, end, replacement] | `["Start marker:", "End marker.", "[pruned]"]` |
 
 ### Batch Operations
 
 ```typescript
 // Prune multiple items at once
-context({
+context_prune({
     action: "discard",
     targets: [
         ["44136f"], // Tool output
@@ -171,14 +172,31 @@ context({
 })
 
 // Distill with shared summary
-context({
+context_prune({
     action: "distill",
     targets: [
         ["44136f", "Research phase complete"],
         ["01cb91", "Research phase complete"],
     ],
 })
+
+// Pattern replace - replace content between markers
+context_prune({
+    action: "replace",
+    targets: [
+        ["Detailed findings from analysis:", "End of detailed findings.", "[analysis complete]"],
+        ["Debug output started:", "Debug output ended.", "[debug pruned]"],
+    ],
+})
 ```
+
+### Pattern Replace Constraints
+
+- Match content must be ≥30 characters
+- Start OR end pattern must be >15 characters
+- Literal matching only (no regex)
+- Exactly one match per pattern
+- No overlapping patterns
 
 ---
 
@@ -240,7 +258,19 @@ Identical URL fetches are deduplicated—only the latest response is retained.
 
 ### 5. State Query Supersede
 
-State queries (`ls`, `find`, `git status`) are deduplicated—only the latest results matter.
+State queries (`ls`, `find`, `pwd`, `git status`) are deduplicated—only the latest results matter.
+
+### 6. Context-Based Supersede
+
+New `context_prune` tool calls supersede previous context operations, preventing context management overhead from accumulating.
+
+### 7. Snapshot-Based Supersede
+
+Only the latest snapshot per file is retained. Previous snapshots are automatically pruned.
+
+### 8. Retry-Based Supersede
+
+Failed tool attempts are automatically removed when the operation succeeds on retry.
 
 ---
 
@@ -249,7 +279,7 @@ State queries (`ls`, `find`, `git status`) are deduplicated—only the latest re
 These tools are exempt from pruning to ensure operational continuity:
 
 ```
-task, todowrite, todoread, context, batch, write, edit, plan_enter, plan_exit
+context_info, task, todowrite, todoread, context_prune, batch, write, edit, plan_enter, plan_exit
 ```
 
 Additional tools can be protected via configuration:
@@ -282,49 +312,97 @@ Priority: Defaults → Global → Config Dir → Project
 {
     "$schema": "https://raw.githubusercontent.com/tuanhung303/opencode-agent-context-pruning/master/acp.schema.json",
     "enabled": true,
-    "autoPruneAfterTool": false,
+    "debug": false,
     "pruneNotification": "minimal",
 
     "commands": {
         "enabled": true,
-        "protectedTools": [],
+        "protectedTools": [], // Additional tools to protect (merged with defaults)
     },
 
+    "protectedFilePatterns": [
+        "**/.env",
+        "**/.env.*",
+        "**/credentials.json",
+        "**/secrets.json",
+        "**/*.pem",
+        "**/*.key",
+        "**/package.json",
+        "**/tsconfig.json",
+        "**/pyproject.toml",
+        "**/Cargo.toml",
+    ],
+
     "tools": {
+        "settings": {
+            "protectedTools": [], // Merged with built-in protected tools
+            "enableAssistantMessagePruning": true,
+            "enableReasoningPruning": true,
+            "enableVisibleAssistantHashes": true,
+        },
         "discard": { "enabled": true },
-        "distill": { "enabled": true },
-        "todoReminder": { "enabled": true },
-        "automataMode": { "enabled": true },
+        "distill": { "enabled": true, "showDistillation": false },
+        "todoReminder": {
+            "enabled": true,
+            "initialTurns": 5,
+            "repeatTurns": 4,
+            "stuckTaskTurns": 12,
+        },
+        "automataMode": { "enabled": true, "initialTurns": 8 },
     },
 
     "strategies": {
-        "deduplication": { "enabled": false },
-        "purgeErrors": { "enabled": false },
-        "truncation": { "enabled": false },
-        "thinkingCompression": { "enabled": false },
-        "supersedeWrites": { "enabled": false },
+        "purgeErrors": { "enabled": false, "turns": 4 },
+        "aggressivePruning": {
+            // All enabled by default - see Aggressive Pruning section
+        },
     },
 }
 ```
 
-### Aggressive Pruning (Opt-In)
+### Aggressive Pruning (Enabled by Default)
 
-Enable for up to **50% token savings**:
+All aggressive pruning options are **enabled by default** for up to **50% token savings**.
+
+#### Pruning Presets
+
+Use presets for quick configuration:
 
 ```jsonc
 {
     "strategies": {
         "aggressivePruning": {
-            "pruneToolInputs": true, // Strip verbose inputs
-            "pruneStepMarkers": true, // Remove step markers
+            "preset": "balanced", // Options: "compact", "balanced", "verbose"
+        },
+    },
+}
+```
+
+| Preset       | Description                               | Use Case                         |
+| ------------ | ----------------------------------------- | -------------------------------- |
+| **compact**  | Maximum cleanup, all options enabled      | Long sessions, token-constrained |
+| **balanced** | Good defaults, preserves user code blocks | Most use cases (default)         |
+| **verbose**  | Minimal cleanup, preserves everything     | Debugging, audit trails          |
+
+#### Individual Options
+
+Override preset values with individual flags:
+
+```jsonc
+{
+    "strategies": {
+        "aggressivePruning": {
+            "preset": "balanced",
+            "pruneToolInputs": true, // Strip verbose inputs on supersede
+            "pruneStepMarkers": true, // Remove step markers entirely
             "pruneSourceUrls": true, // Dedup URL fetches
             "pruneFiles": true, // Mask file attachments
-            "pruneSnapshots": true, // Keep latest snapshot
-            "pruneRetryParts": true, // Prune failed retries
-            "pruneUserCodeBlocks": true, // Truncate old code blocks
-            "truncateOldErrors": true, // Truncate old errors
+            "pruneSnapshots": true, // Keep only latest snapshot
+            "pruneRetryParts": true, // Prune failed retries on success
+            "pruneUserCodeBlocks": false, // Keep user code blocks (balanced default)
+            "truncateOldErrors": false, // Keep full errors (balanced default)
             "aggressiveFilePrune": true, // One-file-one-view
-            "stateQuerySupersede": true, // Dedup state queries
+            "stateQuerySupersede": true, // Dedup state queries (ls, git status)
         },
     },
 }
@@ -387,7 +465,7 @@ read({ filePath: "src/config.ts" })
 **Step 3: Prune when no longer needed**
 
 ```typescript
-context({ action: "discard", targets: [["a1b2c3"]] })
+context_prune({ action: "discard", targets: [["a1b2c3"]] })
 // Response: 「 🗑️ discard ✓ 」- ⚙️ read
 // Available: Tools(5), Messages(2), Reasoning(1)
 ```
@@ -395,13 +473,16 @@ context({ action: "discard", targets: [["a1b2c3"]] })
 **Batch multiple targets:**
 
 ```typescript
-context({ action: "discard", targets: [["a1b2c3"], ["d4e5f6"], ["g7h8i9"]] })
+context_prune({ action: "discard", targets: [["a1b2c3"], ["d4e5f6"], ["g7h8i9"]] })
 ```
 
 **Distill with summary:**
 
 ```typescript
-context({ action: "distill", targets: [["abc123", "Auth: chose JWT over sessions"]] })
+context_prune({
+    action: "distill",
+    targets: [["abc123", "Auth: chose JWT over sessions"]],
+})
 ```
 
 ---
@@ -442,12 +523,10 @@ ACP hooks into OpenCode's message flow to reduce context size before sending to 
 
 ## 📝 Commands
 
-| Command          | Description                       |
-| ---------------- | --------------------------------- |
-| `/acp`           | List available commands           |
-| `/acp context`   | Show token usage breakdown        |
-| `/acp stats`     | Show aggregate pruning statistics |
-| `/acp sweep [n]` | Prune last N tool outputs         |
+| Command      | Description                     |
+| ------------ | ------------------------------- |
+| `/acp`       | Show ACP statistics and version |
+| `/acp stats` | Show ACP statistics and version |
 
 ---
 
@@ -564,7 +643,7 @@ Identifies tasks stuck in `in_progress` for too long:
 
 ### Thinking Mode APIs (Anthropic, DeepSeek, Kimi)
 
-ACP is fully compatible with **extended thinking mode** APIs that require the `reasoning_content` field. The context tool automatically syncs reasoning content to prevent `400 Bad Request` errors.
+ACP is fully compatible with **extended thinking mode** APIs that require the `reasoning_content` field. The context_prune tool automatically syncs reasoning content to prevent `400 Bad Request` errors.
 
 **Supported providers:** Anthropic, DeepSeek, Kimi  
 **Not required:** OpenAI, Google
@@ -677,7 +756,7 @@ error, status code: 400, message: thinking is enabled but reasoning_content is m
 in assistant tool call message at index 2
 ```
 
-**Rule:** Call `ensureSessionInitialized` at the START of every context tool function, before any early returns.
+**Rule:** Call `ensureSessionInitialized` at the START of every context_prune tool function, before any early returns.
 
 ---
 
@@ -711,7 +790,7 @@ if (reasoningHashes.length > 0) {
 
 ### 4. Test with Non-Existing Hashes
 
-Always test context tool changes with:
+Always test context_prune tool changes with:
 
 1. Valid existing hashes (success path)
 2. Non-existing hashes like `"zzzzzz"` (no-op path)
@@ -743,7 +822,7 @@ User Message → Transform Hook → ensureReasoningContentSync → API Call
             Context tool runs HERE
 ```
 
-If context tool returns early (no-op), the transform hook may not have synced `reasoning_content` yet. That's why each context tool function must call `ensureSessionInitialized` itself.
+If context_prune tool returns early (no-op), the transform hook may not have synced `reasoning_content` yet. That's why each tool function must call `ensureSessionInitialized` itself.
 
 ---
 
@@ -755,7 +834,7 @@ When you see `reasoning_content is missing` errors:
 2. **Verify message fetch** - Is the function fetching messages before early returns?
 3. **Verify session init** - Is `ensureSessionInitialized` called in ALL code paths?
 4. **Check the no-op path** - Does the early return path have proper initialization?
-5. **Test with invalid hash** - `context({ action: "discard", targets: [["zzzzzz"]] })`
+5. **Test with invalid hash** - `context_prune({ action: "discard", targets: [["zzzzzz"]] })`
 
 </details>
 
@@ -769,7 +848,7 @@ If you're an AI assistant reading this:
 > **Quick Pruning Reference:**
 >
 > - Light pressure (<50%): No action
-> - Moderate (50-75%): Prune old tool outputs using `context({ action: "discard", targets: [[hash]] })`
+> - Moderate (50-75%): Prune old tool outputs using `context_prune({ action: "discard", targets: [[hash]] })`
 > - High (75-90%): Anchor critical info, then batch prune non-essential items
 > - Critical (>90%): Aggressively discard all disposable context
 >

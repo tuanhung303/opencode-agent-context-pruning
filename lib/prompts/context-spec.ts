@@ -40,9 +40,9 @@ Manage conversation context. Remove noise, preserve essentials.
 
 **PRUNE (one call, all three actions):**
 
-  context({ action: "distill", targets: [["abc123", "Chose JWT: stateless, scalable"]] })
-  context({ action: "discard", targets: [["a1b2c3"], ["d4e5f6"]] })
-  context({ action: "replace", targets: [["Detailed findings from analysis:", "End of detailed findings.", "[analysis complete]"]] })
+  context_prune({ action: "distill", targets: [["abc123", "Chose JWT: stateless, scalable"]] })
+  context_prune({ action: "discard", targets: [["a1b2c3"], ["d4e5f6"]] })
+  context_prune({ action: "replace", targets: [["Detailed findings from analysis:", "End of detailed findings.", "[analysis complete]"]] })
 
 **AFTER (~150 tokens):**
 
@@ -61,7 +61,7 @@ Manage conversation context. Remove noise, preserve essentials.
 
 **Result: Saved ~3350 tokens (96% reduction)**
 
-## Rules
+## Batching Strategy
 
 1. **Batch everything** - One call, many targets
 2. **Prune early and often** - After each phase completion

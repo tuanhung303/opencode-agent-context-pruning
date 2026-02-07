@@ -18,12 +18,6 @@ import {
 } from "./messages"
 import { loadPrompt } from "./prompts"
 import { handleStatsCommand } from "./commands/stats"
-import { handleContextCommand } from "./commands/context"
-import { handleHelpCommand } from "./commands/help"
-import { handleSweepCommand } from "./commands/sweep"
-import { handleProtectedCommand } from "./commands/protected"
-import { handleBudgetCommand } from "./commands/budget"
-import { handleSuggestCommand } from "./commands/suggest"
 import { safeExecute } from "./safe-execute"
 import { sendUnifiedNotification } from "./ui/notification"
 import { getCurrentParams } from "./strategies/utils"
@@ -220,18 +214,7 @@ export function createCommandExecuteHandler(
             })
             const messages = (messagesResponse.data || messagesResponse) as WithParts[]
 
-            if (subcommand === "context") {
-                await handleContextCommand({
-                    client,
-                    state,
-                    logger,
-                    sessionId: input.sessionID,
-                    messages,
-                })
-                throw new Error("__ACP_CONTEXT_HANDLED__")
-            }
-
-            if (subcommand === "stats") {
+            if (subcommand === "stats" || subcommand === "" || subcommand === "help") {
                 await handleStatsCommand({
                     client,
                     state,
@@ -242,64 +225,15 @@ export function createCommandExecuteHandler(
                 throw new Error("__ACP_STATS_HANDLED__")
             }
 
-            if (subcommand === "sweep") {
-                await handleSweepCommand({
-                    client,
-                    state,
-                    config,
-                    logger,
-                    sessionId: input.sessionID,
-                    messages,
-                    args: _subArgs,
-                    workingDirectory,
-                })
-                throw new Error("__ACP_SWEEP_HANDLED__")
-            }
-
-            if (subcommand === "protected") {
-                await handleProtectedCommand({
-                    client,
-                    state,
-                    config,
-                    logger,
-                    sessionId: input.sessionID,
-                    messages,
-                })
-                throw new Error("__ACP_PROTECTED_HANDLED__")
-            }
-
-            if (subcommand === "budget") {
-                await handleBudgetCommand({
-                    client,
-                    state,
-                    logger,
-                    sessionId: input.sessionID,
-                    messages,
-                })
-                throw new Error("__ACP_BUDGET_HANDLED__")
-            }
-
-            if (subcommand === "suggest") {
-                await handleSuggestCommand({
-                    client,
-                    state,
-                    logger,
-                    config,
-                    sessionId: input.sessionID,
-                    messages,
-                    args: _subArgs,
-                })
-                throw new Error("__ACP_SUGGEST_HANDLED__")
-            }
-
-            await handleHelpCommand({
+            // Unknown subcommand - show stats anyway
+            await handleStatsCommand({
                 client,
                 state,
                 logger,
                 sessionId: input.sessionID,
                 messages,
             })
-            throw new Error("__ACP_HELP_HANDLED__")
+            throw new Error("__ACP_STATS_HANDLED__")
         }
     }
 }

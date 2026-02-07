@@ -23,20 +23,20 @@ Restart OpenCode to activate.
 
 ### Manual Pruning
 
-Use the `context` tool to manage conversation context:
+Use the `context_prune` tool to manage conversation context:
 
 ```typescript
 // Discard tool outputs
-context({ action: "discard", targets: [["44136f"]] })
+context_prune({ action: "discard", targets: [["44136f"]] })
 
 // Distill with summary
-context({
+context_prune({
     action: "distill",
     targets: [["01cb91", "Found 8 TypeScript files"]],
 })
 
 // Discard multiple by hash
-context({ action: "discard", targets: [["a1b2c3"], ["d4e5f6"], ["789abc"]] })
+context_prune({ action: "discard", targets: [["a1b2c3"], ["d4e5f6"], ["789abc"]] })
 ```
 
 ### Configuration
@@ -65,7 +65,7 @@ Create `.opencode/acp.jsonc`:
 
 ## API Reference
 
-### context(options)
+### context_prune(options)
 
 Main pruning interface.
 
@@ -83,9 +83,8 @@ Main pruning interface.
 
 ### Commands
 
-- `/acp context` - Show token usage
-- `/acp stats` - Show pruning statistics
-- `/acp sweep [n]` - Prune last N tools
+- `/acp` - Show ACP statistics and version
+- `/acp stats` - Show ACP statistics and version
 
 ## License
 
