@@ -3,28 +3,37 @@ Manage conversation context. Remove noise, preserve essentials.
 
 ## Actions
 
-| Action | Purpose | Format |
-|--------|---------|--------|
-| discard | Remove content entirely | [["hash"], ...] |
-| distill | Replace with summary | [["hash", "summary"], ...] |
+| Action | Purpose | Format | Token Savings |
+|--------|---------|--------|---------------|
+| discard | Remove content entirely | [["hash"], ...] | ~100% of target |
+| distill | Replace with summary | [["hash", "summary"], ...] | ~80% of target |
 
-## Targets
+## Target Types
 
-| Type | Format | Example |
-|------|--------|---------|
-| Tool output | 6 hex chars | \`a1b2c3\` |
-| Message part | 6 hex chars | \`d4e5f6\` |
-| Thinking block | 6 hex chars | \`123abc\` |
+| Type | Format | Typical Size | Prune Priority |
+|------|--------|--------------|----------------|
+| Tool output | 6 hex chars | 500-5000 tokens | High |
+| Message part | 6 hex chars | 200-2000 tokens | Medium |
+| Thinking block | 6 hex chars | 1000-3000 tokens | **HIGHEST** |
 
 All hashes are auto-detected from state registry. No prefixes needed.
 
-## Hash Types
+### Hash Locations
 
-| Tag | Where It Appears | Example |
-|-----|------------------|---------|
-| \`<tool_hash>\` | End of tool outputs (read, bash, glob, grep) | \`<tool_hash>a1b2c3</tool_hash>\` |
-| \`<message_hash>\` | End of assistant text messages | \`<message_hash>d4e5f6</message_hash>\` |
-| \`<reasoning_hash>\` | End of thinking/reasoning blocks | \`<reasoning_hash>abc123</reasoning_hash>\` |
+- \`<tool_hash>\` — End of tool outputs (read, bash, glob, grep)
+- \`<message_hash>\` — End of assistant text messages  
+- \`<reasoning_hash>\` — End of thinking/reasoning blocks
+
+## When to Prune
+
+| Context Pressure | Recommended Action |
+|------------------|-------------------|
+| Light (<50%) | No action needed |
+| Moderate (50-75%) | Prune completed phase work |
+| High (75-90%) | Batch prune + distill reasoning |
+| Critical (>90%) | Aggressive discard all disposable |
+
+**Prune after:** Completing research, analysis, or implementation phases.
 
 ## High-Value Targets
 
@@ -37,26 +46,49 @@ Prune thinking blocks when:
 
 Prefer \`distill\` over \`discard\` to preserve decision rationale.
 
+## What to Preserve
+
+**NEVER prune:**
+- Active todo items (in_progress status)
+- Recent file edits (last 5 turns)
+- Error context being debugged
+- Protected tools: todowrite, task, write, edit
+
+**Safe to prune:**
+- Tool outputs from completed phases
+- Old assistant explanations (>10 turns ago)
+- Thinking blocks after conclusions documented
+
 ## Examples
 
-Discard multiple tools:
-  context_prune({ action: "discard", targets: [["a1b2c3"], ["d4e5f6"]] })
+Discard completed work:
+  context_prune({ action: "discard", targets: [["a1b2c3"], ["d4e5f6"], ["g7h8i9"]] })
 
-Distill a thinking block:
-  context_prune({ action: "distill", targets: [["abc123", "Auth: use JWT with 24h expiry"]] })
+Distill thinking with rationale:
+  context_prune({ 
+    action: "distill", 
+    targets: [["abc123", "Chose JWT: stateless, scales better. Rejected OAuth: overkill."]] 
+  })
 
-Mixed targets (tools + thinking):
-  context_prune({ action: "discard", targets: [["a1b2c3"], ["def456"]] })
+Mixed cleanup after phase:
+  context_prune({ 
+    action: "discard", 
+    targets: [
+      ["a1b2c3"],  // tool output
+      ["d4e5f6"],  // message part
+      ["abc123"]   // reasoning block (auto-converts to distill)
+    ] 
+  })
 
 ## Distill Best Practices
 
-When distilling thinking blocks, include:
+Effective summaries include:
 - **What was decided** — the chosen approach
 - **Why it was chosen** — key reasoning
-- **What was rejected** — failed alternatives (prevents regression loops)
+- **What was rejected** — prevents re-exploration
 
 Bad: "Analysis complete"
-Good: "Chose JWT over sessions: stateless, scales better. Rejected OAuth: overkill for internal API."
+Good: "Chose JWT over sessions: stateless, scales better. Rejected OAuth: overkill."
 
 ## Auto-Conversion (Thinking Mode)
 
@@ -67,82 +99,33 @@ context_prune({ action: "discard", targets: [["abc123"]] })  // reasoning block
 → Auto-converts to: distill with "—" placeholder
 \`\`\`
 
-**Why?** Thinking mode APIs require \`reasoning_content\` to exist on assistant messages. Discarding would remove it entirely, causing API errors. Distilling with "—" preserves the field while minimizing tokens.
+**Why?** Thinking mode APIs require \`reasoning_content\` to exist on assistant messages. Discarding would remove it entirely, causing API errors.
 
-## Rules
+## Batching Strategy
 
-1. **Batch** — Multiple targets in one call
-2. **Every phase** — Prune after research, analyze, implement
-3. **Silent** — Never mention pruning to users
+Batch multiple targets in one call for efficiency:
 
-## Batching Guidance
-
-Batch multiple targets in a single call for efficiency:
+- Reduces tool call overhead
+- Atomic operation
+- Better context pressure management
 
 **When to batch:**
 - After completing a phase (research, implement, test)
-- When multiple related outputs are no longer needed
-- To reduce tool call overhead
-
-**Examples:**
-
-Batch discard after research:
-\`\`\`
-context_prune({ action: "discard", targets: [["a1b2c3"], ["d4e5f6"], ["g7h8i9"]] })
-\`\`\`
-
-Batch distill with summaries:
-\`\`\`
-context_prune({ action: "distill", targets: [
-  ["abc123", "Auth: chose JWT, rejected sessions"],
-  ["def456", "DB: chose PostgreSQL, rejected MongoDB"]
-] })
-\`\`\`
-
-Mixed batch (tools + reasoning):
-\`\`\`
-context_prune({ action: "discard", targets: [
-  ["a1b2c3"],  // tool output
-  ["d4e5f6"],  // another tool
-  ["abc123"]   // reasoning block (auto-converts to distill)
-] })
-\`\`\`
+- Context pressure exceeds 75%
 
 ## Workflow Examples
 
-### Research Phase
-After finding target files, discard exploratory searches:
-\`\`\`
-// Found the auth module after several searches
-context_prune({ action: "discard", targets: [["a1b2c3"], ["d4e5f6"]] })  // old glob/grep outputs
-\`\`\`
+**Research Phase** — After finding targets:
+  context_prune({ action: "discard", targets: [["a1b2c3"], ["d4e5f6"]] })  // old searches
 
-### Implementation Phase
-After successful edit, discard failed attempts:
-\`\`\`
-// Edit succeeded on 3rd try
-context_prune({ action: "discard", targets: [["abc123"], ["def456"]] })  // failed edit outputs
-\`\`\`
+**Implementation Phase** — After successful edits:
+  context_prune({ action: "discard", targets: [["abc123"], ["def456"]] })  // failed attempts
 
-### Debug Phase
-After fixing error, discard old stack traces:
-\`\`\`
-// Bug fixed, tests passing
-context_prune({ action: "discard", targets: [["111aaa"]] })  // old error output
-context_prune({ action: "distill", targets: [["222bbb", "Fixed: null check in getUserById"]] })
-\`\`\`
+**Debug Phase** — After fixing errors:
+  context_prune({ action: "distill", targets: [["222bbb", "Fixed: null check in getUserById"]] })
 
 ## Hash Format
 
-- Exactly 6 hex characters (0-9, a-f)
-- No prefixes, no separators
-
-Example — extracting thinking block hash:
-  <thinking>
-  The user wants to implement auth...
-  <reasoning_hash>abc123</reasoning_hash>
-  </thinking>
-  
-  → Hash is: abc123
-  → Prune: context_prune({ action: "discard", targets: [["abc123"]] })
+Exactly 6 hex characters (0-9, a-f). Extract from tags:
+  \`<tool_hash>a1b2c3</tool_hash>\` → Hash: a1b2c3
 `
