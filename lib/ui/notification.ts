@@ -210,13 +210,23 @@ export async function sendAttemptedNotification(
         return false
     }
 
-    const message = formatNoOpNotification(
+    const noOpMessage = formatNoOpNotification(
         type,
         attemptedTargets,
         targetType,
         state,
         workingDirectory,
     )
+    // Prepend stats header (with percentage) when state is available;
+    // extract the detail part after the no-op box to avoid double-boxing
+    let message: string
+    if (state) {
+        const statsHeader = formatStatsHeader(state)
+        const details = noOpMessage.replace(/^「 .*? 」- /, "").trim()
+        message = `${statsHeader}- ${details}`
+    } else {
+        message = noOpMessage
+    }
     await sendIgnoredMessage(client, sessionId, message, params, logger)
     return true
 }

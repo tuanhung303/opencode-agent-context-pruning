@@ -2,6 +2,7 @@ import { ToolParameterEntry, SessionState } from "../state"
 import { extractParameterKey } from "../messages/utils"
 import { countTokens } from "../strategies/utils"
 import { formatTokenCount, truncate, shortenPath } from "../utils/string"
+import { sumToolPruneStats } from "../state/stats-utils"
 
 // Re-export for backwards compatibility
 export { formatTokenCount, truncate, shortenPath }
@@ -47,19 +48,8 @@ export function formatStatsHeader(state: SessionState): string {
         )
     }
 
-    // 🔧 Tool discard = manual tool + all auto-supersede (with ▼)
-    const toolCount =
-        manualDiscard.tool.count +
-        autoSupersede.hash.count +
-        autoSupersede.file.count +
-        autoSupersede.todo.count +
-        autoSupersede.context.count
-    const toolTokens =
-        manualDiscard.tool.tokens +
-        autoSupersede.hash.tokens +
-        autoSupersede.file.tokens +
-        autoSupersede.todo.tokens +
-        autoSupersede.context.tokens
+    // 🔧 Tool discard = manual tool + all auto-supersede + purge errors (with ▼)
+    const { count: toolCount, tokens: toolTokens } = sumToolPruneStats(state.stats.strategyStats)
 
     if (toolCount > 0) {
         parts.push(`${PRUNE_CATEGORY_ICONS.tool} ${toolCount}(${formatTokenCount(toolTokens)}) ▼`)
