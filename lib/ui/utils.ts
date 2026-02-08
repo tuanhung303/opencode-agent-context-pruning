@@ -2,6 +2,7 @@ import { ToolParameterEntry, SessionState } from "../state"
 import { extractParameterKey } from "../messages/utils"
 import { countTokens } from "../strategies/utils"
 import { formatTokenCount, truncate, shortenPath } from "../utils/string"
+import { sumToolPruneStats } from "../state/stats-utils"
 
 // Re-export for backwards compatibility
 export { formatTokenCount, truncate, shortenPath }
@@ -26,12 +27,12 @@ export function formatDistilled(distillation?: string[]): string {
     return ""
 }
 
-export function formatStatsHeader(strategyStats: SessionState["stats"]["strategyStats"]): string {
+export function formatStatsHeader(state: SessionState): string {
     // Build the categorized status format:
-    // 「 💬 2(1.2K) ▼ ₊ 🧠 1(3.5K) ▼ ₊ ⚙️ 5(8.1K) ▼ ₊ ✨ 3(500) 」
+    // 「 💬 2(1.2K) ▼ | 🧠 1(3.5K) ▼ | ⚙️ 5(8.1K) ▼ | ✨ 3(500) | 🟡 59% 」
     const parts: string[] = []
 
-    const { manualDiscard, autoSupersede, distillation } = strategyStats
+    const { manualDiscard, autoSupersede, distillation } = state.stats.strategyStats
 
     // 💬 Message discard (with ▼)
     if (manualDiscard.message.count > 0) {
@@ -47,19 +48,8 @@ export function formatStatsHeader(strategyStats: SessionState["stats"]["strategy
         )
     }
 
-    // 🔧 Tool discard = manual tool + all auto-supersede (with ▼)
-    const toolCount =
-        manualDiscard.tool.count +
-        autoSupersede.hash.count +
-        autoSupersede.file.count +
-        autoSupersede.todo.count +
-        autoSupersede.context.count
-    const toolTokens =
-        manualDiscard.tool.tokens +
-        autoSupersede.hash.tokens +
-        autoSupersede.file.tokens +
-        autoSupersede.todo.tokens +
-        autoSupersede.context.tokens
+    // 🔧 Tool discard = manual tool + all auto-supersede + purge errors (with ▼)
+    const { count: toolCount, tokens: toolTokens } = sumToolPruneStats(state.stats.strategyStats)
 
     if (toolCount > 0) {
         parts.push(`${PRUNE_CATEGORY_ICONS.tool} ${toolCount}(${formatTokenCount(toolTokens)}) ▼`)
@@ -72,12 +62,15 @@ export function formatStatsHeader(strategyStats: SessionState["stats"]["strategy
         )
     }
 
+    // Status emoji + context pressure percentage (always shown)
+    parts.push(`${state.contextPressure.statusEmoji} ${state.contextPressure.contextPercent}%`)
+
     if (parts.length === 0) {
         return "「 acp 」"
     }
 
-    // Join with ₊ separator
-    return `「 ${parts.join(" ₊ ")} 」`
+    // Join with | separator
+    return `「 ${parts.join(" | ")} 」`
 }
 
 export function formatPrunedItemsList(

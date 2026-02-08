@@ -258,16 +258,26 @@ export function formatItemizedDetails(
     for (const { item, count } of groupedPruned) {
         const icon = getPruneItemIcon(item.type)
         const countSuffix = count > 1 ? ` (x${count})` : ""
-        parts.push(`${icon} ${item.name}${countSuffix}`)
+        // For reasoning blocks, show only icon + count, no name
+        if (item.type === "reasoning") {
+            parts.push(`${icon} (x${count})`)
+        } else {
+            parts.push(`${icon} ${item.name}${countSuffix}`)
+        }
     }
 
     // Add grouped distilled items with icons and quoted summaries
     const groupedDistilled = groupItems(distilledItems || [], (i) => `${i.type}:${i.summary}`)
     for (const { item, count } of groupedDistilled) {
         const icon = getPruneItemIcon(item.type)
-        const summary = truncateWithQuotes(item.summary, maxContentLength)
         const countSuffix = count > 1 ? ` (x${count})` : ""
-        parts.push(`${icon} ${summary}${countSuffix}`)
+        // For reasoning blocks, show only icon + count, no summary
+        if (item.type === "reasoning") {
+            parts.push(`${icon} (x${count})`)
+        } else {
+            const summary = truncateWithQuotes(item.summary, maxContentLength)
+            parts.push(`${icon} ${summary}${countSuffix}`)
+        }
     }
 
     if (parts.length === 0) {

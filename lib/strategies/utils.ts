@@ -278,3 +278,158 @@ export const calculateTokensSaved = (
         return 0
     }
 }
+
+/**
+ * Model context window sizes in tokens.
+ * Used for dynamic threshold calculation based on the active model.
+ * Values represent raw context window limits (not accounting for output buffer).
+ *
+ * Models are matched by substring (case-insensitive) in order defined below.
+ * First match wins, so specific models should come before generic ones.
+ */
+export const MODEL_CONTEXT_WINDOWS: Array<{
+    pattern: string
+    windowSize: number
+    displayName: string
+}> = [
+    // Anthropic Claude (200K)
+    { pattern: "claude-opus", windowSize: 200000, displayName: "Claude Opus" },
+    { pattern: "claude-sonnet", windowSize: 200000, displayName: "Claude Sonnet" },
+    { pattern: "claude-haiku", windowSize: 200000, displayName: "Claude Haiku" },
+    { pattern: "claude-3-", windowSize: 200000, displayName: "Claude 3" },
+
+    // OpenAI (128K)
+    { pattern: "gpt-4o", windowSize: 128000, displayName: "GPT-4o" },
+    { pattern: "gpt-4-turbo", windowSize: 128000, displayName: "GPT-4 Turbo" },
+    { pattern: "o1-", windowSize: 200000, displayName: "o1" },
+    { pattern: "o3-", windowSize: 200000, displayName: "o3" },
+
+    // DeepSeek (128K)
+    { pattern: "deepseek", windowSize: 128000, displayName: "DeepSeek" },
+
+    // Google Gemini (1M)
+    { pattern: "gemini-2", windowSize: 1000000, displayName: "Gemini 2" },
+    { pattern: "gemini-1.5", windowSize: 1000000, displayName: "Gemini 1.5" },
+    { pattern: "gemini-1", windowSize: 1000000, displayName: "Gemini" },
+]
+
+/**
+ * Resolve model context window size from model ID.
+ * Uses substring matching (case-insensitive) against known model patterns.
+ *
+ * @param modelId - The model identifier (e.g., "anthropic/claude-opus-4-6")
+ * @returns Object with windowSize and displayName, or null if unknown
+ *
+ * @example
+ * resolveModelContextWindow("claude-opus-4-6") → { windowSize: 200000, modelMatch: "Claude Opus" }
+ * resolveModelContextWindow("unknown-model") → null
+ */
+export function resolveModelContextWindow(
+    modelId: string,
+): { windowSize: number; modelMatch: string } | null {
+    if (!modelId) return null
+
+    const lowerModelId = modelId.toLowerCase()
+
+    for (const { pattern, windowSize, displayName } of MODEL_CONTEXT_WINDOWS) {
+        if (lowerModelId.includes(pattern.toLowerCase())) {
+            return { windowSize, modelMatch: displayName }
+        }
+    }
+
+    return null
+}
+
+/**
+ * Todo reminder configuration for dynamic threshold calculation.
+ */
+export interface TodoReminderConfig {
+    fallbackContextWindow: number
+    warningThresholdPercent: number
+}
+
+/**
+ * Result of effective context threshold calculation.
+ */
+export interface ContextThreshold {
+    rawWindow: number
+    warningThreshold: number
+    modelMatch: string | null
+}
+
+/**
+ * Calculate effective context threshold based on model and config.
+ *
+ * Math:
+ * - rawWindow: Model's native context window (or fallback if unknown)
+ * - warningThreshold: rawWindow × warningThresholdPercent  [e.g., 200K × 0.7 = 140K]
+ *
+ * @param modelId - The active model identifier (may be undefined)
+ * @param config - Todo reminder configuration
+ * @returns ContextThreshold with all calculated values
+ */
+export function getEffectiveContextThreshold(
+    modelId: string | undefined,
+    config: TodoReminderConfig,
+): ContextThreshold {
+    // Resolve model window or use fallback
+    const resolved = modelId ? resolveModelContextWindow(modelId) : null
+    const rawWindow = resolved?.windowSize ?? config.fallbackContextWindow
+    const modelMatch = resolved?.modelMatch ?? null
+
+    // Apply warning threshold (70% default)
+    const warningThreshold = Math.floor(rawWindow * config.warningThresholdPercent)
+
+    return {
+        rawWindow,
+        warningThreshold,
+        modelMatch,
+    }
+}
+
+/**
+ * Context status label with color indicator.
+ */
+export interface ContextStatus {
+    label: string
+    emoji: string
+    remaining: number
+    percent: number
+}
+
+/**
+ * Determine context status label based on current usage vs effective limit.
+ *
+ * Status bands (based on currentTokens / effectiveInput):
+ * - 0-49%: 🟢 Nominal — plenty of room
+ * - 50-69%: 🟡 Elevated — consider pruning soon
+ * - 70-89%: 🟠 High — active pruning recommended
+ * - 90%+: 🔴 Critical — prune immediately or risk truncation
+ *
+ * @param currentTokens - Current token count in context
+ * @param effectiveInput - Effective input limit after output buffer
+ * @returns ContextStatus with label, emoji, remaining tokens, and percentage
+ */
+export function getContextStatus(currentTokens: number, effectiveInput: number): ContextStatus {
+    const percent = Math.min(100, Math.round((currentTokens / effectiveInput) * 100))
+    const remaining = Math.max(0, effectiveInput - currentTokens)
+
+    let label: string
+    let emoji: string
+
+    if (percent < 50) {
+        label = "Nominal"
+        emoji = "🟢"
+    } else if (percent < 70) {
+        label = "Elevated"
+        emoji = "🟡"
+    } else if (percent < 90) {
+        label = "High"
+        emoji = "🟠"
+    } else {
+        label = "Critical"
+        emoji = "🔴"
+    }
+
+    return { label, emoji, remaining, percent }
+}

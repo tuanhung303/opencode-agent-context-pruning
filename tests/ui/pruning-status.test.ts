@@ -277,7 +277,7 @@ describe("formatItemizedDetails", () => {
             { type: "reasoning" as const, name: "think1" },
         ]
         const result = formatItemizedDetails(pruned, [])
-        expect(result).toBe("⚙️ bash (x2) ₊ 💬 msg1 ₊ 🧠 think1")
+        expect(result).toBe("⚙️ bash (x2) ₊ 💬 msg1 ₊ 🧠 (x1)")
     })
 
     it("should group distilled items with same summary", () => {
@@ -297,7 +297,7 @@ describe("formatItemizedDetails", () => {
         ]
         const distilled = [{ type: "reasoning" as const, summary: "Analysis complete" }]
         const result = formatItemizedDetails(pruned, distilled)
-        expect(result).toBe('⚙️ read (x2) ₊ 🧠 "Analysis comple..."')
+        expect(result).toBe("⚙️ read (x2) ₊ 🧠 (x1)")
     })
 
     it("should return empty string for empty arrays", () => {

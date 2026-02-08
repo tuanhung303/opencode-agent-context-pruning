@@ -85,11 +85,17 @@ export const TodoReminderSchema = z.object({
         .positive()
         .default(12)
         .describe("Number of turns a task can be in_progress before suggesting breakdown"),
-    maxContextTokens: z
+    fallbackContextWindow: z
         .number()
         .positive()
-        .default(100000)
-        .describe("Maximum context token threshold for todo reminders"),
+        .default(200000)
+        .describe("Fallback context window size when model is unknown (tokens)"),
+    warningThresholdPercent: z
+        .number()
+        .min(0)
+        .max(1)
+        .default(0.7)
+        .describe("Percentage of effective input that triggers context warning (0.7 = 70%)"),
 })
 
 export const AutomataModeSchema = z.object({

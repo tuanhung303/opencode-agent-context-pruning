@@ -61,7 +61,7 @@ function buildMinimalMessage(
     itemizedDistilled?: ItemizedDistilledItem[],
     workingDirectory?: string,
 ): string {
-    const statsMessage = formatStatsHeader(state.stats.strategyStats)
+    const statsMessage = formatStatsHeader(state)
 
     // If we have itemized data, use the new formatter with icons
     if (
@@ -104,7 +104,7 @@ function buildDetailedMessage(ctx: NotificationContext, showDistillation: boolea
     } = ctx
     const simplified = options?.simplified ?? false
 
-    let message = formatStatsHeader(state.stats.strategyStats)
+    let message = formatStatsHeader(state)
 
     // Only show pruning details if there are tokens being pruned or distilled
     const hasPruningActivity =
@@ -210,13 +210,23 @@ export async function sendAttemptedNotification(
         return false
     }
 
-    const message = formatNoOpNotification(
+    const noOpMessage = formatNoOpNotification(
         type,
         attemptedTargets,
         targetType,
         state,
         workingDirectory,
     )
+    // Prepend stats header (with percentage) when state is available;
+    // extract the detail part after the no-op box to avoid double-boxing
+    let message: string
+    if (state) {
+        const statsHeader = formatStatsHeader(state)
+        const details = noOpMessage.replace(/^「 .*? 」- /, "").trim()
+        message = `${statsHeader}- ${details}`
+    } else {
+        message = noOpMessage
+    }
     await sendIgnoredMessage(client, sessionId, message, params, logger)
     return true
 }

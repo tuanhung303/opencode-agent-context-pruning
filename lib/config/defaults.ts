@@ -67,7 +67,8 @@ export const DEFAULT_CONFIG: PluginConfig = {
             initialTurns: 5,
             repeatTurns: 4,
             stuckTaskTurns: 12,
-            maxContextTokens: 100000,
+            fallbackContextWindow: 200000,
+            warningThresholdPercent: 0.7,
         },
         automataMode: {
             enabled: true,

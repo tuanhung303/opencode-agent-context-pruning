@@ -14,6 +14,7 @@ describe("Integration: Automata Hook", () => {
         logger = {
             info: vi.fn(),
             debug: vi.fn(),
+            warn: vi.fn(),
             error: vi.fn(),
             saveContext: vi.fn().mockResolvedValue(undefined),
         }

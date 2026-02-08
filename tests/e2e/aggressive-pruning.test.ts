@@ -113,6 +113,16 @@ const createMockState = (): SessionState =>
             },
         },
         todos: [],
+        contextPressure: {
+            contextTokens: 50000,
+            effectiveLimit: 160000,
+            contextPercent: 31,
+            statusLabel: "Nominal",
+            statusEmoji: "🟢",
+            modelMatch: "Claude Opus",
+            totalSaved: 0,
+            remaining: 110000,
+        },
         stats: {
             strategyStats: {
                 autoSupersede: {

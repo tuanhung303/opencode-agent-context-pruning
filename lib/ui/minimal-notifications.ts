@@ -227,8 +227,13 @@ export function formatDistillNotification(
     const icon = targetType ? typeIcons[targetType] + " " : ""
 
     if (attemptedTargets && attemptedTargets.length > 0) {
+        const suffix = attemptedTargets.length > 1 ? ` (+${attemptedTargets.length - 1})` : ""
+        // For reasoning blocks, show icon + total count, no display name
+        if (targetType === "reasoning") {
+            return `${baseNotification}- ${icon}(x${attemptedTargets.length})`
+        }
         const firstTarget = attemptedTargets[0]!
-        // Resolve hash to display name (tool name, "message part", or "thinking block")
+        // Resolve hash to display name (tool name or "message part")
         const displayName = resolveTargetDisplayName(
             firstTarget,
             state,
@@ -236,7 +241,6 @@ export function formatDistillNotification(
             targetType,
         )
         const truncated = displayName.length > 15 ? displayName.slice(0, 12) + "..." : displayName
-        const suffix = attemptedTargets.length > 1 ? ` (+${attemptedTargets.length - 1})` : ""
         return `${baseNotification}- ${icon}${truncated}${suffix}`
     }
 
@@ -271,8 +275,13 @@ export function formatDiscardNotification(
     const icon = targetType ? typeIcons[targetType] + " " : ""
 
     if (attemptedTargets && attemptedTargets.length > 0) {
+        const suffix = attemptedTargets.length > 1 ? ` (+${attemptedTargets.length - 1})` : ""
+        // For reasoning blocks, show icon + total count, no display name
+        if (targetType === "reasoning") {
+            return `${baseNotification}- ${icon}(x${attemptedTargets.length})`
+        }
         const firstTarget = attemptedTargets[0]!
-        // Resolve hash to display name (tool name, "message part", or "thinking block")
+        // Resolve hash to display name (tool name or "message part")
         const displayName = resolveTargetDisplayName(
             firstTarget,
             state,
@@ -280,7 +289,6 @@ export function formatDiscardNotification(
             targetType,
         )
         const truncated = displayName.length > 15 ? displayName.slice(0, 12) + "..." : displayName
-        const suffix = attemptedTargets.length > 1 ? ` (+${attemptedTargets.length - 1})` : ""
         return `${baseNotification}- ${icon}${truncated}${suffix}`
     }
 
@@ -317,11 +325,17 @@ export function formatNoOpNotification(
         return `${baseNotification}- 0 items`
     }
 
+    const suffix = attemptedTargets.length > 1 ? ` (+${attemptedTargets.length - 1})` : ""
+
+    // For reasoning blocks, show icon + total count, no display name
+    if (targetType === "reasoning") {
+        return `${baseNotification}- ${icon}(x${attemptedTargets.length})`
+    }
+
     // Show first target resolved to display name, truncated to 15 chars
     const firstTarget = attemptedTargets[0]!
     const displayName = resolveTargetDisplayName(firstTarget, state, workingDirectory, targetType)
     const truncated = truncate(displayName, 15)
-    const suffix = attemptedTargets.length > 1 ? ` (+${attemptedTargets.length - 1})` : ""
 
     return `${baseNotification}- ${icon}${truncated}${suffix}`
 }

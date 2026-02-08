@@ -24,6 +24,11 @@ import { sendUnifiedNotification } from "./ui/notification"
 import { getCurrentParams } from "./strategies/utils"
 import { saveSessionState } from "./state/persistence"
 import { isSyntheticMessage } from "./shared-utils"
+import {
+    calculateTotalContextTokens,
+    getEffectiveContextThreshold,
+    getContextStatus,
+} from "./strategies/utils"
 
 type Strategy = (
     state: SessionState,
@@ -79,6 +84,41 @@ export function createChatMessageTransformHandler(
         output: { messages: WithParts[] },
     ): Promise<void> => {
         await syncSessionState(client, state, config, logger, output.messages)
+
+        // Compute context pressure metrics once per turn
+        safeExecute(
+            () => {
+                const { modelId } = getCurrentParams(state, output.messages, logger)
+                const threshold = getEffectiveContextThreshold(modelId, {
+                    fallbackContextWindow: config.tools.todoReminder.fallbackContextWindow,
+                    warningThresholdPercent: config.tools.todoReminder.warningThresholdPercent,
+                })
+                const currentTokens = calculateTotalContextTokens(state, output.messages)
+                const status = getContextStatus(currentTokens, threshold.rawWindow)
+
+                state.contextPressure = {
+                    contextTokens: currentTokens,
+                    effectiveLimit: threshold.rawWindow,
+                    contextPercent: status.percent,
+                    statusLabel: status.label,
+                    statusEmoji: status.emoji,
+                    modelMatch: threshold.modelMatch,
+                    totalSaved: state.stats.totalPruneTokens,
+                    remaining: status.remaining,
+                }
+
+                logger.debug("Context pressure computed", {
+                    modelId: modelId ?? "unknown",
+                    modelMatch: threshold.modelMatch ?? "fallback",
+                    rawWindow: threshold.rawWindow,
+                    currentTokens,
+                    percent: status.percent,
+                    status: status.label,
+                })
+            },
+            logger,
+            "computeContextPressure",
+        )
 
         if (state.isSubAgent) {
             return

@@ -9,6 +9,7 @@ import { sendIgnoredMessage } from "../ui/notification"
 import { formatTokenCount } from "../ui/utils"
 import { loadAllSessionStats, type AggregatedStats } from "../state/persistence"
 import { getCurrentParams } from "../strategies/utils"
+import { sumAutoSupersede } from "../state/stats-utils"
 import packageJson from "../../package.json" with { type: "json" }
 
 export interface StatsCommandContext {
@@ -42,20 +43,9 @@ function formatStatsMessage(
     lines.push("Strategy Effectiveness:")
     lines.push("─".repeat(60))
 
-    // Calculate auto-supersede totals
+    // Calculate auto-supersede totals (dynamically sums all categories)
     const autoSupersede = strategyStats.autoSupersede
-    const autoSupersedeTotal = {
-        count:
-            autoSupersede.hash.count +
-            autoSupersede.file.count +
-            autoSupersede.todo.count +
-            autoSupersede.context.count,
-        tokens:
-            autoSupersede.hash.tokens +
-            autoSupersede.file.tokens +
-            autoSupersede.todo.tokens +
-            autoSupersede.context.tokens,
-    }
+    const autoSupersedeTotal = sumAutoSupersede(autoSupersede)
 
     // Calculate manual discard totals (new nested structure)
     const manualDiscard = strategyStats.manualDiscard
@@ -87,25 +77,26 @@ function formatStatsMessage(
 
             // Show sub-breakdown for Auto-Supersede
             if (strat.breakdown === "autoSupersede") {
-                if (autoSupersede.hash.count > 0) {
-                    lines.push(
-                        `    🔄 hash          ${autoSupersede.hash.count.toString().padStart(3)} prunes, ~${formatTokenCount(autoSupersede.hash.tokens)}`,
-                    )
-                }
-                if (autoSupersede.file.count > 0) {
-                    lines.push(
-                        `    📁 file          ${autoSupersede.file.count.toString().padStart(3)} prunes, ~${formatTokenCount(autoSupersede.file.tokens)}`,
-                    )
-                }
-                if (autoSupersede.todo.count > 0) {
-                    lines.push(
-                        `    ✅ todo          ${autoSupersede.todo.count.toString().padStart(3)} prunes, ~${formatTokenCount(autoSupersede.todo.tokens)}`,
-                    )
-                }
-                if (autoSupersede.context.count > 0) {
-                    lines.push(
-                        `    🔧 context       ${autoSupersede.context.count.toString().padStart(3)} prunes, ~${formatTokenCount(autoSupersede.context.tokens)}`,
-                    )
+                const autoEntries: Array<{
+                    icon: string
+                    label: string
+                    data: { count: number; tokens: number }
+                }> = [
+                    { icon: "🔄", label: "hash", data: autoSupersede.hash },
+                    { icon: "📁", label: "file", data: autoSupersede.file },
+                    { icon: "✅", label: "todo", data: autoSupersede.todo },
+                    { icon: "🔧", label: "context", data: autoSupersede.context },
+                    { icon: "🌐", label: "url", data: autoSupersede.url },
+                    { icon: "🔍", label: "stateQuery", data: autoSupersede.stateQuery },
+                    { icon: "📸", label: "snapshot", data: autoSupersede.snapshot },
+                    { icon: "🔁", label: "retry", data: autoSupersede.retry },
+                ]
+                for (const entry of autoEntries) {
+                    if (entry.data.count > 0) {
+                        lines.push(
+                            `    ${entry.icon} ${entry.label.padEnd(14)}${entry.data.count.toString().padStart(3)} prunes, ~${formatTokenCount(entry.data.tokens)}`,
+                        )
+                    }
                 }
             }
 
