@@ -61,7 +61,7 @@ function buildMinimalMessage(
     itemizedDistilled?: ItemizedDistilledItem[],
     workingDirectory?: string,
 ): string {
-    const statsMessage = formatStatsHeader(state.stats.strategyStats)
+    const statsMessage = formatStatsHeader(state)
 
     // If we have itemized data, use the new formatter with icons
     if (
@@ -104,7 +104,7 @@ function buildDetailedMessage(ctx: NotificationContext, showDistillation: boolea
     } = ctx
     const simplified = options?.simplified ?? false
 
-    let message = formatStatsHeader(state.stats.strategyStats)
+    let message = formatStatsHeader(state)
 
     // Only show pruning details if there are tokens being pruned or distilled
     const hasPruningActivity =

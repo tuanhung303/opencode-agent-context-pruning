@@ -84,6 +84,22 @@ export interface TodoItem {
 }
 
 /**
+ * Transient context pressure metrics.
+ * Computed once per turn from model info and current context size.
+ * NOT persisted - recalculated on every turn.
+ */
+export interface ContextPressure {
+    contextTokens: number // Current token count in context
+    effectiveLimit: number // Effective input limit after output buffer
+    contextPercent: number // Current usage percentage (0-100)
+    statusLabel: string // Status label (Nominal, Elevated, High, Critical)
+    statusEmoji: string // Status emoji (🟢, 🟡, 🟠, 🔴)
+    modelMatch: string | null // Detected model name (or null if unknown)
+    totalSaved: number // Total tokens saved via pruning
+    remaining: number // Tokens remaining before effective limit
+}
+
+/**
  * Transient runtime cache for O(1) lookups.
  * NOT persisted - rebuilt on demand from arrays.
  */
@@ -165,6 +181,9 @@ export interface SessionState {
     }
 
     todos: TodoItem[] // Current todo list state
+
+    // Transient context pressure - NOT persisted, recomputed each turn
+    contextPressure: ContextPressure
 
     // Transient runtime cache - NOT persisted, rebuilt on demand
     _cache?: RuntimeCache

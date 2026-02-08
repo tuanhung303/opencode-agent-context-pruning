@@ -28,6 +28,8 @@ const createMockConfig = (): PluginConfig =>
                 initialTurns: 8,
                 repeatTurns: 4,
                 stuckTaskTurns: 12,
+                fallbackContextWindow: 200000,
+                warningThresholdPercent: 0.7,
             },
         },
     }) as unknown as PluginConfig
@@ -65,6 +67,16 @@ const createMockState = (overrides: Partial<SessionState> = {}): SessionState =>
                     context: { count: 0, tokens: 0 },
                 },
             },
+        },
+        contextPressure: {
+            contextTokens: 50000,
+            effectiveLimit: 160000,
+            contextPercent: 31,
+            statusLabel: "Nominal",
+            statusEmoji: "🟢",
+            modelMatch: "Claude Opus",
+            totalSaved: 0,
+            remaining: 110000,
         },
         ...overrides,
     }) as unknown as SessionState

@@ -2,7 +2,6 @@ import type { SessionState, WithParts } from "../state/types"
 import type { PluginConfig } from "../config"
 import type { Logger } from "../logger"
 import { isMessageCompacted } from "../shared-utils"
-import { calculateTotalContextTokens } from "../strategies/utils"
 
 /**
  * Format token count for display (e.g., 1234 -> "1.2K", 12345 -> "12.3K")
@@ -15,8 +14,7 @@ function formatTokens(tokens: number): string {
 const REMINDER_TEMPLATE = `::synth::
 ---
 ## 🔖 Checkpoint
-{context_pressure}
-I've noticed your todo list hasn't been updated for {turns} turns. Before continuing:
+{context_section}
 
 ### 1. Reflect — What changed? Any new risks or blockers?
 ### 2. Update — Call \`todowrite\` to sync progress
@@ -25,6 +23,16 @@ Use prunable_hash values from \`<acp:tool>\`, \`<acp:message>\`, \`<acp:reasonin
 {stuck_task_guidance}
 ---
 `
+
+const CONTEXT_SECTION_TEMPLATE = `
+⚡ **Context: {percent}% {status_emoji} {status_label}** — {remaining} tokens remaining
+📋 {current_tokens} / {raw_window} ({raw_window} context window)
+{model_line}
+{savings_line}
+`
+
+const MODEL_LINE_TEMPLATE = `🤖 Model: {model_name} ({raw_window} context)`
+const SAVINGS_LINE_TEMPLATE = `💾 Savings: {saved_tokens} tokens reclaimed via pruning`
 
 const STUCK_TASK_GUIDANCE = `
 ### ⚠️ Stuck Task Detected
@@ -42,6 +50,43 @@ Use \`todowrite\` to split the task or update its status.
 // Note: Using [^\n]+ for hash lines to avoid catastrophic backtracking
 const REMINDER_REGEX =
     /(?:^|\n)(?:::synth::\n)?---\n## 🔖 Checkpoint\n\nI've noticed your todo list hasn't been updated for \d+ turns\. Before continuing:\n\n### 1\. Reflect — What changed\? Any new risks or blockers\?\n### 2\. Update — Call `todowrite` to sync progress\n### 3\. Prune — Call `context` to discard\/distill noise\n(?:\n\*\*Prunable Outputs:\*\*\n(?:[a-z]+: [^\n]+\n)+)?\n?(?:### ⚠️ Stuck Task Detected\n\nI've noticed a task has been in progress for \d+ turns\. If you're finding it difficult to complete, consider:\n- Breaking it into smaller, more specific subtasks\n- Identifying blockers or dependencies that need resolution first\n- Marking it as blocked and moving to another task\n\nUse `todowrite` to split the task or update its status\.\n)?---\n?/g
+
+/**
+ * Build the context pressure section for the reminder.
+ * Uses pre-computed state.contextPressure from hooks.ts.
+ */
+function buildContextSection(state: SessionState, config: PluginConfig): string {
+    const cp = state.contextPressure
+    const todoConfig = config.tools.todoReminder
+
+    // Get raw window size for display
+    const rawWindow = cp.effectiveLimit > 0 ? cp.effectiveLimit : todoConfig.fallbackContextWindow
+
+    // Build model line (only if we detected a model)
+    let modelLine = ""
+    if (cp.modelMatch) {
+        modelLine = MODEL_LINE_TEMPLATE.replace("{model_name}", cp.modelMatch).replace(
+            "{raw_window}",
+            formatTokens(rawWindow),
+        )
+    }
+
+    // Build savings line (only if we've saved tokens)
+    let savingsLine = ""
+    if (cp.totalSaved > 0) {
+        savingsLine = SAVINGS_LINE_TEMPLATE.replace("{saved_tokens}", formatTokens(cp.totalSaved))
+    }
+
+    return CONTEXT_SECTION_TEMPLATE.replace("{percent}", String(cp.contextPercent))
+        .replace("{status_emoji}", cp.statusEmoji)
+        .replace("{status_label}", cp.statusLabel)
+        .replace("{remaining}", formatTokens(cp.remaining))
+        .replace("{current_tokens}", formatTokens(cp.contextTokens))
+        .replace("{raw_window}", formatTokens(rawWindow))
+        .replace("{model_line}", modelLine)
+        .replace("{savings_line}", savingsLine)
+        .trim()
+}
 
 /**
  * Remove any todo reminder from messages.
@@ -144,11 +189,8 @@ export function injectTodoReminder(
     // Remove any existing reminder messages first (ensure only one exists)
     removeTodoReminder(state, messages, logger)
 
-    // Calculate context pressure
-    const currentTokens = calculateTotalContextTokens(state, messages)
-    const maxTokens = config.tools.todoReminder.maxContextTokens ?? 100000 // Default 100K
-    const pressurePercent = Math.min(100, Math.round((currentTokens / maxTokens) * 100))
-    const contextPressure = `\n⚡ **Context: ${pressurePercent}%** (${formatTokens(currentTokens)}/${formatTokens(maxTokens)} tokens)\n`
+    // Build context pressure section from pre-computed state
+    const contextSection = buildContextSection(state, config)
 
     // Detect stuck tasks (in_progress for too long)
     const stuckTaskTurns = config.tools.todoReminder.stuckTaskTurns ?? 12
@@ -172,9 +214,10 @@ export function injectTodoReminder(
     }
 
     // Create reminder content
-    const reminderContent = REMINDER_TEMPLATE.replace("{turns}", String(turnsSinceTodo))
-        .replace("{context_pressure}", contextPressure)
-        .replace("{stuck_task_guidance}", stuckTaskSection)
+    const reminderContent = REMINDER_TEMPLATE.replace("{context_section}", contextSection).replace(
+        "{stuck_task_guidance}",
+        stuckTaskSection,
+    )
 
     // Create a new user message with the reminder
     const reminderMessage: WithParts = {

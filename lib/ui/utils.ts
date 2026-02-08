@@ -26,12 +26,12 @@ export function formatDistilled(distillation?: string[]): string {
     return ""
 }
 
-export function formatStatsHeader(strategyStats: SessionState["stats"]["strategyStats"]): string {
+export function formatStatsHeader(state: SessionState): string {
     // Build the categorized status format:
-    // 「 💬 2(1.2K) ▼ ₊ 🧠 1(3.5K) ▼ ₊ ⚙️ 5(8.1K) ▼ ₊ ✨ 3(500) 」
+    // 「 💬 2(1.2K) ▼ | 🧠 1(3.5K) ▼ | ⚙️ 5(8.1K) ▼ | ✨ 3(500) | 🟡 59% 」
     const parts: string[] = []
 
-    const { manualDiscard, autoSupersede, distillation } = strategyStats
+    const { manualDiscard, autoSupersede, distillation } = state.stats.strategyStats
 
     // 💬 Message discard (with ▼)
     if (manualDiscard.message.count > 0) {
@@ -72,12 +72,15 @@ export function formatStatsHeader(strategyStats: SessionState["stats"]["strategy
         )
     }
 
+    // Status emoji + context pressure percentage (always shown)
+    parts.push(`${state.contextPressure.statusEmoji} ${state.contextPressure.contextPercent}%`)
+
     if (parts.length === 0) {
         return "「 acp 」"
     }
 
-    // Join with ₊ separator
-    return `「 ${parts.join(" ₊ ")} 」`
+    // Join with | separator
+    return `「 ${parts.join(" | ")} 」`
 }
 
 export function formatPrunedItemsList(

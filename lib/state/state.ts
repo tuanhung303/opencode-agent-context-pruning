@@ -129,6 +129,16 @@ export function createSessionState(): SessionState {
             },
         },
         todos: [],
+        contextPressure: {
+            contextTokens: 0,
+            effectiveLimit: 0,
+            contextPercent: 0,
+            statusLabel: "Nominal",
+            statusEmoji: "🟢",
+            modelMatch: null,
+            totalSaved: 0,
+            remaining: 0,
+        },
     }
 }
 

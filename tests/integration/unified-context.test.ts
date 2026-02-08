@@ -94,6 +94,16 @@ describe("Unified Context Tool Integration", () => {
                     distillation: { count: 0, tokens: 0 },
                 },
             },
+            contextPressure: {
+                contextTokens: 50000,
+                effectiveLimit: 160000,
+                contextPercent: 31,
+                statusLabel: "Nominal",
+                statusEmoji: "🟢",
+                modelMatch: "Claude Opus",
+                totalSaved: 0,
+                remaining: 110000,
+            },
         } as any
 
         mockClient = {
