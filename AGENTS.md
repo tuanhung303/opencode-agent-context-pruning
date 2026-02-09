@@ -4,14 +4,13 @@
 
 ## Quick Reference
 
-| Task             | Resource                                                                             |
-| ---------------- | ------------------------------------------------------------------------------------ |
-| **Unit Tests**   | `npm run test` — 517 automated vitest tests                                          |
-| **E2E Tests**    | `npm test -- tests/e2e/` — 159 tests covering validation scenarios                   |
-| **Validation**   | [`docs/VALIDATION_GUIDE.md`](docs/VALIDATION_GUIDE.md) — 43 manual test scenarios    |
-| **Architecture** | [`docs/CONTROLLED_CONTEXT_ARCHITECTURE.md`](docs/CONTROLLED_CONTEXT_ARCHITECTURE.md) |
-| **Status Bar**   | [`docs/STATUS_BAR_BEHAVIOR.md`](docs/STATUS_BAR_BEHAVIOR.md)                         |
-| **Pitfalls**     | [README.md#-known-pitfalls-for-agents](README.md#-known-pitfalls-for-agents)         |
+| Task             | Resource                                                                          |
+| ---------------- | --------------------------------------------------------------------------------- |
+| **Unit Tests**   | `npm run test` — 517 automated vitest tests                                       |
+| **E2E Tests**    | `npm test -- tests/e2e/` — 159 tests covering validation scenarios                |
+| **Validation**   | [`docs/VALIDATION_GUIDE.md`](docs/VALIDATION_GUIDE.md) — 43 manual test scenarios |
+| **Architecture** | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)                                    |
+| **Pitfalls**     | [README.md#-known-pitfalls-for-agents](README.md#-known-pitfalls-for-agents)      |
 
 ## Testing Commands
 

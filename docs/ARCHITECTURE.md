@@ -4,6 +4,106 @@ Complete technical documentation for Agentic Context Pruning.
 
 ---
 
+## Context Flow
+
+```mermaid
+flowchart TB
+    subgraph Input["📥 Input Layer"]
+        U[User Message]
+        T[Tool Outputs]
+        M[Assistant Messages]
+        R[Thinking Blocks]
+    end
+
+    subgraph Processing["⚙️ ACP Processing"]
+        direction TB
+        Auto["Auto-Supersede"]
+        Manual["Manual Pruning"]
+
+        subgraph AutoStrategies["Auto-Supersede Strategies"]
+            H[Hash-Based<br/>Duplicates]
+            F[File-Based<br/>Operations]
+            Todo[Todo-Based<br/>Updates]
+            URL[Source-URL<br/>Fetches]
+            SQ[State Query<br/>Dedup]
+        end
+
+        subgraph ManualTools["Manual Tools"]
+            D[Discard]
+            Dist[Distill]
+        end
+    end
+
+    subgraph Output["📤 Optimized Context"]
+        Clean[Clean Context<br/>~50% smaller]
+        L[LLM Provider]
+    end
+
+    U --> Processing
+    T --> Auto
+    M --> Manual
+    R --> Manual
+
+    Auto --> H
+    Auto --> F
+    Auto --> Todo
+    Auto --> URL
+    Auto --> SQ
+
+    Manual --> D
+    Manual --> Dist
+
+    H --> Clean
+    F --> Clean
+    Todo --> Clean
+    URL --> Clean
+    SQ --> Clean
+    D --> Clean
+    Dist --> Clean
+
+    Clean --> L
+
+    style Input fill:#e1f5fe,stroke:#01579b,stroke-width:2px
+    style Processing fill:#f3e5f5,stroke:#4a148c,stroke-width:2px
+    style AutoStrategies fill:#fff3e0,stroke:#e65100,stroke-width:1px
+    style ManualTools fill:#e8f5e9,stroke:#1b5e20,stroke-width:1px
+    style Output fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px
+```
+
+## Plugin Hook Architecture
+
+```mermaid
+flowchart TD
+    subgraph OpenCode["OpenCode Core"]
+        direction TB
+        A[User Message] --> B[Session]
+        B --> C[Transform Hook]
+        C --> D[toModelMessages]
+        D --> E[LLM Provider]
+    end
+
+    subgraph ACP["ACP Plugin"]
+        direction TB
+        C --> F[syncToolCache]
+        F --> G[injectHashes]
+        G --> H[Apply Strategies]
+        H --> I[prune]
+        I --> C
+    end
+
+    style OpenCode fill:#F4F7F9,stroke:#5A6B8A,stroke-width:1.5px
+    style ACP fill:#E8F5F2,stroke:#9AC4C0,stroke-width:1.5px
+```
+
+ACP hooks into OpenCode's message flow to reduce context size before sending to the LLM:
+
+1. **Sync Tool Cache** — Updates internal tool state tracking
+2. **Inject Hashes** — Makes content addressable for pruning
+3. **Apply Strategies** — Runs auto-supersede mechanisms
+4. **Prune** — Applies manual and automatic pruning rules
+
+---
+
 ## Table of Contents
 
 1. [Memory Retention Hierarchy](#memory-retention-hierarchy)
