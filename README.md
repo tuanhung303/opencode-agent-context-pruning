@@ -5,90 +5,38 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 <p align="center">
-  <img src="assets/agent_context.png" alt="Agent Context Pruning - Making context disappear" width="350">
+  <img src="assets/agent_context.png" alt="Agent Context Pruning" width="350">
 </p>
 
-**Reduce token usage by up to 50% through intelligent context management.**
-
-ACP optimizes LLM context windows by automatically pruning obsolete content—tool outputs, messages, and reasoning blocks—while preserving critical operational state.
+Your AI agent wastes half its tokens re-reading old tool outputs, stale file contents, and duplicate results. ACP fixes that — it's a zero-config [OpenCode](https://github.com/nichochar/opencode) plugin that automatically prunes obsolete context so your agent stays fast, cheap, and focused.
 
 ---
 
-## 📊 Context Flow Architecture
+## Before / After
 
-```mermaid
-flowchart TB
-    subgraph Input["📥 Input Layer"]
-        U[User Message]
-        T[Tool Outputs]
-        M[Assistant Messages]
-        R[Thinking Blocks]
-    end
-
-    subgraph Processing["⚙️ ACP Processing"]
-        direction TB
-        Auto["Auto-Supersede"]
-        Manual["Manual Pruning"]
-
-        subgraph AutoStrategies["Auto-Supersede Strategies"]
-            H[Hash-Based<br/>Duplicates]
-            F[File-Based<br/>Operations]
-            Todo[Todo-Based<br/>Updates]
-            URL[Source-URL<br/>Fetches]
-            SQ[State Query<br/>Dedup]
-        end
-
-        subgraph ManualTools["Manual Tools"]
-            D[Discard]
-            Dist[Distill]
-        end
-    end
-
-    subgraph Output["📤 Optimized Context"]
-        Clean[Clean Context<br/>~50% smaller]
-        L[LLM Provider]
-    end
-
-    U --> Processing
-    T --> Auto
-    M --> Manual
-    R --> Manual
-
-    Auto --> H
-    Auto --> F
-    Auto --> Todo
-    Auto --> URL
-    Auto --> SQ
-
-    Manual --> D
-    Manual --> Dist
-
-    H --> Clean
-    F --> Clean
-    Todo --> Clean
-    URL --> Clean
-    SQ --> Clean
-    D --> Clean
-    Dist --> Clean
-
-    Clean --> L
-
-    style Input fill:#e1f5fe,stroke:#01579b,stroke-width:2px
-    style Processing fill:#f3e5f5,stroke:#4a148c,stroke-width:2px
-    style AutoStrategies fill:#fff3e0,stroke:#e65100,stroke-width:1px
-    style ManualTools fill:#e8f5e9,stroke:#1b5e20,stroke-width:1px
-    style Output fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px
 ```
+ WITHOUT ACP                          WITH ACP
+┌──────────────────────────┐        ┌──────────────────────────┐
+│ read(config.ts)    3k tk │        │                          │
+│ edit(config.ts)    2k tk │        │                          │
+│ read(config.ts)    3k tk │  ───►  │ read(config.ts)    3k tk │ ← latest only
+│ git status         1k tk │        │ git status         1k tk │ ← latest only
+│ git status         1k tk │        │                          │
+│ glob(**/*.ts)      4k tk │        │ glob(**/*.ts)      4k tk │
+├──────────────────────────┤        ├──────────────────────────┤
+│ Total: ~14k tokens       │        │ Total: ~8k tokens  -43%  │
+└──────────────────────────┘        └──────────────────────────┘
+```
+
+| Workload            | Without ACP  | With ACP    | Savings |
+| ------------------- | ------------ | ----------- | ------- |
+| **Typical Session** | ~80k tokens  | ~40k tokens | **50%** |
+| **Long Session**    | ~150k tokens | ~75k tokens | **50%** |
+| **File-Heavy Work** | ~100k tokens | ~35k tokens | **65%** |
 
 ---
 
-## 🚀 Quick Start
-
-### Installation
-
-```bash
-npm install @tuanhung303/opencode-acp
-```
+## Quick Start
 
 Add to your OpenCode config:
 
@@ -99,595 +47,79 @@ Add to your OpenCode config:
 }
 ```
 
-### Basic Usage
-
-ACP handles most pruning automatically. The following tools give agents granular control over context:
-
-```typescript
-// Discard completed work
-context_prune({ action: "discard", targets: [["a1b2c3"]] })
-
-// Distill large outputs
-context_prune({
-    action: "distill",
-    targets: [["d4e5f6", "Found 15 TypeScript files"]],
-})
-
-// Batch operations
-context_prune({
-    action: "discard",
-    targets: [["hash1"], ["hash2"], ["hash3"]],
-})
-```
+That's it. ACP works out of the box — no configuration needed.
 
 ---
 
-## 📚 Documentation
+## What It Does
 
-| Document                                                        | Purpose                                    |
-| --------------------------------------------------------------- | ------------------------------------------ |
-| [Validation Guide](docs/VALIDATION_GUIDE.md)                    | 43 comprehensive test cases                |
-| [Test Harness](docs/TEST_HARNESS.md)                            | Ready-to-run test scripts                  |
-| [Todo Write Testing Guide](docs/TODOWRITE_TESTING_GUIDE.md)     | Testing `todowrite` & stuck task detection |
-| [Context Architecture](docs/CONTROLLED_CONTEXT_ARCHITECTURE.md) | Memory management strategies               |
-| [Decision Tree](docs/PRUNING_DECISION_TREE.md)                  | Visual pruning flowcharts                  |
-| [Limitations Report](docs/PRUNING_LIMITATIONS_REPORT.md)        | What cannot be pruned                      |
-| [Changelog](CHANGELOG.md)                                       | Version history and migration guides       |
+- 🔁 **Auto-deduplicates** — re-reads of the same file, duplicate `git status`, repeated URL fetches are automatically superseded ([details](docs/AUTO_SUPERSEDE.md))
+- 📁 **One-file-one-view** — only the latest read/write/edit of each file stays in context
+- 🧹 **Manual pruning** — agents can `discard`, `distill`, or `replace` any context block by hash ([API reference](docs/API_REFERENCE.md))
+- 🔖 **Todo reminders** — nudges agents when tasks are forgotten or stuck
+- 🧠 **Thinking mode safe** — fully compatible with Anthropic, DeepSeek, and Kimi extended thinking APIs ([details](docs/ARCHITECTURE.md#provider-compatibility))
+- ⚡ **Zero-config** — works immediately, with optional [presets](docs/CONFIGURATION.md) for fine-tuning
 
 ---
 
-## 🤖 Agent Auto Mode
+## Configuration
 
-ACP provides the `context_prune` tool for intelligent context management:
-
-### Tool Interface
-
-```typescript
-context_prune({
-    action: "discard" | "distill" | "replace",
-    targets: [string, string?, string?][]  // Format depends on action
-})
-```
-
-### Target Types
-
-| Type                | Format                    | Example                                        |
-| ------------------- | ------------------------- | ---------------------------------------------- |
-| **Tool outputs**    | 6 hex chars               | `44136f`, `01cb91`                             |
-| **Thinking blocks** | 6 hex chars               | `abc123`                                       |
-| **Messages**        | 6 hex chars               | `def456`                                       |
-| **Pattern replace** | [start, end, replacement] | `["Start marker:", "End marker.", "[pruned]"]` |
-
-### Batch Operations
-
-```typescript
-// Prune multiple items at once
-context_prune({
-    action: "discard",
-    targets: [
-        ["44136f"], // Tool output
-        ["abc123"], // Thinking block
-        ["def456"], // Message
-    ],
-})
-
-// Distill with shared summary
-context_prune({
-    action: "distill",
-    targets: [
-        ["44136f", "Research phase complete"],
-        ["01cb91", "Research phase complete"],
-    ],
-})
-
-// Pattern replace - replace content between markers
-context_prune({
-    action: "replace",
-    targets: [
-        ["Detailed findings from analysis:", "End of detailed findings.", "[analysis complete]"],
-        ["Debug output started:", "Debug output ended.", "[debug pruned]"],
-    ],
-})
-```
-
-### Pattern Replace Constraints
-
-- Match content must be ≥30 characters
-- Start OR end pattern must be >15 characters
-- Literal matching only (no regex)
-- Exactly one match per pattern
-- No overlapping patterns
-
----
-
-## 🔄 Auto-Supersede Mechanisms
-
-ACP automatically removes redundant content through multiple strategies:
-
-### 1. Hash-Based Supersede
-
-Duplicate tool calls with identical arguments are automatically deduplicated.
-
-```
-┌─────────────────────────────────────┐        ┌─────────────────────────────────────┐
-│ BEFORE:                             │        │ AFTER:                              │
-│                                     │        │                                     │
-│   1. read(package.json) #a1b2c3     │   ───► │   ...other work...                  │
-│   2. ...other work...               │        │   3. read(package.json) #d4e5f6◄──┐ │
-│   3. read(package.json) #d4e5f6     │        │                                     │
-│                                     │        │  First call superseded (hash match) │
-│  Tokens: ~15,000                    │        │  Tokens: ~10,000  (-33%)            │
-└─────────────────────────────────────┘        └─────────────────────────────────────┘
-```
-
-### 2. File-Based Supersede (One-File-One-View)
-
-File operations automatically supersede previous operations on the same file.
-
-```
-┌─────────────────────────────────────┐        ┌─────────────────────────────────────┐
-│ BEFORE:                             │        │ AFTER:                              │
-│                                     │        │                                     │
-│   1. read(config.ts)                │   ───► │                                     │
-│   2. write(config.ts)               │        │   3. edit(config.ts)◄────────────┐  │
-│   3. edit(config.ts)                │        │                                     │
-│                                     │        │  Previous operations pruned         │
-│  Tokens: ~18,000                    │        │  Tokens: ~6,000  (-67%)             │
-└─────────────────────────────────────┘        └─────────────────────────────────────┘
-```
-
-### 3. Todo-Based Supersede (One-Todo-One-View)
-
-Todo operations automatically supersede previous todo states.
-
-```
-┌─────────────────────────────────────┐        ┌─────────────────────────────────────┐
-│ BEFORE:                             │        │ AFTER:                              │
-│                                     │        │                                     │
-│   1. todowrite: pending             │   ───► │                                     │
-│   2. todowrite: in_progress         │        │   3. todowrite: completed◄────────┐ │
-│   3. todowrite: completed           │        │                                     │
-│                                     │        │  Previous states auto-pruned        │
-│  Tokens: ~4,500                     │        │  Tokens: ~1,500  (-67%)             │
-└─────────────────────────────────────┘        └─────────────────────────────────────┘
-```
-
-### 4. Source-URL Supersede
-
-Identical URL fetches are deduplicated—only the latest response is retained.
-
-### 5. State Query Supersede
-
-State queries (`ls`, `find`, `pwd`, `git status`) are deduplicated—only the latest results matter.
-
-### 6. Context-Based Supersede
-
-New `context_prune` tool calls supersede previous context operations, preventing context management overhead from accumulating.
-
-### 7. Snapshot-Based Supersede
-
-Only the latest snapshot per file is retained. Previous snapshots are automatically pruned.
-
-### 8. Retry-Based Supersede
-
-Failed tool attempts are automatically removed when the operation succeeds on retry.
-
----
-
-## 🛡️ Protected Tools
-
-These tools are exempt from pruning to ensure operational continuity:
-
-```
-context_info, task, todowrite, todoread, context_prune, batch, write, edit, plan_enter, plan_exit
-```
-
-Additional tools can be protected via configuration:
+ACP works with zero config. For fine-tuning, use presets:
 
 ```jsonc
-{
-    "commands": {
-        "protectedTools": ["my_custom_tool"],
-    },
-}
-```
-
----
-
-## ⚙️ Configuration
-
-ACP uses its own config file with multiple levels:
-
-```
-Priority: Defaults → Global → Config Dir → Project
-```
-
-- **Global**: `~/.config/opencode/acp.jsonc`
-- **Config Dir**: `$OPENCODE_CONFIG_DIR/acp.jsonc`
-- **Project**: `.opencode/acp.jsonc`
-
-### Default Configuration
-
-```jsonc
-{
-    "$schema": "https://raw.githubusercontent.com/tuanhung303/opencode-agent-context-pruning/master/acp.schema.json",
-    "enabled": true,
-    "debug": false,
-    "pruneNotification": "minimal",
-
-    "commands": {
-        "enabled": true,
-        "protectedTools": [], // Additional tools to protect (merged with defaults)
-    },
-
-    "protectedFilePatterns": [
-        "**/.env",
-        "**/.env.*",
-        "**/credentials.json",
-        "**/secrets.json",
-        "**/*.pem",
-        "**/*.key",
-        "**/package.json",
-        "**/tsconfig.json",
-        "**/pyproject.toml",
-        "**/Cargo.toml",
-    ],
-
-    "tools": {
-        "settings": {
-            "protectedTools": [], // Merged with built-in protected tools
-            "enableAssistantMessagePruning": true,
-            "enableReasoningPruning": true,
-            "enableVisibleAssistantHashes": true,
-        },
-        "discard": { "enabled": true },
-        "distill": { "enabled": true, "showDistillation": false },
-        "todoReminder": {
-            "enabled": true,
-            "initialTurns": 5,
-            "repeatTurns": 4,
-            "stuckTaskTurns": 12,
-        },
-        "automataMode": { "enabled": true, "initialTurns": 8 },
-    },
-
-    "strategies": {
-        "purgeErrors": { "enabled": false, "turns": 4 },
-        "aggressivePruning": {
-            // All enabled by default - see Aggressive Pruning section
-        },
-    },
-}
-```
-
-### Aggressive Pruning (Enabled by Default)
-
-All aggressive pruning options are **enabled by default** for up to **50% token savings**.
-
-#### Pruning Presets
-
-Use presets for quick configuration:
-
-```jsonc
+// .opencode/acp.jsonc
 {
     "strategies": {
         "aggressivePruning": {
-            "preset": "balanced", // Options: "compact", "balanced", "verbose"
+            "preset": "balanced", // "compact" | "balanced" | "verbose"
         },
     },
 }
 ```
 
-| Preset       | Description                               | Use Case                         |
-| ------------ | ----------------------------------------- | -------------------------------- |
-| **compact**  | Maximum cleanup, all options enabled      | Long sessions, token-constrained |
-| **balanced** | Good defaults, preserves user code blocks | Most use cases (default)         |
-| **verbose**  | Minimal cleanup, preserves everything     | Debugging, audit trails          |
+| Preset       | Description                          | Best For                         |
+| ------------ | ------------------------------------ | -------------------------------- |
+| **compact**  | Maximum cleanup, all options enabled | Long sessions, token-constrained |
+| **balanced** | Good defaults, preserves user code   | Most use cases _(default)_       |
+| **verbose**  | Minimal cleanup, preserves all       | Debugging, audit trails          |
 
-#### Individual Options
-
-Override preset values with individual flags:
-
-```jsonc
-{
-    "strategies": {
-        "aggressivePruning": {
-            "preset": "balanced",
-            "pruneToolInputs": true, // Strip verbose inputs on supersede
-            "pruneStepMarkers": true, // Remove step markers entirely
-            "pruneSourceUrls": true, // Dedup URL fetches
-            "pruneFiles": true, // Mask file attachments
-            "pruneSnapshots": true, // Keep only latest snapshot
-            "pruneRetryParts": true, // Prune failed retries on success
-            "pruneUserCodeBlocks": false, // Keep user code blocks (balanced default)
-            "truncateOldErrors": false, // Keep full errors (balanced default)
-            "aggressiveFilePrune": true, // One-file-one-view
-            "stateQuerySupersede": true, // Dedup state queries (ls, git status)
-        },
-    },
-}
-```
+→ [Full configuration reference](docs/CONFIGURATION.md)
 
 ---
 
-## 📊 Token Savings
+## Documentation
 
-| Metric              | Without ACP  | With ACP    | Savings |
-| ------------------- | ------------ | ----------- | ------- |
-| **Typical Session** | ~80k tokens  | ~40k tokens | **50%** |
-| **Long Session**    | ~150k tokens | ~75k tokens | **50%** |
-| **File-Heavy Work** | ~100k tokens | ~35k tokens | **65%** |
-
-**Cache Impact**: ~65% cache hit rate with ACP vs ~85% without. The token savings typically outweigh the cache miss cost, especially in long sessions.
-
----
-
-## 🧪 Testing
-
-Run the comprehensive test suite:
-
-```bash
-# Load test todos
-todowrite({ /* copy from docs/VALIDATION_GUIDE.md */ })
-
-# Run preparation
-prep-0 through prep-7
-
-# Execute tests
-t1 through t43
-
-# Generate report
-report-1 through report-4
-```
-
-See [Validation Guide](docs/VALIDATION_GUIDE.md) for detailed test procedures.
+| Document                                     | Description                                                |
+| -------------------------------------------- | ---------------------------------------------------------- |
+| [Configuration](docs/CONFIGURATION.md)       | Full config reference, all flags, protected tools          |
+| [API Reference](docs/API_REFERENCE.md)       | `context_prune` tool interface, batch ops, pattern replace |
+| [Auto-Supersede](docs/AUTO_SUPERSEDE.md)     | All 8 automatic deduplication strategies                   |
+| [Troubleshooting](docs/TROUBLESHOOTING.md)   | Common errors and fixes                                    |
+| [Architecture](docs/ARCHITECTURE.md)         | Plugin internals and message flow                          |
+| [Validation Guide](docs/VALIDATION_GUIDE.md) | 43 test scenarios                                          |
+| [Changelog](CHANGELOG.md)                    | Version history                                            |
 
 ---
 
-## 📋 Pruning Workflow
+## Provider Compatibility
 
-Complete example: execute tool → find hash → prune.
-
-**Step 1: Run a tool**
-
-```typescript
-read({ filePath: "src/config.ts" })
-// Output includes: <tool_hash>a1b2c3</tool_hash>
-```
-
-**Step 2: Find the hash in output**
-
-```
-... file contents ...
-<tool_hash>a1b2c3</tool_hash>
-```
-
-**Step 3: Prune when no longer needed**
-
-```typescript
-context_prune({ action: "discard", targets: [["a1b2c3"]] })
-// Response: 「 🗑️ discard ✓ 」- ⚙️ read
-// Available: Tools(5), Messages(2), Reasoning(1)
-```
-
-**Batch multiple targets:**
-
-```typescript
-context_prune({ action: "discard", targets: [["a1b2c3"], ["d4e5f6"], ["g7h8i9"]] })
-```
-
-**Distill with summary:**
-
-```typescript
-context_prune({
-    action: "distill",
-    targets: [["abc123", "Auth: chose JWT over sessions"]],
-})
-```
+| Provider  | Thinking Mode     | Compatible | Notes                |
+| --------- | ----------------- | ---------- | -------------------- |
+| Anthropic | Extended thinking | ✅         | Strict validation    |
+| DeepSeek  | DeepThink         | ✅         | Similar to Anthropic |
+| Kimi      | K1 thinking       | ✅         | Similar to Anthropic |
+| OpenAI    | —                 | ✅         | No thinking mode     |
+| Google    | —                 | ✅         | No thinking mode     |
 
 ---
 
-## 🏗️ Architecture Overview
+## Contributing
 
-```mermaid
-flowchart TD
-    subgraph OpenCode["OpenCode Core"]
-        direction TB
-        A[User Message] --> B[Session]
-        B --> C[Transform Hook]
-        C --> D[toModelMessages]
-        D --> E[LLM Provider]
-    end
+1. Fork → 2. Branch → 3. `npm test` → 4. PR
 
-    subgraph ACP["ACP Plugin"]
-        direction TB
-        C --> F[syncToolCache]
-        F --> G[injectHashes]
-        G --> H[Apply Strategies]
-        H --> I[prune]
-        I --> C
-    end
+**CI/CD**: PRs run lint + type check + tests automatically. Merges to `main` auto-publish to npm.
 
-    style OpenCode fill:#F4F7F9,stroke:#5A6B8A,stroke-width:1.5px
-    style ACP fill:#E8F5F2,stroke:#9AC4C0,stroke-width:1.5px
-```
-
-ACP hooks into OpenCode's message flow to reduce context size before sending to the LLM:
-
-1. **Sync Tool Cache** - Updates internal tool state tracking
-2. **Inject Hashes** - Makes content addressable for pruning
-3. **Apply Strategies** - Runs auto-supersede mechanisms
-4. **Prune** - Applies manual and automatic pruning rules
-
----
-
-## 📝 Commands
-
-| Command      | Description                     |
-| ------------ | ------------------------------- |
-| `/acp`       | Show ACP statistics and version |
-| `/acp stats` | Show ACP statistics and version |
-
----
-
-## 🔧 Advanced Features
-
-### Todo Reminder
-
-Monitors `todowrite` usage and prompts when tasks are neglected:
-
-```jsonc
-{
-    "tools": {
-        "todoReminder": {
-            "enabled": true,
-            "initialTurns": 8, // First reminder after 8 turns without todo update
-            "repeatTurns": 4, // Subsequent reminders every 4 turns
-            "stuckTaskTurns": 12, // Threshold for stuck task detection
-        },
-    },
-}
-```
-
-**Reminder Behavior:**
-
-- **First reminder**: Fires after `initialTurns` (8) turns without `todowrite`
-- **Repeat reminders**: Fire every `repeatTurns` (4) turns thereafter
-- **Auto-reset**: Each `todowrite` call resets the counter to 0
-- **Deduplication**: Only ONE reminder exists in context at a time; new reminders replace old ones
-- **Stuck task detection**: Tasks in `in_progress` for `stuckTaskTurns` (12) are flagged with guidance
-- **Prunable outputs**: Reminder displays a list of prunable tool outputs to help with cleanup
-
-**Reminder Sequence:**
-
-```
-Turn 0:  todowrite() called (resets counter)
-Turn 8:  🔖 First reminder (if no todowrite since turn 0)
-Turn 12: 🔖 Repeat reminder
-Turn 16: 🔖 Repeat reminder
-...
-```
-
-### Automata Mode
-
-Autonomous reflection triggered by "automata" keyword:
-
-```jsonc
-{
-    "tools": {
-        "automataMode": {
-            "enabled": true,
-            "initialTurns": 8, // Turns before first reflection
-        },
-    },
-}
-```
-
-### Stuck Task Detection
-
-Identifies tasks stuck in `in_progress` for too long:
-
-```jsonc
-{
-    "tools": {
-        "todoReminder": {
-            "stuckTaskTurns": 12, // Threshold for stuck detection
-        },
-    },
-}
-```
-
----
-
-## 🚧 Limitations
-
-- **Subagents**: ACP is disabled for subagent sessions
-- **Cache Invalidation**: Pruning mid-conversation invalidates prompt caches
-- **Protected Tools**: Some tools cannot be pruned by design
-
----
-
-## 🛠️ Troubleshooting
-
-### Error: `reasoning_content is missing` (400 Bad Request)
-
-**Cause:** Using Anthropic/DeepSeek/Kimi thinking mode with an outdated ACP version or missing reasoning sync.
-
-**Fix:**
-
-1. Update to ACP v3.0.0+: `npm install @tuanhung303/opencode-acp@latest`
-2. Ensure your config has thinking-compatible settings
-3. See [Thinking Mode Compatibility](docs/THINKING_MODE_COMPATIBILITY.md) for details
-
-### Plugin Not Loading
-
-**Symptoms:** Commands like `/acp` return "Unknown command"
-
-**Fix:**
-
-1. Verify plugin is in `opencode.jsonc`: `"plugin": ["@tuanhung303/opencode-acp@latest"]`
-2. Run `npm run build && npm link` in the plugin directory
-3. Restart OpenCode
-
-### High Token Usage Despite ACP
-
-**Check:**
-
-- Is aggressive pruning enabled in config? See [Configuration](#configuration)
-- Are you using protected tools excessively? (`task`, `write`, `edit` can't be pruned)
-- Is your session >100 turns? Consider starting a fresh session
-
----
-
-## 🔬 Provider Compatibility
-
-### Thinking Mode APIs (Anthropic, DeepSeek, Kimi)
-
-ACP is fully compatible with **extended thinking mode** APIs that require the `reasoning_content` field. The context_prune tool automatically syncs reasoning content to prevent `400 Bad Request` errors.
-
-**Supported providers:** Anthropic, DeepSeek, Kimi  
-**Not required:** OpenAI, Google
-
-See the [detailed technical documentation](docs/THINKING_MODE_COMPATIBILITY.md) for implementation details and the root cause of the original compatibility issue.
-
----
-
-## 📦 npm Package
-
-**Package**: `@tuanhung303/opencode-acp`  
-**License**: MIT  
-**Repository**: https://github.com/tuanhung303/opencode-agent-context-pruning
-
-### Installation Methods
-
-```bash
-# Via npm
-npm install @tuanhung303/opencode-acp
-
-# Via OpenCode config
-# Add to opencode.jsonc: "plugin": ["@tuanhung303/opencode-acp@latest"]
-
-# Via URL (for agents)
-curl -s https://raw.githubusercontent.com/tuanhung303/opencode-acp/master/README.md
-```
-
-### CI/CD
-
-- **CI**: Every PR triggers linting, type checking, and unit tests
-- **CD**: Merges to `main` auto-publish to npm
-
----
-
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Run tests: `npm test`
-4. Submit a pull request
-
----
-
-## 📄 License
+## License
 
 MIT © [tuanhung303](https://github.com/tuanhung303)
 
