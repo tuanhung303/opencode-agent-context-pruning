@@ -258,9 +258,51 @@ export const AggressivePruningSchema = z.object({
         .describe("Truncate old error outputs to first line only, removing stack traces"),
 })
 
+export const TokenBudgetSchema = z.object({
+    /** Warning threshold — start proactive pruning of tool outputs (0.0-1.0) */
+    warningThreshold: z
+        .number()
+        .min(0)
+        .max(1)
+        .default(0.7)
+        .describe(
+            "Context usage percentage that triggers proactive tool output pruning (0.7 = 70%)",
+        ),
+    /** Critical threshold — also prune reasoning blocks (0.0-1.0) */
+    criticalThreshold: z
+        .number()
+        .min(0)
+        .max(1)
+        .default(0.85)
+        .describe("Context usage percentage that triggers reasoning block pruning (0.85 = 85%)"),
+    /** Target percentage to prune down to */
+    targetPercent: z
+        .number()
+        .min(0)
+        .max(1)
+        .default(0.6)
+        .describe("Target context usage percentage after proactive pruning (0.6 = 60%)"),
+    /** Override model context window size (tokens). If set, ignores auto-detection. */
+    modelContextOverride: z
+        .number()
+        .positive()
+        .optional()
+        .describe(
+            "Override model context window size in tokens. If set, ignores auto-detection from model ID",
+        ),
+    /** Number of recent turns protected from proactive pruning */
+    protectedRecentTurns: z
+        .number()
+        .int()
+        .min(0)
+        .default(2)
+        .describe("Number of recent turns protected from proactive pruning"),
+})
+
 export const StrategiesSchema = z.object({
     purgeErrors: PurgeErrorsSchema,
     aggressivePruning: AggressivePruningSchema,
+    tokenBudget: TokenBudgetSchema,
 })
 
 export const PluginConfigSchema = z.object({
@@ -305,5 +347,6 @@ export type Tools = z.infer<typeof ToolsSchema>
 export type Commands = z.infer<typeof CommandsSchema>
 export type PurgeErrors = z.infer<typeof PurgeErrorsSchema>
 export type AggressivePruning = z.infer<typeof AggressivePruningSchema>
+export type TokenBudget = z.infer<typeof TokenBudgetSchema>
 export type Strategies = z.infer<typeof StrategiesSchema>
 export type PluginConfig = z.infer<typeof PluginConfigSchema>
