@@ -3,7 +3,7 @@ import type { Logger } from "./logger"
 import type { PluginConfig } from "./config"
 import type { OpenCodeClient } from "./client"
 import { syncSessionState } from "./state/index"
-import { purgeErrors } from "./strategies"
+import { purgeErrors, proactivePrune } from "./strategies"
 import {
     prune,
     injectHashesIntoToolOutputs,
@@ -39,6 +39,7 @@ type Strategy = (
 
 const PRUNE_STRATEGIES: Record<string, Strategy> = {
     purgeErrors,
+    proactivePrune,
     prune,
 }
 

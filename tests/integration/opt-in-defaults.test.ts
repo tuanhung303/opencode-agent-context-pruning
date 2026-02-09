@@ -13,6 +13,7 @@ vi.mock("../../lib/strategies", () => ({
     deduplicate: vi.fn(),
     supersedeWrites: vi.fn(),
     purgeErrors: vi.fn(),
+    proactivePrune: vi.fn(),
 }))
 
 vi.mock("../../lib/messages", () => ({

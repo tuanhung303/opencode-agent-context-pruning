@@ -93,5 +93,11 @@ export const DEFAULT_CONFIG: PluginConfig = {
             stateQuerySupersede: true,
             truncateOldErrors: true,
         },
+        tokenBudget: {
+            warningThreshold: 0.7,
+            criticalThreshold: 0.85,
+            targetPercent: 0.6,
+            protectedRecentTurns: 2,
+        },
     },
 }
