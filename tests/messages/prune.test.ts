@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest"
-import { prune, injectHashesIntoToolOutputs } from "../../lib/messages/prune"
+import { prune, filterStepMarkers, injectHashesIntoToolOutputs } from "../../lib/messages/prune"
 import { stripHashTags } from "../../lib/state/hash-registry"
 import type { SessionState, WithParts } from "../../lib/state"
 import type { PluginConfig } from "../../lib/config"
@@ -96,7 +96,7 @@ describe("prune", () => {
     })
 
     describe("pruneToolOutputs", () => {
-        it("should replace pruned tool parts with placeholder", () => {
+        it("should replace pruned tool output while preserving ToolPart structure", () => {
             const state = createMockState(["call_123"])
             const messages: WithParts[] = [
                 createMessage("msg_1", [
@@ -112,10 +112,13 @@ describe("prune", () => {
 
             prune(state, mockLogger as any, mockConfig, messages)
 
-            // Tool part should be replaced with text placeholder for layout consistency
+            // Tool part should keep its structure, only output replaced
             expect(messages[0].parts.length).toBe(1)
-            expect((messages[0].parts[0] as any).type).toBe("text")
-            expect((messages[0].parts[0] as any).text).toBe("[read() output pruned]")
+            expect((messages[0].parts[0] as any).type).toBe("tool")
+            expect((messages[0].parts[0] as any).callID).toBe("call_123")
+            expect((messages[0].parts[0] as any).state.status).toBe("completed")
+            expect((messages[0].parts[0] as any).state.output).toBe("[read() output pruned]")
+            expect((messages[0].parts[0] as any).state.attachments).toBeUndefined()
         })
 
         it("should keep non-pruned tool parts", () => {
@@ -141,7 +144,7 @@ describe("prune", () => {
             expect(output).toBe(originalOutput)
         })
 
-        it("should replace errored tools in prune list with placeholder", () => {
+        it("should replace errored tool output while preserving ToolPart structure", () => {
             const state = createMockState(["call_error"])
             const messages: WithParts[] = [
                 createMessage("msg_1", [
@@ -157,10 +160,12 @@ describe("prune", () => {
 
             prune(state, mockLogger as any, mockConfig, messages)
 
-            // Errored tools in prune list are replaced with placeholder
+            // Errored tools in prune list keep structure, only output replaced
             expect(messages[0].parts.length).toBe(1)
-            expect((messages[0].parts[0] as any).type).toBe("text")
-            expect((messages[0].parts[0] as any).text).toBe("[read() output pruned]")
+            expect((messages[0].parts[0] as any).type).toBe("tool")
+            expect((messages[0].parts[0] as any).callID).toBe("call_error")
+            expect((messages[0].parts[0] as any).state.status).toBe("error")
+            expect((messages[0].parts[0] as any).state.output).toBe("[read() output pruned]")
         })
     })
 
@@ -507,6 +512,58 @@ describe("prune", () => {
             expect(stripHashTags('<acp:tool prunable_hash="abc12">x</acp:tool>')).toBe(
                 '<acp:tool prunable_hash="abc12">x</acp:tool>',
             )
+        })
+    })
+
+    describe("filterStepMarkers", () => {
+        it("should remove step-start and step-finish parts", () => {
+            const config = {
+                ...createMockConfig(),
+                strategies: { aggressivePruning: { pruneStepMarkers: true } },
+            } as any
+            const messages: WithParts[] = [
+                createMessage("msg_1", [
+                    { type: "step-start" },
+                    { type: "text", text: "hello" },
+                    { type: "step-finish" },
+                ]),
+            ]
+
+            filterStepMarkers(messages, config, createMockLogger() as any)
+
+            expect(messages[0].parts.length).toBe(1)
+            expect((messages[0].parts[0] as any).type).toBe("text")
+        })
+
+        it("should inject placeholder when all parts are step markers", () => {
+            const config = {
+                ...createMockConfig(),
+                strategies: { aggressivePruning: { pruneStepMarkers: true } },
+            } as any
+            const messages: WithParts[] = [
+                createMessage("msg_1", [{ type: "step-start" }, { type: "step-finish" }]),
+            ]
+
+            filterStepMarkers(messages, config, createMockLogger() as any)
+
+            // Should never leave empty parts — providers reject content: []
+            expect(messages[0].parts.length).toBe(1)
+            expect((messages[0].parts[0] as any).type).toBe("text")
+            expect((messages[0].parts[0] as any).text).toBe(" ")
+        })
+
+        it("should not modify messages when config is disabled", () => {
+            const config = {
+                ...createMockConfig(),
+                strategies: { aggressivePruning: { pruneStepMarkers: false } },
+            } as any
+            const messages: WithParts[] = [
+                createMessage("msg_1", [{ type: "step-start" }, { type: "text", text: "hello" }]),
+            ]
+
+            filterStepMarkers(messages, config, createMockLogger() as any)
+
+            expect(messages[0].parts.length).toBe(2)
         })
     })
 })
