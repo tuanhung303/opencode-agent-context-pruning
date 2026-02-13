@@ -214,6 +214,31 @@ export function calculateTotalContextTokens(state: SessionState, messages: WithP
     return total
 }
 
+/**
+ * Extract the real token count from the last assistant message's provider-reported usage.
+ *
+ * OpenCode populates msg.info.tokens on assistant messages after each LLM response with:
+ *   { input, output, reasoning, cache: { read, write } }
+ *
+ * This is the authoritative count including system prompts, tool schemas, and provider
+ * formatting overhead that our heuristic estimator misses.
+ *
+ * @returns The real token count, or null if no assistant message has token data
+ */
+export function getRealTokenCount(messages: WithParts[]): number | null {
+    for (let i = messages.length - 1; i >= 0; i--) {
+        const msg = messages[i]
+        if (!msg || msg.info.role !== "assistant") continue
+
+        const tokens = (msg.info as any).tokens
+        if (!tokens || typeof tokens.input !== "number") continue
+
+        // Match OpenCode's own isOverflow formula: input + cache.read + output
+        return tokens.input + (tokens.cache?.read ?? 0) + tokens.output
+    }
+    return null
+}
+
 export const calculateTokensSaved = (
     state: SessionState,
     messages: WithParts[],

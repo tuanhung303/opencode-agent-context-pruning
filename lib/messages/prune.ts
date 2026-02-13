@@ -27,12 +27,22 @@ export const filterStepMarkers = (
         const parts = Array.isArray(msg.parts) ? msg.parts : []
         const originalLength = parts.length
 
-        msg.parts = parts.filter((part) => {
+        const filtered = parts.filter((part) => {
             if (part.type === "step-start" || part.type === "step-finish") {
                 return false
             }
             return true
         })
+
+        // SAFETY: Never leave a message with empty parts — providers reject
+        // assistant messages with content: [] as "Improperly formed request"
+        if (filtered.length === 0 && originalLength > 0) {
+            msg.parts = [{ type: "text" as const, text: " " } as any]
+        } else {
+            msg.parts = filtered
+        }
+
+        totalRemoved += originalLength - msg.parts.length
     }
 
     if (totalRemoved > 0) {
@@ -715,16 +725,23 @@ export const prune = (
                 reasoningContent = part.text
             }
 
-            // Handle pruned tool parts - replace with placeholder for layout consistency
+            // Handle pruned tool parts - replace output only, preserve ToolPart structure
+            // CRITICAL: Replacing ToolPart with TextPart breaks the tool-call/tool-result
+            // pairing that toModelMessages() needs. Anthropic rejects requests with orphaned
+            // tool results or empty content blocks ("Improperly formed request").
             if (part.type === "tool" && part.callID && prunedToolIds.has(part.callID)) {
                 const toolName = part.tool || "tool"
                 const placeholder = createPrunedToolPlaceholder(toolName)
-                // Replace the tool part with a text placeholder part
-                parts[partIndex] = {
-                    type: "text" as const,
-                    text: placeholder,
-                } as any
-                logger.debug(`Pruned tool part ${part.callID} (${toolName})`)
+                // Keep the ToolPart intact, only replace the output content
+                if (
+                    part.state &&
+                    (part.state.status === "completed" || part.state.status === "error")
+                ) {
+                    const stateMut = part.state as { output: unknown; attachments?: unknown }
+                    stateMut.output = placeholder
+                    stateMut.attachments = undefined
+                }
+                logger.debug(`Pruned tool output ${part.callID} (${toolName})`)
                 continue
             }
 

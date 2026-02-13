@@ -28,6 +28,7 @@ import {
     calculateTotalContextTokens,
     getEffectiveContextThreshold,
     getContextStatus,
+    getRealTokenCount,
 } from "./strategies/utils"
 
 type Strategy = (
@@ -94,7 +95,9 @@ export function createChatMessageTransformHandler(
                     fallbackContextWindow: config.tools.todoReminder.fallbackContextWindow,
                     warningThresholdPercent: config.tools.todoReminder.warningThresholdPercent,
                 })
-                const currentTokens = calculateTotalContextTokens(state, output.messages)
+                const realTokens = getRealTokenCount(output.messages)
+                const currentTokens =
+                    realTokens ?? calculateTotalContextTokens(state, output.messages)
                 const status = getContextStatus(currentTokens, threshold.rawWindow)
 
                 state.contextPressure = {
