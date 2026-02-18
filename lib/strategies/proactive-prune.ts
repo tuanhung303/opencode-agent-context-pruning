@@ -30,6 +30,11 @@ export const proactivePrune = (
     config: PluginConfig,
     messages: WithParts[],
 ): void => {
+    // THRESHOLD-BASED PRUNING TEMPORARILY DISABLED: The calculation was not accurate, so we're disabling
+    // the proactive pruning based on thresholds to avoid unintended aggressive pruning.
+    // To re-enable, simply remove the early return below.
+    return
+
     const pressure = state.contextPressure
     const budget = config.strategies.tokenBudget
     const warningPercent = Math.round(budget.warningThreshold * 100)

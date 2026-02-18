@@ -266,7 +266,7 @@ export const TokenBudgetSchema = z.object({
         .max(1)
         .default(0.7)
         .describe(
-            "Context usage percentage that triggers proactive tool output pruning (0.7 = 70%)",
+            "Context usage percentage that triggers proactive tool output pruning (0.7 = 70%) - CURRENTLY DISABLED",
         ),
     /** Critical threshold — also prune reasoning blocks (0.0-1.0) */
     criticalThreshold: z
@@ -274,14 +274,18 @@ export const TokenBudgetSchema = z.object({
         .min(0)
         .max(1)
         .default(0.85)
-        .describe("Context usage percentage that triggers reasoning block pruning (0.85 = 85%)"),
+        .describe(
+            "Context usage percentage that triggers reasoning block pruning (0.85 = 85%) - CURRENTLY DISABLED",
+        ),
     /** Target percentage to prune down to */
     targetPercent: z
         .number()
         .min(0)
         .max(1)
         .default(0.6)
-        .describe("Target context usage percentage after proactive pruning (0.6 = 60%)"),
+        .describe(
+            "Target context usage percentage after proactive pruning (0.6 = 60%) - CURRENTLY DISABLED",
+        ),
     /** Override model context window size (tokens). If set, ignores auto-detection. */
     modelContextOverride: z
         .number()
@@ -296,7 +300,7 @@ export const TokenBudgetSchema = z.object({
         .int()
         .min(0)
         .default(2)
-        .describe("Number of recent turns protected from proactive pruning"),
+        .describe("Number of recent turns protected from proactive pruning - CURRENTLY DISABLED"),
 })
 
 export const StrategiesSchema = z.object({

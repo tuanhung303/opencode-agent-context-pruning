@@ -3,6 +3,9 @@ import type { PluginConfig } from "./schema.js"
 /**
  * Default configuration values
  * Extracted from config.ts
+ *
+ * NOTE: Threshold-based proactive pruning is currently disabled in the code to address
+ * calculation accuracy issues, even though the configuration values remain defined.
  */
 
 /**
@@ -94,6 +97,7 @@ export const DEFAULT_CONFIG: PluginConfig = {
             truncateOldErrors: true,
         },
         tokenBudget: {
+            // NOTE: Threshold-based proactive pruning is currently disabled due to calculation inaccuracies
             warningThreshold: 0.7,
             criticalThreshold: 0.85,
             targetPercent: 0.6,
