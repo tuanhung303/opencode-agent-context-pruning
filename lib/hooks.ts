@@ -1,4 +1,4 @@
-import type { SessionState, WithParts, ToolParameterEntry } from "./state"
+import type { SessionState, WithParts } from "./state"
 import type { Logger } from "./logger"
 import type { PluginConfig } from "./config"
 import type { OpenCodeClient } from "./client"
@@ -20,7 +20,7 @@ import {
 import { loadPrompt } from "./prompts"
 import { handleStatsCommand } from "./commands/stats"
 import { safeExecute } from "./safe-execute"
-import { sendUnifiedNotification } from "./ui/notification"
+
 import { getCurrentParams } from "./strategies/utils"
 import { saveSessionState } from "./state/persistence"
 import { isSyntheticMessage } from "./shared-utils"
@@ -333,37 +333,8 @@ export function createToolExecuteAfterHandler(
             const newlyPrunedCount = newPruneCount - initialPruneCount
 
             if (newlyPrunedCount > 0) {
-                // Get the newly pruned IDs
-                const newlyPrunedIds = state.prune.toolIds.slice(-newlyPrunedCount)
-
-                // Collect metadata for notification
-                const toolMetadata = new Map<string, ToolParameterEntry>()
-                for (const callId of newlyPrunedIds) {
-                    const toolParameters = state.toolParameters.get(callId)
-                    if (toolParameters) {
-                        toolMetadata.set(callId, toolParameters)
-                    }
-                }
-
-                const currentParams = getCurrentParams(state, messages, logger)
-
-                // Send simplified notification
-                await sendUnifiedNotification(
-                    client,
-                    logger,
-                    config,
-                    {
-                        state,
-                        pruneToolIds: newlyPrunedIds,
-                        toolMetadata,
-                        workingDirectory,
-                        options: { simplified: true },
-                    },
-                    sessionId,
-                    currentParams,
-                )
-
-                // Save state
+                // Save state (no user-visible notification for automatic pruning —
+                // notifications are only shown when the agent actively calls context_prune)
                 await saveSessionState(state, logger)
 
                 logger.debug(`Auto-pruned ${newlyPrunedCount} tool(s) after ${input.tool}`, {
